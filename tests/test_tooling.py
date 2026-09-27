@@ -180,6 +180,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('actions/cache@caa296126883cff596d87d8935842f9db880ef25', workflow)
         self.assertIn('name: static-dist', workflow)
         self.assertIn('name: playwright-runtime', workflow)
+        self.assertIn('name: qualification-harness', workflow)
         self.assertIn('needs: build', workflow)
         self.assertIn('needs: browser', workflow)
         self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
