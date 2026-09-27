@@ -25,6 +25,23 @@ class ToolingTests(unittest.TestCase):
             self.assertEqual(hashlib.sha256(a.read_bytes()).digest(), hashlib.sha256(b.read_bytes()).digest())
             self.assertEqual(hashlib.sha256(za.read_bytes()).digest(), hashlib.sha256(zb.read_bytes()).digest())
 
+    def test_distribution_tree_digest_is_deterministic(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / 'a.txt').write_text('a\n')
+            nested = root / 'nested'
+            nested.mkdir()
+            (nested / 'b.txt').write_text('b\n')
+            first, first_count = package_release.distribution_tree_digest(root)
+            second, second_count = package_release.distribution_tree_digest(root)
+            self.assertEqual(first, second)
+            self.assertEqual(first_count, 2)
+            self.assertEqual(second_count, 2)
+            (nested / 'b.txt').write_text('changed\n')
+            changed, changed_count = package_release.distribution_tree_digest(root)
+            self.assertNotEqual(first, changed)
+            self.assertEqual(changed_count, 2)
+
     def test_extension_index_only_marks_browser_extensions(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td)

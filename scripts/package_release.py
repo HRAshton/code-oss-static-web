@@ -1,60 +1,247 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-from pathlib import Path
-import datetime, gzip, io, os, shutil, tarfile, zipfile
-from common import ROOT, DIST, ARTIFACTS, BuildError, load_json, sha256_file, write_json, require
 
-def iter_files(root):
-    return sorted((p for p in root.rglob('*') if p.is_file()), key=lambda p: p.relative_to(root).as_posix())
+import datetime
+import gzip
+import hashlib
+import io
+import os
+import re
+import shutil
+import subprocess
+import tarfile
+import zipfile
+from pathlib import Path
+
+from common import ARTIFACTS, DIST, ROOT, BuildError, load_json, require, sha256_file, write_json
+
+PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
+PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
+
+
+def iter_files(root: Path):
+    return sorted(
+        (path for path in root.rglob('*') if path.is_file()),
+        key=lambda path: path.relative_to(root).as_posix(),
+    )
+
+
+def distribution_tree_digest(root: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    count = 0
+    for path in iter_files(root):
+        relative = path.relative_to(root).as_posix()
+        mode = 0o755 if os.access(path, os.X_OK) else 0o644
+        file_digest = sha256_file(path)
+        digest.update(f'{relative}\0{mode:o}\0{file_digest}\n'.encode())
+        count += 1
+    return digest.hexdigest(), count
+
 
 def build_tar(src: Path, out: Path, epoch: int):
     with out.open('wb') as raw:
         with gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=epoch) as gz:
-            with tarfile.open(fileobj=gz, mode='w', format=tarfile.PAX_FORMAT) as tf:
-                for p in iter_files(src):
-                    rel = p.relative_to(src).as_posix()
-                    data = p.read_bytes()
-                    info = tarfile.TarInfo(rel)
-                    info.size = len(data); info.mtime = epoch
-                    info.mode = 0o755 if os.access(p, os.X_OK) else 0o644
-                    info.uid = info.gid = 0; info.uname = info.gname = ''
-                    tf.addfile(info, io.BytesIO(data))
+            with tarfile.open(fileobj=gz, mode='w', format=tarfile.PAX_FORMAT) as archive:
+                for path in iter_files(src):
+                    relative = path.relative_to(src).as_posix()
+                    data = path.read_bytes()
+                    info = tarfile.TarInfo(relative)
+                    info.size = len(data)
+                    info.mtime = epoch
+                    info.mode = 0o755 if os.access(path, os.X_OK) else 0o644
+                    info.uid = 0
+                    info.gid = 0
+                    info.uname = ''
+                    info.gname = ''
+                    archive.addfile(info, io.BytesIO(data))
+
 
 def build_zip(src: Path, out: Path, epoch: int):
-    dt = datetime.datetime.fromtimestamp(max(epoch, 315532800), datetime.timezone.utc)
-    stamp = (dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
-    with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-        for p in iter_files(src):
-            rel = p.relative_to(src).as_posix()
-            info = zipfile.ZipInfo(rel, stamp)
+    timestamp = datetime.datetime.fromtimestamp(
+        max(epoch, 315532800),
+        datetime.timezone.utc,
+    )
+    stamp = (
+        timestamp.year,
+        timestamp.month,
+        timestamp.day,
+        timestamp.hour,
+        timestamp.minute,
+        timestamp.second,
+    )
+    with zipfile.ZipFile(
+        out,
+        'w',
+        compression=zipfile.ZIP_DEFLATED,
+        compresslevel=9,
+    ) as archive:
+        for path in iter_files(src):
+            relative = path.relative_to(src).as_posix()
+            info = zipfile.ZipInfo(relative, stamp)
             info.create_system = 3
-            info.external_attr = ((0o755 if os.access(p, os.X_OK) else 0o644) & 0xFFFF) << 16
-            z.writestr(info, p.read_bytes(), compress_type=zipfile.ZIP_DEFLATED, compresslevel=9)
+            mode = 0o755 if os.access(path, os.X_OK) else 0o644
+            info.external_attr = (mode & 0xFFFF) << 16
+            archive.writestr(
+                info,
+                path.read_bytes(),
+                compress_type=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+            )
+
+
+def resolve_project_commit() -> str:
+    github_sha = os.environ.get('GITHUB_SHA', '').strip().lower()
+    if PROJECT_COMMIT_RE.fullmatch(github_sha):
+        return github_sha
+
+    try:
+        project_commit = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'],
+            cwd=ROOT,
+            text=True,
+        ).strip().lower()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise BuildError('unable to resolve project commit') from exc
+
+    require(
+        PROJECT_COMMIT_RE.fullmatch(project_commit) is not None,
+        f'invalid project commit: {project_commit}',
+    )
+    return project_commit
+
+
+def input_digest(path: Path) -> dict[str, str]:
+    require(path.is_file(), f'missing release input: {path}')
+    return {
+        'path': path.relative_to(ROOT).as_posix(),
+        'sha256': sha256_file(path),
+    }
+
+
+def patch_inventory() -> list[dict[str, str]]:
+    manifest_path = ROOT / 'patches/manifest.json'
+    manifest = load_json(manifest_path)
+    entries = manifest.get('patches', [])
+    require(isinstance(entries, list), 'patch manifest patches must be an array')
+
+    patches: list[dict[str, str]] = []
+    for entry in entries:
+        require(isinstance(entry, dict), 'patch manifest entry must be an object')
+        file_name = entry.get('file')
+        require(isinstance(file_name, str) and file_name, 'patch manifest entry missing file')
+        patch_path = ROOT / 'patches' / file_name
+        require(patch_path.is_file(), f'missing patch: {patch_path}')
+        patch = {
+            'file': file_name,
+            'sha256': sha256_file(patch_path),
+        }
+        patch_id = entry.get('id')
+        if isinstance(patch_id, str) and patch_id:
+            patch['id'] = patch_id
+        patches.append(patch)
+    return patches
+
+
+def build_artifact_manifest(
+    *,
+    version: str,
+    project_commit: str,
+    upstream: dict,
+    archives: list[Path],
+    distribution: Path,
+) -> dict:
+    tree_digest, file_count = distribution_tree_digest(distribution)
+    return {
+        'schemaVersion': 1,
+        'project': {
+            'repository': PROJECT_REPOSITORY,
+            'commit': project_commit,
+        },
+        'version': version,
+        'upstream': {
+            'repository': upstream['repository'],
+            'tag': upstream['tag'],
+            'commit': upstream['commit'],
+            'sourceDateEpoch': int(upstream['sourceDateEpoch']),
+            'qualified': bool(upstream['qualified']),
+        },
+        'distribution': {
+            'treeSha256': tree_digest,
+            'fileCount': file_count,
+        },
+        'inputs': {
+            'upstreamLock': input_digest(ROOT / 'upstream.lock.json'),
+            'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
+            'extensionLock': input_digest(ROOT / 'extensions/extensions.lock.json'),
+            'runtimeConfig': input_digest(ROOT / 'config/runtime.json'),
+            'productTransform': input_digest(ROOT / 'config/product-transform.json'),
+            'networkPolicy': input_digest(ROOT / 'config/network-policy.json'),
+        },
+        'patches': patch_inventory(),
+        'artifacts': [
+            {
+                'name': path.name,
+                'sha256': sha256_file(path),
+                'size': path.stat().st_size,
+            }
+            for path in archives
+        ],
+    }
+
 
 def main():
     require((DIST / 'index.html').is_file(), 'dist/ missing; run the build first')
     lock = load_json(ROOT / 'upstream.lock.json')
     epoch = int(lock['sourceDateEpoch'])
     ARTIFACTS.mkdir(exist_ok=True)
-    for p in ARTIFACTS.iterdir():
-        if p.is_file(): p.unlink()
+    for path in ARTIFACTS.iterdir():
+        if path.is_file():
+            path.unlink()
+
     version = f"{lock['tag']}-web.0"
-    tgz = ARTIFACTS / f'code-oss-static-web-{version}.tar.gz'
-    zipf = ARTIFACTS / f'code-oss-static-web-{version}.zip'
-    build_tar(DIST, tgz, epoch); build_zip(DIST, zipf, epoch)
-    write_json(ARTIFACTS / 'upstream.json', {
-        'repository': lock['repository'], 'tag': lock['tag'], 'commit': lock['commit'],
-        'sourceDateEpoch': epoch, 'qualified': lock['qualified'],
-    })
+    tar_path = ARTIFACTS / f'code-oss-static-web-{version}.tar.gz'
+    zip_path = ARTIFACTS / f'code-oss-static-web-{version}.zip'
+    build_tar(DIST, tar_path, epoch)
+    build_zip(DIST, zip_path, epoch)
+
+    write_json(
+        ARTIFACTS / 'upstream.json',
+        {
+            'repository': lock['repository'],
+            'tag': lock['tag'],
+            'commit': lock['commit'],
+            'sourceDateEpoch': epoch,
+            'qualified': lock['qualified'],
+        },
+    )
+    write_json(
+        ARTIFACTS / 'artifact-manifest.json',
+        build_artifact_manifest(
+            version=version,
+            project_commit=resolve_project_commit(),
+            upstream=lock,
+            archives=[tar_path, zip_path],
+            distribution=DIST,
+        ),
+    )
     shutil.copy2(ROOT / 'LICENSE', ARTIFACTS / 'LICENSE')
+
     lines = []
-    for p in sorted(x for x in ARTIFACTS.iterdir() if x.is_file() and x.name != 'SHA256SUMS'):
-        lines.append(f'{sha256_file(p)}  {p.name}')
-    (ARTIFACTS / 'SHA256SUMS').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    for path in sorted(
+        item
+        for item in ARTIFACTS.iterdir()
+        if item.is_file() and item.name != 'SHA256SUMS'
+    ):
+        lines.append(f'{sha256_file(path)}  {path.name}')
+    (ARTIFACTS / 'SHA256SUMS').write_text(
+        '\n'.join(lines) + '\n',
+        encoding='utf-8',
+    )
     print(f'packaged {version} into {ARTIFACTS}')
+
 
 if __name__ == '__main__':
     try:
         main()
-    except BuildError as e:
-        raise SystemExit(str(e))
+    except BuildError as exc:
+        raise SystemExit(str(exc))
