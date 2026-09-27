@@ -1,9 +1,11 @@
 const path = require('path');
 const { defineConfig } = require('@playwright/test');
 
+const repoRoot = path.resolve(__dirname, '../..');
 const basePath = process.env.CODE_OSS_STATIC_WEB_BASE_PATH || '/code-oss-web/';
 const port = Number(process.env.CODE_OSS_STATIC_WEB_PORT || '4173');
-const dist = process.env.CODE_OSS_STATIC_WEB_DIST || path.resolve(__dirname, '../../dist');
+const dist = process.env.CODE_OSS_STATIC_WEB_DIST || path.join(repoRoot, 'dist');
+const serveStatic = path.join(repoRoot, 'scripts', 'serve_static.py');
 const baseURL = `http://127.0.0.1:${port}${basePath}`;
 const reportDir = process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT || 'playwright-report';
 const resultsDir = process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS || 'test-results';
@@ -25,7 +27,7 @@ module.exports = defineConfig({
     video: 'retain-on-failure',
   },
   webServer: {
-    command: `python3 scripts/serve_static.py --directory "${dist}" --base-path "${basePath}" --port ${port}`,
+    command: `python3 "${serveStatic}" --directory "${dist}" --base-path "${basePath}" --port ${port}`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
