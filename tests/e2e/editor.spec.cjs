@@ -9,8 +9,8 @@ test('editor accepts input and command palette works', async ({ page }) => {
     await commands.executeCommand('workbench.action.files.newUntitledFile');
   });
 
-  const editorInput = page.locator('.monaco-editor textarea.inputarea').last();
-  await expect(editorInput).toBeAttached();
+  const editorInput = page.getByRole('textbox', { name: /^Untitled-/ }).last();
+  await expect(editorInput).toBeVisible();
   await editorInput.focus();
   await page.keyboard.type('static-code-oss-qualification');
   await expect(page.locator('.view-lines').last()).toContainText('static-code-oss-qualification');
