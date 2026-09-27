@@ -128,7 +128,7 @@ def patch_inventory() -> list[dict[str, str]]:
     for entry in entries:
         require(isinstance(entry, dict), 'patch manifest entry must be an object')
         file_name = entry.get('file')
-        require(isinstance(file_name, str) and file_name, 'patch manifest entry missing file')
+        require(isinstance(file_name, str) and bool(file_name), 'patch manifest entry missing file')
         patch_path = ROOT / 'patches' / file_name
         require(patch_path.is_file(), f'missing patch: {patch_path}')
         patch = {

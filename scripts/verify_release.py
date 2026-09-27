@@ -66,13 +66,13 @@ def verify_artifact_manifest(directory: Path) -> None:
     )
 
     artifacts = manifest.get('artifacts')
-    require(isinstance(artifacts, list) and artifacts, 'artifact manifest artifacts missing')
+    require(isinstance(artifacts, list) and len(artifacts) > 0, 'artifact manifest artifacts missing')
     for artifact in artifacts:
         require(isinstance(artifact, dict), 'artifact manifest artifact invalid')
         name = artifact.get('name')
         expected_digest = artifact.get('sha256')
         expected_size = artifact.get('size')
-        require(isinstance(name, str) and name, 'artifact manifest artifact name missing')
+        require(isinstance(name, str) and bool(name), 'artifact manifest artifact name missing')
         require(
             isinstance(expected_digest, str) and DIGEST_RE.fullmatch(expected_digest) is not None,
             f'artifact manifest digest invalid: {name}',
