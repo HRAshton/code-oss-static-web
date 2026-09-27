@@ -30,7 +30,7 @@ def check_actions() -> None:
 def check_shell_scripts() -> None:
     for script in (ROOT / "build.sh", ROOT / "package.sh"):
         lines = script.read_text(encoding="utf-8").splitlines()
-        require(lines and lines[0] == "#!/usr/bin/env bash", f"{script.name}: bash shebang required")
+        require(bool(lines) and lines[0] == "#!/usr/bin/env bash", f"{script.name}: bash shebang required")
         require(
             any(line.strip() == "set -euo pipefail" for line in lines[:5]),
             f"{script.name}: set -euo pipefail required near the top",
