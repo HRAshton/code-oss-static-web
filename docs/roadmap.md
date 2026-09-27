@@ -47,4 +47,4 @@
 - make Ruff formatting a blocking CI gate after the existing Python files are normalized;
 - tighten Pyright from `basic` to `strict`; 
 - add schema validation for all JSON/YAML configuration;
-- add release-contract checks for CI permission separation and immutable release inputs.
+- [x] enforce that jobs executing upstream builds have read-only permissions, no OIDC and no persisted checkout credentials;\n- add further release-contract checks for attest/publish job separation and immutable release inputs.

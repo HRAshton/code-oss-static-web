@@ -3,7 +3,7 @@ import hashlib, json, sys, tempfile, unittest, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import make_static, package_release, extensions_index, extension_lock
+import check_policy, make_static, package_release, extensions_index, extension_lock
 
 class ToolingTests(unittest.TestCase):
     def test_upstream_lock_is_exact_commit_and_unqualified(self):
@@ -142,6 +142,22 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('unexpectedRequests', network)
         self.assertIn('webSockets', network)
 
+
+    def test_build_jobs_are_unprivileged(self):
+        check_policy.check_build_job_permissions()
+        bad = """jobs:
+  build:
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+        with:
+          persist-credentials: true
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_build_job_block(ROOT / '.github/workflows/example.yml', 'build', bad)
 
     def test_workflow_actions_are_commit_pinned(self):
         import re
