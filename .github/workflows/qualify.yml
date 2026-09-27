@@ -34,13 +34,14 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  QUALIFICATION_BROWSER: ${{ inputs.browser || 'chromium' }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      QUALIFICATION_BROWSER: ${{ inputs.browser || 'chromium' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -54,7 +55,17 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Restore immutable upstream web build cache
+        id: upstream-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .work/vscode-web
+            .work/playwright-runtime
+          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-24.18.0-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/product-transform.json', 'patches/**') }}
+
       - name: Install Code-OSS web build prerequisites
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
         run: >-
           sudo apt-get update &&
           sudo apt-get install -y --no-install-recommends
@@ -64,10 +75,73 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
           PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: ./build.sh
+        shell: bash
+        run: |
+          if [[ "${{ steps.upstream-cache.outputs.cache-hit }}" == 'true' ]]; then
+            ./build.sh --reuse-upstream-build
+          else
+            ./build.sh
+          fi
 
       - name: Structural artifact smoke test
         run: python3 scripts/smoke_static.py dist
+
+      - name: Upload canonical static distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: static-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload locked Playwright runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-runtime
+          path: .work/playwright-runtime/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-diagnostics
+          path: .work/product-transform-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.18.0'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download canonical static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: dist
+
+      - name: Download locked Playwright runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: playwright-runtime
+          path: .work/playwright-runtime
 
       - name: Install locked Playwright browser runtime
         shell: bash
@@ -124,9 +198,6 @@ jobs:
           --dist .work/qualification-dist
           --grep @extension
 
-      - name: Package canonical candidate
-        run: ./package.sh
-
       - name: Upload qualification diagnostics
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -135,9 +206,31 @@ jobs:
           path: |
             playwright-report/
             test-results/
-            .work/product-transform-report.json
           if-no-files-found: ignore
           retention-days: 7
+
+  package:
+    needs: browser
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download qualified static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: dist
+
+      - name: Package canonical candidate
+        run: ./package.sh
 
       - name: Upload canonical candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

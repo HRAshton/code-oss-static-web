@@ -15,6 +15,10 @@ const resultsDir = path.resolve(
   repoRoot,
   process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS || 'test-results'
 );
+const chromiumExecutable = process.env.CODE_OSS_STATIC_WEB_CHROMIUM_EXECUTABLE;
+const chromiumUse = chromiumExecutable
+  ? { browserName: 'chromium', launchOptions: { executablePath: chromiumExecutable } }
+  : { browserName: 'chromium' };
 
 module.exports = defineConfig({
   testDir: __dirname,
@@ -39,7 +43,7 @@ module.exports = defineConfig({
     timeout: 30_000,
   },
   projects: [
-    { name: 'chromium', use: { browserName: 'chromium' } },
+    { name: 'chromium', use: chromiumUse },
     { name: 'firefox', use: { browserName: 'firefox' } },
     { name: 'webkit', use: { browserName: 'webkit' } },
   ],

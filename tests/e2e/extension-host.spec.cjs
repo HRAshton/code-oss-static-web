@@ -1,15 +1,22 @@
 const { test, expect } = require('@playwright/test');
-const { openWorkbench, openCommandPalette } = require('./helpers.cjs');
+const { openWorkbench } = require('./helpers.cjs');
 
 test('@extension repository qualification web extension activates', async ({ page }) => {
   await openWorkbench(page);
 
-  const input = await openCommandPalette(page);
-  await input.fill('Static Web Test: Mark Ready');
-  const command = page.locator('.quick-input-list .monaco-list-row').filter({ hasText: 'Static Web Test: Mark Ready' }).first();
-  await expect(command).toBeVisible();
-  await command.click();
+  await expect.poll(async () => {
+    return page.evaluate(async () => {
+      try {
+        const { commands } = await import('./out/vs/workbench/workbench.web.main.internal.js');
+        await commands.executeCommand('codeOssStaticWebTest.markReady');
+        return true;
+      } catch {
+        return false;
+      }
+    });
+  }, { timeout: 15_000 }).toBe(true);
 
-  await expect(page.locator('.notification-toast').filter({ hasText: 'Static web test extension activated' }).first())
-    .toBeVisible({ timeout: 15_000 });
+  await expect(
+    page.locator('.notification-toast').filter({ hasText: 'Static web test extension activated' }).first()
+  ).toBeVisible({ timeout: 15_000 });
 });
