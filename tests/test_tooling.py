@@ -141,6 +141,7 @@ class ToolingTests(unittest.TestCase):
         config = (ROOT / 'tests/e2e/playwright.config.cjs').read_text()
         self.assertIn('/code-oss-web/', config)
         self.assertIn("serviceWorkers: 'block'", config)
+        self.assertIn('CODE_OSS_STATIC_WEB_CHROMIUM_EXECUTABLE', config)
         network = (ROOT / 'tests/e2e/network-policy.spec.cjs').read_text()
         self.assertIn('unexpectedRequests', network)
         self.assertIn('webSockets', network)
@@ -176,10 +177,25 @@ class ToolingTests(unittest.TestCase):
 
     def test_qualification_workflow_runs_browser_and_extension_suites(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        self.assertIn('actions/cache@caa296126883cff596d87d8935842f9db880ef25', workflow)
+        self.assertIn('name: static-dist', workflow)
+        self.assertIn('name: playwright-runtime', workflow)
+        self.assertIn('needs: build', workflow)
+        self.assertIn('needs: browser', workflow)
+        self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
         self.assertIn('scripts/run_e2e.py', workflow)
         self.assertIn('--grep-invert @extension', workflow)
         self.assertIn('--grep @extension', workflow)
         self.assertIn('scripts/add_test_extension.py', workflow)
+        self.assertIn('--reuse-upstream-build', workflow)
+
+        extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
+        self.assertIn("commands.executeCommand('codeOssStaticWebTest.markReady')", extension_test)
+
+        runner = (ROOT / 'scripts/run_e2e.py').read_text()
+        self.assertIn("playwright-runtime", runner)
+        exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
+        self.assertIn("Path('@playwright/test')", exporter)
 
     def test_product_transform_keeps_chat_contract_fail_closed(self):
         transform = json.loads((ROOT / 'config/product-transform.json').read_text())
