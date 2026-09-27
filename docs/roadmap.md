@@ -19,10 +19,10 @@
 
 ## Extensions
 
-- implement the production `extensions.lock.json` schema and validator;
-- add pinned local VSIX ingestion;
-- add digest verification;
-- add browser-entrypoint compatibility checks;
+- [x] implement the production `extensions.lock.json` schema and validator;
+- [x] add pinned local VSIX ingestion;
+- [x] add digest verification;
+- [x] add browser-entrypoint compatibility checks;
 - add Open VSX acquisition with exact versions/hashes;
 - add extension license inventory and SBOM integration.
 

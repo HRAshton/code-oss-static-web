@@ -1,9 +1,9 @@
 from __future__ import annotations
-import hashlib, json, sys, tempfile, unittest
+import hashlib, json, sys, tempfile, unittest, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import make_static, package_release, extensions_index
+import make_static, package_release, extensions_index, extension_lock
 
 class ToolingTests(unittest.TestCase):
     def test_upstream_lock_is_exact_commit_and_unqualified(self):
@@ -35,6 +35,80 @@ class ToolingTests(unittest.TestCase):
             values = {x['id']: x['browserCompatible'] for x in extensions_index.build_extension_index(d)['extensions']}
             self.assertEqual(values, {'p.node': False, 'p.web': True})
 
+
+
+    def test_local_vsix_lock_validation_and_installation(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vendor = root / 'vendor'; vendor.mkdir()
+            vsix = vendor / 'fixture.vsix'
+            manifest = {
+                'publisher': 'fixture',
+                'name': 'browser',
+                'version': '1.2.3',
+                'license': 'MIT',
+                'browser': './extension.js',
+            }
+            with zipfile.ZipFile(vsix, 'w') as archive:
+                archive.writestr('extension/package.json', json.dumps(manifest))
+                archive.writestr('extension/extension.js', 'exports.activate = () => {};\n')
+            digest = hashlib.sha256(vsix.read_bytes()).hexdigest()
+            lock_path = root / 'extensions.lock.json'
+            lock_path.write_text(json.dumps({
+                'schemaVersion': 1,
+                'extensions': [{
+                    'id': 'fixture.browser',
+                    'version': '1.2.3',
+                    'sha256': digest,
+                    'license': 'MIT',
+                    'source': {'type': 'local-vsix', 'path': 'vendor/fixture.vsix'},
+                }],
+            }))
+            dist = root / 'dist'; dist.mkdir()
+            installed = extension_lock.install_locked_extensions(dist, lock_path, root=root)
+            self.assertEqual(installed[0]['id'], 'fixture.browser')
+            self.assertTrue((dist / 'extensions/fixture.browser/extension.js').is_file())
+            index = extensions_index.build_extension_index(dist)
+            self.assertTrue(index['extensions'][0]['browserCompatible'])
+
+    def test_local_vsix_rejects_digest_mismatch_and_node_only_extension(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vsix = root / 'fixture.vsix'
+            manifest = {'publisher': 'fixture', 'name': 'node', 'version': '1.0.0', 'main': './extension.js'}
+            with zipfile.ZipFile(vsix, 'w') as archive:
+                archive.writestr('extension/package.json', json.dumps(manifest))
+                archive.writestr('extension/extension.js', 'module.exports = {};\n')
+            digest = hashlib.sha256(vsix.read_bytes()).hexdigest()
+            entry = {
+                'id': 'fixture.node', 'version': '1.0.0', 'sha256': digest,
+                'source': {'type': 'local-vsix', 'path': 'fixture.vsix'},
+                'license': None,
+            }
+            with self.assertRaises(extension_lock.BuildError):
+                extension_lock.validate_local_vsix(entry, root=root)
+            entry['sha256'] = '0' * 64
+            with self.assertRaises(extension_lock.BuildError):
+                extension_lock.validate_local_vsix(entry, root=root)
+
+    def test_local_vsix_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vsix = root / 'fixture.vsix'
+            with zipfile.ZipFile(vsix, 'w') as archive:
+                archive.writestr('../escape.txt', 'bad')
+                archive.writestr('extension/package.json', json.dumps({
+                    'publisher': 'fixture', 'name': 'bad', 'version': '1.0.0', 'browser': './extension.js'
+                }))
+                archive.writestr('extension/extension.js', '')
+            entry = {
+                'id': 'fixture.bad', 'version': '1.0.0',
+                'sha256': hashlib.sha256(vsix.read_bytes()).hexdigest(),
+                'source': {'type': 'local-vsix', 'path': 'fixture.vsix'},
+                'license': None,
+            }
+            with self.assertRaises(extension_lock.BuildError):
+                extension_lock.validate_local_vsix(entry, root=root)
 
     def test_qualification_extension_is_browser_compatible(self):
         fixture = ROOT / 'tests/fixtures/web-extension'

@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse, shutil
 from common import ROOT, WORK, DIST, BuildError, write_json, require
 from extensions_index import build_extension_index
+from extension_lock import install_locked_extensions
 
 INDEX = """<!doctype html>
 <html>
@@ -80,6 +81,8 @@ def main():
     shutil.copy2(ROOT / 'config/runtime.json', out / 'runtime.json')
     (out / 'index.html').write_text(INDEX, encoding='utf-8')
     (out / 'static-bootstrap.mjs').write_text(BOOTSTRAP, encoding='utf-8')
+    installed = install_locked_extensions(out, ROOT / 'extensions/extensions.lock.json')
+    write_json(out / 'locked-extensions.json', {'schemaVersion': 1, 'extensions': installed})
     write_json(out / 'extensions.json', build_extension_index(out))
     upstream = WORK / 'vscode'
     for source, target in [
