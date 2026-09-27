@@ -7,8 +7,14 @@ const port = Number(process.env.CODE_OSS_STATIC_WEB_PORT || '4173');
 const dist = process.env.CODE_OSS_STATIC_WEB_DIST || path.join(repoRoot, 'dist');
 const serveStatic = path.join(repoRoot, 'scripts', 'serve_static.py');
 const baseURL = `http://127.0.0.1:${port}${basePath}`;
-const reportDir = process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT || 'playwright-report';
-const resultsDir = process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS || 'test-results';
+const reportDir = path.resolve(
+  repoRoot,
+  process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT || 'playwright-report'
+);
+const resultsDir = path.resolve(
+  repoRoot,
+  process.env.CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS || 'test-results'
+);
 
 module.exports = defineConfig({
   testDir: __dirname,
