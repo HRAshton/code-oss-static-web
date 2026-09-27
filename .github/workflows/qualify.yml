@@ -48,16 +48,22 @@ jobs:
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: '24'
+          node-version: '24.18.0'
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
 
       - name: Install Code-OSS web build prerequisites
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libkrb5-dev
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends
+          pkg-config libx11-dev libxkbfile-dev libkrb5-dev
 
       - name: Build static Code-OSS candidate
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
         run: ./build.sh
 
       - name: Structural artifact smoke test
