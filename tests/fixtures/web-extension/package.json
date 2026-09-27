@@ -1,0 +1,23 @@
+{
+  "name": "code-oss-static-web-test",
+  "displayName": "Code OSS Static Web Qualification",
+  "publisher": "code-oss-static-web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "*"
+  },
+  "browser": "./extension.js",
+  "activationEvents": [
+    "onCommand:codeOssStaticWebTest.markReady"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeOssStaticWebTest.markReady",
+        "title": "Static Web Test: Mark Ready"
+      }
+    ]
+  }
+}

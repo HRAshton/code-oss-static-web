@@ -1,0 +1,110 @@
+name: Full build qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: Browser qualification target
+        required: true
+        default: chromium
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - webkit
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      QUALIFICATION_BROWSER: ${{ inputs.browser }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Build static Code-OSS candidate
+        run: ./build.sh
+
+      - name: Structural artifact smoke test
+        run: python3 scripts/smoke_static.py dist
+
+      - name: Install locked Playwright browser runtime
+        shell: bash
+        run: |
+          case "$QUALIFICATION_BROWSER" in
+            chromium|firefox|webkit)
+              python3 scripts/install_playwright_browser.py --with-deps "$QUALIFICATION_BROWSER"
+              ;;
+            all)
+              python3 scripts/install_playwright_browser.py --with-deps chromium firefox webkit
+              ;;
+            *)
+              echo "Unsupported browser: $QUALIFICATION_BROWSER" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Browser qualification of canonical dist
+        env:
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/base
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/base
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "$QUALIFICATION_BROWSER"
+          --dist dist
+          --grep-invert @extension
+
+      - name: Prepare extension-host qualification copy
+        shell: bash
+        run: |
+          rm -rf .work/qualification-dist
+          cp -a dist .work/qualification-dist
+          python3 scripts/add_test_extension.py --dist .work/qualification-dist
+
+      - name: Browser extension-host qualification
+        env:
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/extension
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/extension
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "$QUALIFICATION_BROWSER"
+          --dist .work/qualification-dist
+          --grep @extension
+
+      - name: Package canonical candidate
+        run: ./package.sh
+
+      - name: Upload qualification diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-diagnostics-${{ inputs.browser }}
+          path: |
+            playwright-report/
+            test-results/
+            .work/product-transform-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload canonical candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7

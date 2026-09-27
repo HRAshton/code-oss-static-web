@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "set": {
+    "builtInExtensions": [],
+    "builtInExtensionsEnabledWithAutoUpdates": [],
+    "webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.invalid.invalid/out/vs/workbench/contrib/webview/browser/pre/",
+    "voiceWsUrl": ""
+  },
+  "remove": ["defaultChatAgent", "trustedExtensionAuthAccess"]
+}
