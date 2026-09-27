@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
+
+import argparse
+import shutil
 from pathlib import Path
-import argparse, shutil
-from common import ROOT, WORK, DIST, BuildError, write_json, require
-from extensions_index import build_extension_index
+
+from common import DIST, ROOT, WORK, BuildError, require, write_json
 from extension_lock import install_locked_extensions
+from extensions_index import build_extension_index
+
+WORKBENCH_ENTRY = 'out/vs/workbench/workbench.web.main.internal.js'
+WORKBENCH_STYLESHEET = 'out/vs/workbench/workbench.web.main.internal.css'
 
 INDEX = """<!doctype html>
 <html>
@@ -13,11 +19,9 @@ INDEX = """<!doctype html>
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'self'; object-src 'none'; script-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; frame-src 'self';">
   <meta id="vscode-workbench-web-configuration" data-settings="{}">
-  <meta id="vscode-workbench-web-base-url" data-settings=".">
-  <meta id="vscode-workbench-auth-session" data-settings="">
   <link rel="icon" href="./favicon.ico" type="image/x-icon">
   <link rel="manifest" href="./manifest.json">
-  <link rel="stylesheet" href="./out/vs/code/browser/workbench/workbench.css">
+  <link rel="stylesheet" href="./out/vs/workbench/workbench.web.main.internal.css">
   <title>Code OSS Static Web</title>
 </head>
 <body aria-label=""></body>
@@ -46,10 +50,11 @@ const additionalBuiltinExtensions = extensionIndex.extensions
   .map(ext => browserUri(ext.path));
 
 const config = {
-  workspaceUri: runtime.workspace ?? { scheme: 'tmp', path: '/default.code-workspace' },
-  callbackRoute: new URL('callback.html', baseUrl).pathname,
   enableWorkspaceTrust: true,
   additionalBuiltinExtensions,
+  configurationDefaults: {
+    'workbench.startupEditor': 'none'
+  },
   productConfiguration: {
     enableTelemetry: runtime.telemetry === true,
     webEndpointUrlTemplate: 'https://{{uuid}}.invalid.invalid',
@@ -60,46 +65,69 @@ const config = {
 
 document.getElementById('vscode-workbench-web-configuration')
   .setAttribute('data-settings', JSON.stringify(config));
-document.getElementById('vscode-workbench-web-base-url')
-  .setAttribute('data-settings', baseUrl.href.replace(/\/$/, ''));
 globalThis._VSCODE_FILE_ROOT = new URL('out/', baseUrl).href;
 performance.mark('code/willLoadWorkbenchMain');
 await import(new URL('out/nls.messages.js', baseUrl).href);
-await import(new URL('out/vs/code/browser/workbench/workbench.js', baseUrl).href);
+const { create } = await import(
+  new URL('out/vs/workbench/workbench.web.main.internal.js', baseUrl).href
+);
+create(document.body, config);
 """
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument('--input', type=Path, default=WORK / 'vscode-web')
-    ap.add_argument('--output', type=Path, default=DIST)
-    ns = ap.parse_args()
-    src, out = ns.input.resolve(), ns.output.resolve()
-    require((src / 'out/vs/code/browser/workbench/workbench.js').is_file(), f'not a VS Code web build: {src}')
-    if out.exists():
-        shutil.rmtree(out)
-    shutil.copytree(src, out, symlinks=True)
-    shutil.copy2(ROOT / 'config/runtime.json', out / 'runtime.json')
-    (out / 'index.html').write_text(INDEX, encoding='utf-8')
-    (out / 'static-bootstrap.mjs').write_text(BOOTSTRAP, encoding='utf-8')
-    installed = install_locked_extensions(out, ROOT / 'extensions/extensions.lock.json')
-    write_json(out / 'locked-extensions.json', {'schemaVersion': 1, 'extensions': installed})
-    write_json(out / 'extensions.json', build_extension_index(out))
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', type=Path, default=WORK / 'vscode-web')
+    parser.add_argument('--output', type=Path, default=DIST)
+    args = parser.parse_args()
+
+    source = args.input.resolve()
+    output = args.output.resolve()
+    require((source / WORKBENCH_ENTRY).is_file(), f'not a standalone Code OSS web build: {source}')
+    require(
+        (source / WORKBENCH_STYLESHEET).is_file(),
+        f'standalone Code OSS web stylesheet missing: {source}',
+    )
+
+    if output.exists():
+        shutil.rmtree(output)
+    shutil.copytree(source, output, symlinks=True)
+    shutil.copy2(ROOT / 'config/runtime.json', output / 'runtime.json')
+    (output / 'index.html').write_text(INDEX, encoding='utf-8')
+    (output / 'static-bootstrap.mjs').write_text(BOOTSTRAP, encoding='utf-8')
+
+    installed = install_locked_extensions(
+        output,
+        ROOT / 'extensions/extensions.lock.json',
+    )
+    write_json(
+        output / 'locked-extensions.json',
+        {'schemaVersion': 1, 'extensions': installed},
+    )
+    write_json(output / 'extensions.json', build_extension_index(output))
+
     upstream = WORK / 'vscode'
-    for source, target in [
-        (upstream / 'LICENSE.txt', out / 'LICENSE.Code-OSS.txt'),
-        (upstream / 'ThirdPartyNotices.txt', out / 'ThirdPartyNotices.Code-OSS.txt'),
+    for source_file, target_file in [
+        (upstream / 'LICENSE.txt', output / 'LICENSE.Code-OSS.txt'),
+        (upstream / 'ThirdPartyNotices.txt', output / 'ThirdPartyNotices.Code-OSS.txt'),
     ]:
-        if source.exists():
-            shutil.copy2(source, target)
-    callback = out / 'out/vs/code/browser/workbench/callback.html'
+        if source_file.exists():
+            shutil.copy2(source_file, target_file)
+
+    callback = output / 'out/vs/code/browser/workbench/callback.html'
     if callback.exists():
-        shutil.copy2(callback, out / 'callback.html')
+        shutil.copy2(callback, output / 'callback.html')
     else:
-        (out / 'callback.html').write_text('<!doctype html><meta charset="utf-8"><title>Callback unavailable</title>', encoding='utf-8')
-    print(f'static distribution: {out}')
+        (output / 'callback.html').write_text(
+            '<!doctype html><meta charset="utf-8"><title>Callback unavailable</title>',
+            encoding='utf-8',
+        )
+
+    print(f'static distribution: {output}')
+
 
 if __name__ == '__main__':
     try:
         main()
-    except BuildError as e:
-        raise SystemExit(str(e))
+    except BuildError as exc:
+        raise SystemExit(str(exc))

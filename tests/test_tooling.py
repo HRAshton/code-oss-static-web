@@ -145,6 +145,12 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('--grep @extension', workflow)
         self.assertIn('scripts/add_test_extension.py', workflow)
 
+    def test_standalone_static_bootstrap_uses_web_embedder_api(self):
+        self.assertIn('workbench.web.main.internal.css', make_static.INDEX)
+        self.assertIn('workbench.web.main.internal.js', make_static.BOOTSTRAP)
+        self.assertIn('create(document.body, config)', make_static.BOOTSTRAP)
+        self.assertNotIn('vs/code/browser/workbench/workbench.js', make_static.BOOTSTRAP)
+
     def test_default_static_policy_is_fail_closed(self):
         self.assertIn("connect-src 'self'", make_static.INDEX)
         self.assertNotIn('unsafe-eval', make_static.INDEX)

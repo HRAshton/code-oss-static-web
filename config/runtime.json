@@ -3,6 +3,5 @@
   "productName": "Code OSS Static Web",
   "telemetry": false,
   "gallery": { "mode": "disabled" },
-  "webviews": { "mode": "disabled" },
-  "workspace": { "scheme": "tmp", "path": "/default.code-workspace" }
+  "webviews": { "mode": "disabled" }
 }
