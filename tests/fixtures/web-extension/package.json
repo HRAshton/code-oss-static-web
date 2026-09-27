@@ -6,7 +6,7 @@
   "private": true,
   "license": "MIT",
   "engines": {
-    "vscode": "*"
+    "vscode": "^1.139.0"
   },
   "browser": "./extension.js",
   "activationEvents": [

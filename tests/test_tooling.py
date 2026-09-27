@@ -131,10 +131,13 @@ class ToolingTests(unittest.TestCase):
         fixture = ROOT / 'tests/fixtures/web-extension'
         manifest = json.loads((fixture / 'package.json').read_text())
         self.assertEqual(manifest['browser'], './extension.js')
+        self.assertEqual(manifest['engines']['vscode'], '^1.139.0')
         self.assertIn('codeOssStaticWebTest.markReady', manifest['activationEvents'][0])
         self.assertTrue((fixture / 'extension.js').is_file())
 
     def test_playwright_suite_uses_subpath_and_blocks_service_workers(self):
+        helpers = (ROOT / 'tests/e2e/helpers.cjs').read_text()
+        self.assertIn("Control+Shift+P", helpers)
         config = (ROOT / 'tests/e2e/playwright.config.cjs').read_text()
         self.assertIn('/code-oss-web/', config)
         self.assertIn("serviceWorkers: 'block'", config)
