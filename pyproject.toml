@@ -3,3 +3,25 @@ name = "code-oss-static-web-build"
 version = "0.0.0"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = [".work", "artifacts", "dist", "playwright-report", "test-results"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.pyright]
+include = ["scripts"]
+exclude = [".work", "artifacts", "dist"]
+pythonVersion = "3.11"
+typeCheckingMode = "basic"
+reportMissingTypeStubs = false
+reportMissingImports = "error"

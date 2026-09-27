@@ -38,12 +38,13 @@
 
 ## Engineering policy
 
-Strict codestyle/repository policy remains to be implemented as a blocking `check` target, including:
-
-- deterministic formatter;
-- strict linting;
-- strict type checking for typed tooling;
-- ShellCheck for shell scripts;
-- Ruff plus Pyright/mypy for Python if Python remains in the final toolchain;
-- schema validation for JSON/YAML configuration;
-- release-contract/policy tests that reject unpinned tools, mutable inputs and unsafe fallbacks.
+- [x] EditorConfig and LF normalization;
+- [x] repository policy checks for immutable Action refs and unsafe execution patterns;
+- [x] Conventional Commit validation for direct pushes;
+- [x] pinned Ruff, Pyright and ShellCheck in CI;
+- [x] single local `make check` entrypoint;
+- expand Ruff from critical correctness rules to the configured full lint ruleset;
+- make Ruff formatting a blocking CI gate after the existing Python files are normalized;
+- tighten Pyright from `basic` to `strict`; 
+- add schema validation for all JSON/YAML configuration;
+- add release-contract checks for CI permission separation and immutable release inputs.
