@@ -21,7 +21,10 @@ immutable MIT-licensed Code - OSS revision without maintaining a fork of Microso
 - initial threat model and CI structure;
 - Playwright qualification scaffold for Chromium/Firefox/WebKit;
 - network/WebSocket policy tests under a non-root static base path;
-- repository-owned browser-extension qualification fixture.
+- repository-owned browser-extension qualification fixture;
+- split build/browser/package qualification jobs using the same canonical `dist/`;
+- content-addressed cache for the immutable upstream Code-OSS web bundle;
+- exported minimal Playwright runtime for fast browser-only reruns and local debugging.
 
 ## Build
 

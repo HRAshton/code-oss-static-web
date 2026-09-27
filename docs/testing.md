@@ -12,8 +12,15 @@ http://127.0.0.1:4173/code-oss-web/
 
 This catches incorrect absolute URLs before GitHub Pages/CDN deployment.
 
-The canonical `dist/` runs the normal suite. Extension-host qualification uses a copy of `dist/`
-with the repository-owned fixture extension injected; the canonical artifact is not modified.
+The canonical `dist/` is built once and uploaded as the `static-dist` workflow artifact. Browser
+qualification and packaging download that exact artifact in separate read-only jobs. Extension-host
+qualification uses a copy of `dist/` with the repository-owned fixture extension injected; the
+canonical artifact is not modified.
+
+The expensive upstream Code-OSS web bundle is cached by immutable build inputs: upstream lock,
+Node version, product transform, patch manifest/files and the scripts that drive the upstream build.
+Changes limited to browser tests or packaging can therefore reuse the same upstream bundle while
+still regenerating the current static wrapper.
 
 ## Current browser policy
 
@@ -39,6 +46,8 @@ qualification.
 
 ## Running after a real build
 
+A fresh local build exports only the Playwright packages required by the qualification harness:
+
 ```bash
 ./build.sh
 python3 scripts/install_playwright_browser.py --with-deps chromium
@@ -50,6 +59,19 @@ python3 scripts/add_test_extension.py --dist .work/qualification-dist
 python3 scripts/run_e2e.py --project chromium --dist .work/qualification-dist --grep @extension
 ```
 
-The test runner intentionally uses the Playwright package installed from the upstream Code-OSS
-lockfile. A project-owned Playwright dependency may replace this once its own pinned lockfile is
-introduced.
+The test runner uses the Playwright version installed by the pinned Code-OSS dependency graph, but
+copies only `@playwright/test`, `playwright` and `playwright-core` into
+`.work/playwright-runtime`. CI publishes that runtime separately from `static-dist`, allowing
+browser tests to run without the upstream checkout or its complete `node_modules`.
+
+For fast local debugging, download the `static-dist` and `playwright-runtime` artifacts from a
+qualification run, place them at `dist/` and `.work/playwright-runtime/`, and point Chromium at
+an already-installed browser:
+
+```bash
+CODE_OSS_STATIC_WEB_CHROMIUM_EXECUTABLE=/usr/bin/chromium \
+  python3 scripts/run_e2e.py --project chromium --dist dist --grep-invert @extension
+```
+
+GitHub Actions remains the authoritative qualification environment because it installs the browser
+revision expected by the exported Playwright runtime.
