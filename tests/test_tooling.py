@@ -145,6 +145,24 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('--grep @extension', workflow)
         self.assertIn('scripts/add_test_extension.py', workflow)
 
+    def test_product_transform_keeps_chat_contract_fail_closed(self):
+        transform = json.loads((ROOT / 'config/product-transform.json').read_text())
+        default_chat = transform['set']['defaultChatAgent']
+        self.assertEqual(default_chat['providerScopes'], [])
+        self.assertTrue(default_chat['extensionId'].startswith('code-oss-static-web.disabled'))
+        self.assertTrue(default_chat['chatExtensionId'].startswith('code-oss-static-web.disabled'))
+        for key in (
+            'documentationUrl',
+            'termsStatementUrl',
+            'privacyStatementUrl',
+            'entitlementUrl',
+            'tokenEntitlementUrl',
+            'mcpRegistryDataUrl',
+            'managedSettingsUrl',
+        ):
+            self.assertIn('disabled.invalid.invalid', default_chat[key])
+        self.assertNotIn('defaultChatAgent', transform.get('remove', []))
+
     def test_standalone_static_bootstrap_uses_web_embedder_api(self):
         self.assertIn('workbench.web.main.internal.css', make_static.INDEX)
         self.assertIn('workbench.web.main.internal.js', make_static.BOOTSTRAP)
