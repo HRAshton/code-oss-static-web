@@ -4,7 +4,15 @@ const { openWorkbench, openCommandPalette } = require('./helpers.cjs');
 test('editor accepts input and command palette works', async ({ page }) => {
   await openWorkbench(page);
 
-  await page.keyboard.press('Control+N');
+  const newFileInput = await openCommandPalette(page);
+  await newFileInput.fill('New Untitled Text File');
+  const newFileCommand = page
+    .locator('.quick-input-list .monaco-list-row')
+    .filter({ hasText: 'New Untitled Text File' })
+    .first();
+  await expect(newFileCommand).toBeVisible();
+  await newFileCommand.click();
+
   const editorInput = page.locator('.monaco-editor textarea.inputarea').last();
   await expect(editorInput).toBeAttached();
   await editorInput.focus();
