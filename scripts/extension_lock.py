@@ -102,8 +102,7 @@ def validate_local_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> tuple[Pa
     manifest, actual_id = _load_vsix_manifest(source_path)
     require(actual_id == entry['id'], f'VSIX id mismatch: locked {entry["id"]}, package contains {actual_id}')
     require(manifest.get('version') == entry['version'], f'VSIX version mismatch for {entry["id"]}')
-    browser = manifest.get('browser')
-    require(isinstance(browser, str) and browser.strip() != '', f'extension is not browser-compatible: {entry["id"]}')
+    browser = _require_string(manifest.get('browser'), f'extension is not browser-compatible: {entry["id"]}')
 
     browser_path = PurePosixPath('extension') / PurePosixPath(browser.lstrip('./'))
     with zipfile.ZipFile(source_path) as archive:
