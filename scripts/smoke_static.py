@@ -11,6 +11,7 @@ required = [
     'static-bootstrap.mjs',
     'runtime.json',
     'extensions.json',
+    'additional-extensions.json',
     'out/nls.messages.js',
     'out/vs/workbench/workbench.web.main.internal.js',
     'out/vs/workbench/workbench.web.main.internal.css',
@@ -38,5 +39,9 @@ if 'workbench.web.main.internal.js' not in bootstrap:
     raise SystemExit('standalone workbench entrypoint missing')
 if 'create(document.body, config)' not in bootstrap:
     raise SystemExit('standalone workbench create() call missing')
+if "fetch(new URL('extensions.json'" in bootstrap:
+    raise SystemExit('bootstrap must not re-register packaged system extensions')
+if 'additional-extensions.json' not in bootstrap:
+    raise SystemExit('bootstrap must load only the additional extension manifest')
 
 print('static artifact structural smoke: ok')

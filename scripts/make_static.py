@@ -35,8 +35,11 @@ const runtime = await fetch(new URL('runtime.json', baseUrl), { cache: 'no-store
   if (!r.ok) throw new Error(`runtime.json: ${r.status}`);
   return r.json();
 });
-const extensionIndex = await fetch(new URL('extensions.json', baseUrl), { cache: 'no-store' }).then(r => {
-  if (!r.ok) throw new Error(`extensions.json: ${r.status}`);
+const additionalExtensionIndex = await fetch(
+  new URL('additional-extensions.json', baseUrl),
+  { cache: 'no-store' }
+).then(r => {
+  if (!r.ok) throw new Error(`additional-extensions.json: ${r.status}`);
   return r.json();
 });
 
@@ -45,8 +48,7 @@ function browserUri(relativePath) {
   return { scheme: u.protocol.slice(0, -1), authority: u.host, path: u.pathname };
 }
 
-const additionalBuiltinExtensions = extensionIndex.extensions
-  .filter(ext => ext.browserCompatible)
+const additionalBuiltinExtensions = additionalExtensionIndex.extensions
   .map(ext => browserUri(ext.path));
 
 const config = {

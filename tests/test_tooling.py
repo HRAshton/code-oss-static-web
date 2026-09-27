@@ -169,6 +169,10 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('create(document.body, config)', make_static.BOOTSTRAP)
         self.assertNotIn('vs/code/browser/workbench/workbench.js', make_static.BOOTSTRAP)
 
+    def test_static_bootstrap_registers_only_additional_extensions(self):
+        self.assertIn('additional-extensions.json', make_static.BOOTSTRAP)
+        self.assertNotIn("fetch(new URL('extensions.json'", make_static.BOOTSTRAP)
+
     def test_default_static_policy_is_fail_closed(self):
         self.assertIn("connect-src 'self'", make_static.INDEX)
         self.assertNotIn('unsafe-eval', make_static.INDEX)
