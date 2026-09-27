@@ -63,7 +63,10 @@ async function openWorkbench(page) {
 }
 
 async function openCommandPalette(page) {
-  await page.keyboard.press('Control+Shift+P');
+  await page.evaluate(async () => {
+    const { commands } = await import('./out/vs/workbench/workbench.web.main.internal.js');
+    await commands.executeCommand('workbench.action.showCommands');
+  });
   const input = page.locator('.quick-input-widget input').first();
   await expect(input).toBeVisible();
   return input;

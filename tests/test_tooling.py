@@ -137,7 +137,7 @@ class ToolingTests(unittest.TestCase):
 
     def test_playwright_suite_uses_subpath_and_blocks_service_workers(self):
         helpers = (ROOT / 'tests/e2e/helpers.cjs').read_text()
-        self.assertIn("Control+Shift+P", helpers)
+        self.assertIn("commands.executeCommand('workbench.action.showCommands')", helpers)
         config = (ROOT / 'tests/e2e/playwright.config.cjs').read_text()
         self.assertIn('/code-oss-web/', config)
         self.assertIn("serviceWorkers: 'block'", config)
