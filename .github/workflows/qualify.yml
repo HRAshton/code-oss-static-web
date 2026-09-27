@@ -85,6 +85,18 @@ jobs:
               ;;
           esac
 
+      - name: Browser boot gate
+        env:
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/boot
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/boot
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "$QUALIFICATION_BROWSER"
+          --dist dist
+          --grep "packaged workbench boots from static hosting"
+          --grep-invert @extension
+          --retries=0
+
       - name: Browser qualification of canonical dist
         env:
           CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/base
