@@ -5,7 +5,7 @@ import argparse
 import shutil
 from pathlib import Path
 
-from common import ROOT, BuildError, write_json, require
+from common import ROOT, BuildError, load_json, require, write_json
 from extensions_index import build_extension_index
 
 
@@ -29,6 +29,20 @@ def main() -> None:
         shutil.rmtree(target)
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(extension, target)
+    package = load_json(target / "package.json")
+    extension_id = f"{package['publisher']}.{package['name']}"
+    additional_path = dist / "additional-extensions.json"
+    additional = load_json(additional_path)
+    additional["extensions"] = [
+        entry for entry in additional.get("extensions", []) if entry.get("id") != extension_id
+    ]
+    additional["extensions"].append(
+        {
+            "id": extension_id,
+            "path": target.relative_to(dist).as_posix() + "/",
+        }
+    )
+    write_json(additional_path, additional)
     write_json(dist / "extensions.json", build_extension_index(dist))
     print(f"qualification extension added: {target}")
 

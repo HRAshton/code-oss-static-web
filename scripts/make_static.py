@@ -104,6 +104,19 @@ def main() -> None:
         output / 'locked-extensions.json',
         {'schemaVersion': 1, 'extensions': installed},
     )
+    write_json(
+        output / 'additional-extensions.json',
+        {
+            'schemaVersion': 1,
+            'extensions': [
+                {
+                    'id': extension['id'],
+                    'path': f"extensions/{extension['id']}/",
+                }
+                for extension in installed
+            ],
+        },
+    )
     write_json(output / 'extensions.json', build_extension_index(output))
 
     upstream = WORK / 'vscode'

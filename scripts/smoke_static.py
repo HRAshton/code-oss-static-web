@@ -23,6 +23,10 @@ index = (root / 'index.html').read_text(encoding='utf-8')
 if "connect-src 'self'" not in index:
     raise SystemExit('default CSP must restrict connect-src to self')
 
+additional = json.loads((root / 'additional-extensions.json').read_text(encoding='utf-8'))
+if additional.get('schemaVersion') != 1 or not isinstance(additional.get('extensions'), list):
+    raise SystemExit('invalid additional extension manifest')
+
 runtime = json.loads((root / 'runtime.json').read_text(encoding='utf-8'))
 if runtime.get('telemetry') is not False:
     raise SystemExit('telemetry must be false in base runtime')
