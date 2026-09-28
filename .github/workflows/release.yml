@@ -366,20 +366,11 @@ jobs:
             artifacts/code-oss-static-web-*.zip
           sbom-path: artifacts/sbom.cdx.json
 
-      - name: Export provenance bundle for release consumers
-        env:
-          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -s "$PROVENANCE_BUNDLE"
-          cp "$PROVENANCE_BUNDLE" artifacts/release-provenance.sigstore.json
-
       - name: Upload release provenance bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-attestation
-          path: artifacts/release-provenance.sigstore.json
+          path: ${{ steps.provenance.outputs.bundle-path }}
           if-no-files-found: error
           retention-days: 14
 
@@ -401,6 +392,18 @@ jobs:
         with:
           name: release-attestation
           path: artifacts
+
+      - name: Normalize provenance release asset name
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t bundles < <(find artifacts -maxdepth 1 -type f -name '*.jsonl' -print)
+          if [[ "${#bundles[@]}" != 1 ]]; then
+            echo "expected exactly one provenance bundle, found ${#bundles[@]}" >&2
+            exit 1
+          fi
+          mv "${bundles[0]}" artifacts/release-provenance.sigstore.json
+          jq -e . artifacts/release-provenance.sigstore.json >/dev/null
 
       - name: Verify immutable release ref
         env:
