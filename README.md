@@ -24,7 +24,7 @@ immutable MIT-licensed Code - OSS revision without maintaining a fork of Microso
 - repository-owned browser-extension qualification fixture;
 - split build/browser/package qualification jobs using the same canonical `dist/`;
 - content-addressed cache for the immutable upstream Code-OSS web bundle;
-- exported minimal Playwright runtime for fast browser-only reruns and local debugging.
+- exported minimal Playwright runtime for fast browser-only reruns and local debugging;\n- deterministic artifact manifest and CycloneDX 1.7 SBOM covering shipped npm runtime modules and extensions.
 
 ## Build
 

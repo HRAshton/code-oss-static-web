@@ -86,6 +86,13 @@ jobs:
       - name: Structural artifact smoke test
         run: python3 scripts/smoke_static.py dist
 
+      - name: Capture runtime component metadata
+        run: >-
+          python3 scripts/generate_runtime_metadata.py
+          --dist dist
+          --lock .work/vscode/package-lock.json
+          --output .work/runtime-components.json
+
       - name: Upload canonical static distribution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -117,6 +124,15 @@ jobs:
             scripts/extensions_index.py
             tests/e2e/
             tests/fixtures/web-extension/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload build metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-metadata
+          path: .work/runtime-components.json
           if-no-files-found: error
           retention-days: 3
           compression-level: 6
@@ -257,6 +273,12 @@ jobs:
         with:
           name: static-dist
           path: dist
+
+      - name: Download build metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: build-metadata
+          path: .work
 
       - name: Package canonical candidate
         run: ./package.sh

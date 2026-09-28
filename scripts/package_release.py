@@ -13,7 +13,7 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from common import ARTIFACTS, DIST, ROOT, BuildError, load_json, require, sha256_file, write_json
+from common import ARTIFACTS, DIST, ROOT, WORK, BuildError, load_json, require, sha256_file, write_json\nimport generate_runtime_metadata as runtime_metadata_generator\nimport generate_sbom
 
 PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
 PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
@@ -147,8 +147,9 @@ def build_artifact_manifest(
     version: str,
     project_commit: str,
     upstream: dict,
-    archives: list[Path],
+    release_files: list[Path],
     distribution: Path,
+    runtime_metadata: Path,
 ) -> dict:
     tree_digest, file_count = distribution_tree_digest(distribution)
     return {
@@ -176,6 +177,7 @@ def build_artifact_manifest(
             'runtimeConfig': input_digest(ROOT / 'config/runtime.json'),
             'productTransform': input_digest(ROOT / 'config/product-transform.json'),
             'networkPolicy': input_digest(ROOT / 'config/network-policy.json'),
+            'runtimeComponents': input_digest(runtime_metadata),
         },
         'patches': patch_inventory(),
         'artifacts': [
@@ -184,7 +186,7 @@ def build_artifact_manifest(
                 'sha256': sha256_file(path),
                 'size': path.stat().st_size,
             }
-            for path in archives
+            for path in release_files
         ],
     }
 
@@ -199,10 +201,37 @@ def main():
             path.unlink()
 
     version = f"{lock['tag']}-web.0"
+    project_commit = resolve_project_commit()
+    runtime_metadata_path = WORK / 'runtime-components.json'
+    if not runtime_metadata_path.is_file():
+        package_lock = WORK / 'vscode/package-lock.json'
+        require(
+            package_lock.is_file(),
+            'runtime component metadata missing; run a full build or generate it explicitly',
+        )
+        runtime_metadata_generator.generate_runtime_metadata(
+            DIST,
+            package_lock,
+            runtime_metadata_path,
+        )
+    runtime_metadata = load_json(runtime_metadata_path)
+
     tar_path = ARTIFACTS / f'code-oss-static-web-{version}.tar.gz'
     zip_path = ARTIFACTS / f'code-oss-static-web-{version}.zip'
     build_tar(DIST, tar_path, epoch)
     build_zip(DIST, zip_path, epoch)
+
+    distribution_tree_sha256, _ = distribution_tree_digest(DIST)
+    sbom_path = ARTIFACTS / 'sbom.cdx.json'
+    generate_sbom.write_sbom(
+        sbom_path,
+        dist=DIST,
+        metadata=runtime_metadata,
+        version=version,
+        project_commit=project_commit,
+        upstream=lock,
+        distribution_tree_sha256=distribution_tree_sha256,
+    )
 
     write_json(
         ARTIFACTS / 'upstream.json',
@@ -218,10 +247,11 @@ def main():
         ARTIFACTS / 'artifact-manifest.json',
         build_artifact_manifest(
             version=version,
-            project_commit=resolve_project_commit(),
+            project_commit=project_commit,
             upstream=lock,
-            archives=[tar_path, zip_path],
+            release_files=[tar_path, zip_path, sbom_path],
             distribution=DIST,
+            runtime_metadata=runtime_metadata_path,
         ),
     )
     shutil.copy2(ROOT / 'LICENSE', ARTIFACTS / 'LICENSE')

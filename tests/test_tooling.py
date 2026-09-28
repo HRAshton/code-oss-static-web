@@ -3,7 +3,7 @@ import hashlib, json, sys, tempfile, unittest, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import check_policy, make_static, package_release, extensions_index, extension_lock
+import check_policy, make_static, package_release, extensions_index, extension_lock, generate_runtime_metadata, generate_sbom
 
 class ToolingTests(unittest.TestCase):
     def test_upstream_lock_is_exact_commit_and_unqualified(self):

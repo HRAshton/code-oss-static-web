@@ -24,11 +24,11 @@
 - [x] add digest verification;
 - [x] add browser-entrypoint compatibility checks;
 - add Open VSX acquisition with exact versions/hashes;
-- add extension license inventory and SBOM integration.
+- [x] add extension and shipped npm runtime components to the release SBOM;\n- add extension license inventory.
 
 ## Supply chain/release
 
-- artifact-level CycloneDX SBOM;
+- [x] artifact-level CycloneDX 1.7 SBOM;
 - provenance attestation;
 - release verification command;
 - canonical GitHub Release;
