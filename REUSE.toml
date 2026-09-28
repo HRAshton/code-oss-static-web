@@ -17,6 +17,7 @@ path = [
   "build.sh",
   "package.sh",
   "pyproject.toml",
+  "renovate.json",
   "upstream.lock.json",
   ".github/**",
   "config/**",
