@@ -24,7 +24,8 @@
 - [x] add digest verification;
 - [x] add browser-entrypoint compatibility checks;
 - add Open VSX acquisition with exact versions/hashes;
-- [x] add extension and shipped npm runtime components to the release SBOM;\n- add extension license inventory.
+- [x] add extension and shipped npm runtime components to the release SBOM;
+- add extension license inventory.
 
 ## Supply chain/release
 
@@ -47,4 +48,5 @@
 - make Ruff formatting a blocking CI gate after the existing Python files are normalized;
 - tighten Pyright from `basic` to `strict`; 
 - add schema validation for all JSON/YAML configuration;
-- [x] enforce that jobs executing upstream builds have read-only permissions, no OIDC and no persisted checkout credentials;\n- add further release-contract checks for attest/publish job separation and immutable release inputs.
+- [x] enforce that jobs executing upstream builds have read-only permissions, no OIDC and no persisted checkout credentials;
+- add further release-contract checks for attest/publish job separation and immutable release inputs.

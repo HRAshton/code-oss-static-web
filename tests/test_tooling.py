@@ -42,6 +42,68 @@ class ToolingTests(unittest.TestCase):
             self.assertNotEqual(first, changed)
             self.assertEqual(changed_count, 2)
 
+    def test_runtime_metadata_and_sbom_cover_shipped_components(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            dist = root / 'dist'
+            npm = dist / 'node_modules/@scope/pkg'
+            npm.mkdir(parents=True)
+            (npm / 'index.js').write_text('export default 1;\n')
+            extension = dist / 'extensions/demo'
+            extension.mkdir(parents=True)
+            (extension / 'extension.js').write_text('module.exports = {};\n')
+            (extension / 'package.json').write_text(json.dumps({
+                'publisher': 'demo',
+                'name': 'fixture',
+                'version': '1.2.3',
+                'license': 'MIT',
+                'browser': './extension.js',
+            }))
+            lock = {
+                'lockfileVersion': 3,
+                'packages': {
+                    'node_modules/@scope/pkg': {
+                        'version': '4.5.6',
+                        'license': 'Apache-2.0',
+                        'integrity': 'sha512-fixture',
+                    },
+                },
+            }
+            upstream = {
+                'repository': 'https://github.com/microsoft/vscode.git',
+                'tag': '1.139.1',
+                'commit': '0' * 40,
+            }
+
+            metadata = generate_runtime_metadata.build_runtime_metadata(dist, lock, upstream)
+            self.assertEqual(metadata['npm'][0]['name'], '@scope/pkg')
+            self.assertEqual(metadata['npm'][0]['version'], '4.5.6')
+            self.assertEqual(metadata['extensions'][0]['id'], 'demo.fixture')
+
+            bom = generate_sbom.build_sbom(
+                dist=dist,
+                metadata=metadata,
+                version='1.139.1-web.0',
+                project_commit='a' * 40,
+                upstream=upstream,
+                distribution_tree_sha256='b' * 64,
+            )
+            repeated = generate_sbom.build_sbom(
+                dist=dist,
+                metadata=metadata,
+                version='1.139.1-web.0',
+                project_commit='a' * 40,
+                upstream=upstream,
+                distribution_tree_sha256='b' * 64,
+            )
+            self.assertEqual(bom, repeated)
+            self.assertEqual(bom['bomFormat'], 'CycloneDX')
+            self.assertEqual(bom['specVersion'], '1.7')
+            refs = {component['bom-ref'] for component in bom['components']}
+            self.assertIn('pkg:npm/%40scope/pkg@4.5.6', refs)
+            self.assertIn('vscode-extension:demo.fixture@1.2.3', refs)
+            self.assertNotIn('timestamp', bom['metadata'])
+
     def test_extension_index_only_marks_browser_extensions(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td)

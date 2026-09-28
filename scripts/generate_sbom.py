@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from common import BuildError, require, sha256_file, write_json
+from common import require, sha256_file, write_json
 
 CYCLONEDX_SCHEMA = 'http://cyclonedx.org/schema/bom-1.7.schema.json'
 CYCLONEDX_VERSION = '1.7'

@@ -13,7 +13,9 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from common import ARTIFACTS, DIST, ROOT, WORK, BuildError, load_json, require, sha256_file, write_json\nimport generate_runtime_metadata as runtime_metadata_generator\nimport generate_sbom
+from common import ARTIFACTS, DIST, ROOT, WORK, BuildError, load_json, require, sha256_file, write_json
+import generate_runtime_metadata as runtime_metadata_generator
+import generate_sbom
 
 PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
 PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
