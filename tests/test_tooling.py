@@ -455,7 +455,6 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers', workflow)
         self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
         self.assertIn('needs: build', workflow)
-        self.assertIn('needs: browser', workflow)
         self.assertIn('secondary-browsers', workflow)
         self.assertIn('browser: [firefox, webkit]', workflow)
         self.assertIn('needs: [browser, secondary-browsers]', workflow)

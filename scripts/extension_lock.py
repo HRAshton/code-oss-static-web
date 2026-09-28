@@ -249,6 +249,15 @@ def materialize_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> Path:
     raise BuildError(f'unsupported extension source type: {source_type}')
 
 
+def validate_local_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> dict[str, Any]:
+    source = entry.get('source')
+    require(isinstance(source, dict), 'local VSIX source must be an object')
+    source_type = source.get('type')
+    require(source_type == 'local-vsix', 'extension source must be local-vsix')
+    source_path = materialize_vsix(entry, root=root)
+    return validate_vsix(entry, source_path)
+
+
 def validate_vsix(entry: dict[str, Any], source_path: Path) -> dict[str, Any]:
     manifest, actual_id = _load_vsix_manifest(source_path)
     require(
