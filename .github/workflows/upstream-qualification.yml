@@ -1,0 +1,41 @@
+name: Upstream qualification trigger
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - upstream.lock.json
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check qualification state
+        id: qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          qualified="$(jq -r '.qualified' upstream.lock.json)"
+          if [[ "$qualified" == 'false' ]]; then
+            echo 'dispatch=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'dispatch=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Start full browser qualification
+        if: steps.qualification.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh workflow run qualify.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref master
+          -f browser=all

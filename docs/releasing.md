@@ -2,6 +2,23 @@
 
 Stable releases are immutable tag-triggered publications from the protected default branch.
 
+## Upstream integration
+
+Microsoft Code - OSS updates are integration changes, not releases. Renovate tracks
+`microsoft/vscode` and opens an update PR that pins both the upstream version and its exact tag
+commit. Every upstream update resets `qualified` to `false` and records a pending qualification
+note.
+
+The upstream PR requests `vodyanica` and is eligible for GitHub auto-merge after the normal
+protected-branch checks and required review. Once the unqualified update reaches `master`, the
+upstream qualification trigger dispatches the existing full qualification workflow with
+`browser=all`.
+
+Compatibility fixes may then land on `master` while the upstream lock remains unqualified.
+Publication stays blocked because the release tag contract requires `qualified: true`. Promote the
+lock to qualified only after the full browser/release qualification succeeds; at that point refresh
+the qualification note and the release timestamp metadata before creating the immutable release tag.
+
 ## Preflight
 
 1. Confirm the target commit is on `master` and CI, CodeQL, and required repository checks are green.
