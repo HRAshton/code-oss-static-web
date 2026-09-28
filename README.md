@@ -3,7 +3,7 @@
 Independent tooling for producing a **zero-backend static browser build** from an immutable
 MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repository.
 
-> **Status:** Release-candidate track. Code - OSS `1.139.1` is qualified in Chromium, Firefox and
+> **Status:** Stable-release track. Code - OSS `1.139.1` is qualified in Chromium, Firefox and
 > WebKit. Secure webviews remain intentionally disabled/fail-closed in the generic static mode.
 
 ## Implemented now
@@ -28,6 +28,18 @@ MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repos
 - deterministic license inventory covering every SBOM component;
 - isolated GitHub/Sigstore provenance and SBOM attestations;
 - reproducibility-gated GitHub Release, Pages and GHCR publication workflows.
+
+## Release outputs
+
+Each immutable `v*-web.*` release publishes the same qualified static distribution as:
+
+- deterministic `.tar.gz` and `.zip` archives on the GitHub Release;
+- a GitHub Pages deployment;
+- an OCI image at `ghcr.io/hrashton/code-oss-static-web:<tag>` for
+  `linux/amd64` and `linux/arm64`.
+
+Release archives include checksums, an artifact manifest, CycloneDX SBOM, component-level license
+inventory, upstream metadata, licenses, notices, and GitHub/Sigstore attestations.
 
 ## Build
 
@@ -68,5 +80,5 @@ This project is not Microsoft's Visual Studio Code distribution and is not endor
 ## License
 
 Original project tooling is MIT licensed. Generated artifacts contain Code - OSS and third-party
-components under their respective licenses. Release candidates include the upstream license and
+components under their respective licenses. Release artifacts include the upstream license and
 notices, a component-level license inventory, and a CycloneDX SBOM.

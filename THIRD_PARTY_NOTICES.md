@@ -3,7 +3,7 @@
 This repository contains original MIT-licensed build tooling. Generated distributions include
 Code - OSS and dependencies under their respective licenses.
 
-Release candidates include:
+Release artifacts include:
 
 - the project `LICENSE`;
 - Code - OSS `LICENSE.Code-OSS.txt`;

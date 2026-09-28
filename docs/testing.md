@@ -1,6 +1,6 @@
 # Browser qualification
 
-The release candidate is tested as a static artifact, not through the Code-OSS development server.
+The release is tested as a static artifact, not through the Code-OSS development server.
 
 ## Test topology
 
@@ -50,7 +50,7 @@ the development qualification workflow continuously covers all three browser eng
 Service workers are blocked in the browser test context so they cannot hide network requests from
 qualification. Offline caching is not a release feature: the supported static mode requires the
 hosted assets to remain reachable. Secure webviews are likewise not a supported deployment mode in
-this release candidate and remain fail-closed.
+this release and remain fail-closed.
 
 ## Running after a real build
 

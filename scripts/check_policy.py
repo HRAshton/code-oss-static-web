@@ -164,14 +164,26 @@ def check_attestation_job_permissions() -> None:
 
 
 def check_publication_job_block(workflow: Path, job_name: str, block: str) -> None:
-    if not re.search(r'^      (?:contents|packages):\s*write\s*$', block, re.MULTILINE):
+    write_permissions = set(re.findall(r'^      ([A-Za-z0-9-]+):\s*write\s*$', block, re.MULTILINE))
+    if not write_permissions.intersection({'contents', 'packages', 'pages'}):
         return
 
     display = f'{workflow.relative_to(ROOT)}:{job_name}'
-    require(
-        re.search(r'^    environment:\s*release\s*$', block, re.MULTILINE) is not None,
-        f'{display}: publication job must use the release environment',
-    )
+    if 'pages' in write_permissions:
+        require(
+            re.search(
+                r'^    needs:\s*\[attest,\s*pages-release-gate\]\s*$',
+                block,
+                re.MULTILINE,
+            )
+            is not None,
+            f'{display}: Pages publication must depend on the release environment gate',
+        )
+    else:
+        require(
+            re.search(r'^    environment:\s*release\s*$', block, re.MULTILINE) is not None,
+            f'{display}: publication job must use the release environment',
+        )
     require(
         './build.sh' not in block, f'{display}: publication job must not execute upstream builds'
     )
@@ -211,6 +223,61 @@ def check_release_integrity_policy() -> None:
     require(
         re.search(r'^    needs:\s*authorize\s*$', build, re.MULTILINE) is not None,
         'release build must depend on release authorization',
+    )
+
+    pages_gate = jobs.get('pages-release-gate')
+    require(pages_gate is not None, 'release workflow must have a Pages release gate')
+    assert pages_gate is not None
+    require(
+        re.search(r'^    needs:\s*attest\s*$', pages_gate, re.MULTILINE) is not None,
+        'Pages release gate must depend on attestation',
+    )
+    require(
+        re.search(r'^    environment:\s*release\s*$', pages_gate, re.MULTILINE) is not None,
+        'Pages release gate must use the release environment',
+    )
+    require(
+        re.search(r'^    permissions:\s*\{\}\s*$', pages_gate, re.MULTILINE) is not None,
+        'Pages release gate must not receive repository permissions',
+    )
+
+    pages = jobs.get('pages')
+    require(pages is not None, 'release workflow must have a Pages publication job')
+    assert pages is not None
+    require(
+        re.search(
+            r'^    needs:\s*\[attest,\s*pages-release-gate\]\s*$',
+            pages,
+            re.MULTILINE,
+        )
+        is not None,
+        'Pages publication must depend on the release environment gate',
+    )
+
+    oci = jobs.get('oci')
+    require(oci is not None, 'release workflow must have an OCI publication job')
+    assert oci is not None
+    require(
+        'docker/setup-qemu-action@' not in oci,
+        'OCI publication must not execute mutable QEMU/binfmt helper images',
+    )
+    buildkit_image = (
+        'image=moby/buildkit@'
+        'sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8'
+    )
+    require(
+        buildkit_image in oci,
+        'OCI publication must pin the BuildKit daemon image by digest',
+    )
+    require(
+        'platforms: linux/amd64,linux/arm64' in oci,
+        'OCI publication must publish amd64 and arm64 images',
+    )
+
+    dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding='utf-8')
+    require(
+        re.search(r'^\s*RUN(?:\s|$)', dockerfile, re.MULTILINE | re.IGNORECASE) is None,
+        'multi-platform release Dockerfile must remain execution-free without QEMU',
     )
 
     require(
