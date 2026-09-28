@@ -391,18 +391,18 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-attestation
-          path: artifacts
+          path: .work/release-attestation
 
       - name: Normalize provenance release asset name
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t bundles < <(find artifacts -maxdepth 1 -type f -name '*.jsonl' -print)
+          mapfile -t bundles < <(find .work/release-attestation -maxdepth 1 -type f -print)
           if [[ "${#bundles[@]}" != 1 ]]; then
             echo "expected exactly one provenance bundle, found ${#bundles[@]}" >&2
             exit 1
           fi
-          mv "${bundles[0]}" artifacts/release-provenance.sigstore.json
+          cp "${bundles[0]}" artifacts/release-provenance.sigstore.json
           jq -e . artifacts/release-provenance.sigstore.json >/dev/null
 
       - name: Verify immutable release ref
