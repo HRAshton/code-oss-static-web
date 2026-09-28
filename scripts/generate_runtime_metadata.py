@@ -68,14 +68,17 @@ def build_runtime_metadata(
     upstream: dict[str, Any],
 ) -> dict[str, Any]:
     packages_section = package_lock.get('packages')
-    require(isinstance(packages_section, dict), 'package-lock.json packages object missing')
+    if not isinstance(packages_section, dict):
+        raise BuildError('package-lock.json packages object missing')
 
     npm_components: list[dict[str, Any]] = []
     for name, relative_path in shipped_npm_packages(dist):
         lock_entry = packages_section.get(f'node_modules/{name}')
-        require(isinstance(lock_entry, dict), f'shipped npm package missing from package lock: {name}')
+        if not isinstance(lock_entry, dict):
+            raise BuildError(f'shipped npm package missing from package lock: {name}')
         version = lock_entry.get('version')
-        require(isinstance(version, str) and bool(version), f'locked npm version missing: {name}')
+        if not isinstance(version, str) or not version:
+            raise BuildError(f'locked npm version missing: {name}')
 
         component: dict[str, Any] = {
             'name': name,
