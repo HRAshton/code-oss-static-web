@@ -135,6 +135,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -175,6 +177,16 @@ jobs:
               exit 2
               ;;
           esac
+
+      - name: Upload qualified Chromium runtime
+        if: env.QUALIFICATION_BROWSER == 'chromium'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-browser-chromium
+          path: .work/playwright-browsers/
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 6
 
       - name: Browser boot gate
         env:

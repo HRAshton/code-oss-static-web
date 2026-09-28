@@ -64,14 +64,16 @@ copies only `@playwright/test`, `playwright` and `playwright-core` into
 `.work/playwright-runtime`. CI publishes that runtime separately from `static-dist`, allowing
 browser tests to run without the upstream checkout or its complete `node_modules`.
 
-For fast local debugging, download the `static-dist` and `playwright-runtime` artifacts from a
-qualification run, place them at `dist/` and `.work/playwright-runtime/`, and point Chromium at
-an already-installed browser:
+For fast local debugging, download `static-dist`, `playwright-runtime`,
+`qualification-harness`, and `playwright-browser-chromium` from the same qualification run.
+Place the browser bundle at `.work/playwright-browsers/` and run:
 
 ```bash
-CODE_OSS_STATIC_WEB_CHROMIUM_EXECUTABLE=/usr/bin/chromium \
+PLAYWRIGHT_BROWSERS_PATH=.work/playwright-browsers \
   python3 scripts/run_e2e.py --project chromium --dist dist --grep-invert @extension
 ```
 
-GitHub Actions remains the authoritative qualification environment because it installs the browser
-revision expected by the exported Playwright runtime.
+This uses the same unmanaged Chromium and ffmpeg revision that CI qualified, so it also works on
+machines whose system browser is managed by restrictive enterprise policy. An explicit
+`CODE_OSS_STATIC_WEB_CHROMIUM_EXECUTABLE` override remains available for unmanaged local browsers.
+GitHub Actions remains the authoritative release qualification environment.
