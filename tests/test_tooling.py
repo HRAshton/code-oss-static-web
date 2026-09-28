@@ -3,7 +3,7 @@ import hashlib, json, sys, tempfile, unittest, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import check_policy, make_static, package_release, extensions_index, extension_lock, generate_license_inventory, generate_runtime_metadata, generate_sbom
+import check_policy, make_static, package_release, extensions_index, extension_lock, generate_license_inventory, generate_runtime_metadata, generate_sbom, validate_config
 
 class ToolingTests(unittest.TestCase):
     def test_upstream_lock_is_exact_commit_and_qualified(self):
@@ -11,6 +11,9 @@ class ToolingTests(unittest.TestCase):
         self.assertRegex(lock['commit'], r'^[0-9a-f]{40}$')
         self.assertTrue(lock['qualified'])
         self.assertIn('Qualified in Chromium', lock['qualificationNote'])
+
+    def test_repository_configuration_is_valid(self):
+        validate_config.validate_all()
 
     def test_release_tag_contract(self):
         import check_release_tag
@@ -385,6 +388,9 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
         self.assertIn('needs: build', workflow)
         self.assertIn('needs: browser', workflow)
+        self.assertIn('secondary-browsers', workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('needs: [browser, secondary-browsers]', workflow)
         self.assertIn('needs: package', workflow)
         self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
         self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)

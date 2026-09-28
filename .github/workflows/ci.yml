@@ -21,6 +21,12 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
 
+      - name: Configuration validation
+        run: python3 scripts/validate_config.py
+
+      - name: Workflow YAML syntax
+        run: ruby scripts/check_workflow_yaml.rb
+
       - name: Repository policy
         run: python3 scripts/check_policy.py
 
