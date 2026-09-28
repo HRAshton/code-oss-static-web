@@ -1,53 +1,97 @@
 # Releasing
 
-Stable releases are automated immutable publications driven only by Microsoft Code - OSS revision
-changes.
+Microsoft Code - OSS updates normally publish automatically. Project-side fixes can publish an
+explicit patch revision without waiting for another Microsoft release.
 
-## Upstream integration
+## Version contract
+
+Release tags are immutable and have the form:
+
+```text
+v<code-oss-version>-web.N
+```
+
+The revision has two meanings:
+
+- `web.0` is reserved for the automatic release of a new Microsoft Code - OSS version.
+- `web.1`, `web.2`, and later revisions are project-side patch releases that keep the same
+  Microsoft Code - OSS version.
+
+The revision is monotonic for each Microsoft version. Release tags are never moved or reused for a
+different commit.
+
+## Automatic Microsoft release
 
 Renovate tracks `microsoft/vscode` and updates the exact upstream tag and tag commit in
 `upstream.lock.json`. Renovate dependency PRs use the normal cheap repository checks and are
-eligible for auto-merge; they do not build or deploy Code - OSS.
+eligible for auto-merge; ordinary dependency updates do not build or deploy Code - OSS.
 
 When a merged `master` commit actually changes the pinned Microsoft tag or commit, the upstream
-qualification trigger dispatches `Full build qualification` with `browser=all`. Metadata-only
-changes to the lock do not trigger that expensive path.
-
-## Qualification and publication
-
-The successful all-browser workflow run on the exact `master` commit is the qualification evidence.
-Qualification is intentionally not stored as a mutable boolean in source control.
+qualification trigger dispatches `Full build qualification` with all browsers and
+`release_mode=upstream`. Metadata-only lock changes do not trigger that expensive path.
 
 After build, Chromium/Firefox/WebKit qualification, packaging and qualification attestations all
-succeed, the workflow creates exactly one immutable tag:
+succeed, the workflow creates exactly:
 
 ```text
 v<code-oss-version>-web.0
 ```
 
-There are no routine `web.1` or later project releases. Project, dependency, workflow and container
-updates merge into `master` and ship with the next Microsoft-driven `web.0` release.
+It then dispatches the independent Release workflow for that immutable tag.
 
-The qualification workflow explicitly dispatches the release workflow using the immutable tag and
-its own workflow-run ID. The release workflow verifies that the referenced qualification run
-succeeded for the same commit and has the release-qualification evidence artifact before it performs
-an independent clean rebuild, reproducibility comparison, Chromium qualification, packaging,
-provenance/SBOM attestation, and publication to GitHub Releases, GitHub Pages and GHCR.
+## Project patch release
+
+Use the **Patch release** workflow when a project-owned source, packaging, workflow, container, or
+security fix must ship before the next Microsoft release.
+
+The dispatcher is fail-closed:
+
+1. the current Microsoft version must already have a `web.0` tag;
+2. current `master` must differ from the latest `web.N` tag for that Microsoft version;
+3. the full Chromium/Firefox/WebKit qualification runs again with `release_mode=patch`;
+4. after qualification succeeds, the workflow selects one greater than the highest existing
+   revision and creates that immutable tag;
+5. the independent Release workflow rebuilds and publishes the patch release.
+
+For example, if `v1.140.0-web.0` already exists and a project fix is merged, the next successful
+patch release is `v1.140.0-web.1`.
+
+## Retry versus patch
+
+Do **not** increment the revision for a transient publication failure when the source commit has not
+changed. Retry the Release workflow for the existing immutable tag using the successful qualification
+workflow-run ID.
+
+Increment to the next `web.N` only when a source change was required after the previous tag was
+created. The Patch release workflow refuses to create another revision when the latest release tag
+already points to current `master`.
+
+## Qualification evidence
+
+The successful all-browser workflow run on the exact release commit is the qualification evidence.
+Qualification is not stored as a mutable boolean in source control.
+
+The qualification workflow records the exact commit, selected release tag, release mode and workflow
+run ID in a `release-qualification` artifact. The Release workflow downloads that artifact and
+verifies all of those bindings before doing any publication work.
+
+The Release workflow then performs an independent clean rebuild, reproducibility comparison,
+release-grade Chromium qualification, tag-specific packaging, provenance/SBOM attestation, and
+publication to GitHub Releases, GitHub Pages and GHCR.
+
+Final archives, SBOM metadata and the OCI image use the actual immutable `web.N` release tag.
 
 ## Failure behavior
 
 If any build, browser, packaging, reproducibility, security or publication gate fails, automation
-stops. No later release tag is invented and no mutable tag is moved. A maintainer only needs to
-intervene when the automated path cannot prove the new Microsoft revision works.
-
-A failed publication for an already-created immutable tag is retried by manually dispatching the
-Release workflow with the successful qualification workflow-run ID; the tag itself is never moved.
+stops. No mutable tag is moved. A maintainer only needs to intervene when the automated path cannot
+prove the revision works or when a project patch release is intentionally requested.
 
 ## Release notes
 
 GitHub-generated release notes are published automatically from the merged change history. Security
-advisories and other material project notes should be added to the repository before the next
-Microsoft-driven release so they are part of the immutable release history.
+advisories and other material project notes should be added to the repository before release so they
+are part of the immutable release history.
 
 ## Verify
 

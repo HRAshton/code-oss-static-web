@@ -1,0 +1,81 @@
+name: Patch release
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: patch-release
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify patch release is needed
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          master_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq '.sha')"
+          lock="$(
+            gh api               -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$default_branch"
+          )"
+          version="$(jq -r '.tag' <<<"$lock")"
+          prefix="refs/tags/v${version}-web."
+
+          max_revision=-1
+          found_zero=0
+          latest_tag=''
+          while IFS= read -r ref; do
+            suffix="${ref#"$prefix"}"
+            [[ "$suffix" =~ ^(0|[1-9][0-9]*)$ ]] || continue
+            revision=$((10#$suffix))
+            if [[ "$revision" == 0 ]]; then
+              found_zero=1
+            fi
+            if (( revision > max_revision )); then
+              max_revision="$revision"
+              latest_tag="${ref#refs/tags/}"
+            fi
+          done < <(
+            gh api --paginate               "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v${version}-web."               --jq '.[].ref'
+          )
+
+          if [[ "$found_zero" != 1 ]]; then
+            echo "No v${version}-web.0 exists; the Microsoft release path must publish web.0 first." >&2
+            exit 1
+          fi
+
+          latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$latest_tag" --jq '.sha')"
+          if [[ "$latest_sha" == "$master_sha" ]]; then
+            echo "$latest_tag already points to current master; retry that immutable release instead." >&2
+            exit 1
+          fi
+
+          next_tag="v${version}-web.$((max_revision + 1))"
+          echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
+          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
+          {
+            echo "Patch release candidate: $next_tag"
+            echo "Source commit: $master_sha"
+            echo "Previous release tag: $latest_tag"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Start full patch qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ steps.release.outputs.default_branch }}
+        run: >-
+          gh workflow run qualify.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref "$DEFAULT_BRANCH"
+          -f browser=all
+          -f release_mode=patch

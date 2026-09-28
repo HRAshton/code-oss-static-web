@@ -27,6 +27,15 @@ on:
           - firefox
           - webkit
           - all
+      release_mode:
+        description: Publication intent
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - upstream
+          - patch
 
 concurrency:
   group: qualify-${{ github.workflow }}-${{ github.ref }}
@@ -428,7 +437,8 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref_name == 'master' &&
-      inputs.browser == 'all'
+      inputs.browser == 'all' &&
+      inputs.release_mode != 'none'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -440,16 +450,67 @@ jobs:
 
       - name: Record release qualification
         id: qualification
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           version="$(jq -r '.tag' upstream.lock.json)"
-          tag="v${version}-web.0"
+          mode="${{ inputs.release_mode }}"
+
+          case "$mode" in
+            upstream)
+              tag="v${version}-web.0"
+              ;;
+            patch)
+              prefix="refs/tags/v${version}-web."
+              max_revision=-1
+              found_zero=0
+              latest_tag=''
+              while IFS= read -r ref; do
+                suffix="${ref#"$prefix"}"
+                [[ "$suffix" =~ ^(0|[1-9][0-9]*)$ ]] || continue
+                revision=$((10#$suffix))
+                if [[ "$revision" == 0 ]]; then
+                  found_zero=1
+                fi
+                if (( revision > max_revision )); then
+                  max_revision="$revision"
+                  latest_tag="${ref#refs/tags/}"
+                fi
+              done < <(
+                gh api --paginate                   "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v${version}-web."                   --jq '.[].ref'
+              )
+
+              if [[ "$found_zero" != 1 ]]; then
+                echo "Cannot create a patch release before v${version}-web.0 exists." >&2
+                exit 1
+              fi
+
+              latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$latest_tag" --jq '.sha')"
+              if [[ "$latest_sha" == "$GITHUB_SHA" ]]; then
+                echo "$latest_tag already points to this qualification commit; retry that immutable release instead." >&2
+                exit 1
+              fi
+
+              tag="v${version}-web.$((max_revision + 1))"
+              ;;
+            *)
+              echo "Unsupported release mode: $mode" >&2
+              exit 2
+              ;;
+          esac
+
           python3 scripts/check_release_tag.py "$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           mkdir -p .work
-          jq -n             --arg commit "$GITHUB_SHA"             --arg tag "$tag"             --argjson workflowRunId "$GITHUB_RUN_ID"             '{commit: $commit, tag: $tag, workflowRunId: $workflowRunId}'             > .work/release-qualification.json
+          jq -n             --arg commit "$GITHUB_SHA"             --arg tag "$tag"             --arg releaseMode "$mode"             --argjson workflowRunId "$GITHUB_RUN_ID"             '{
+              commit: $commit,
+              tag: $tag,
+              releaseMode: $releaseMode,
+              workflowRunId: $workflowRunId
+            }'             > .work/release-qualification.json
 
       - name: Upload release qualification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

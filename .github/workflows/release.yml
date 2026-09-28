@@ -54,6 +54,27 @@ jobs:
             exit 1
           fi
 
+      - name: Download release qualification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-qualification
+          path: .work/release-qualification
+          run-id: ${{ inputs.qualification_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify release qualification binding
+        env:
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -e             --arg commit "$GITHUB_SHA"             --arg tag "$GITHUB_REF_NAME"             --argjson workflowRunId "$QUALIFICATION_RUN_ID"             '
+              .commit == $commit and
+              .tag == $tag and
+              .workflowRunId == $workflowRunId and
+              (.releaseMode == "upstream" or .releaseMode == "patch")
+            '             .work/release-qualification/release-qualification.json >/dev/null
+
       - name: Verify release commit is on protected default branch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -292,6 +313,8 @@ jobs:
           path: .work
 
       - name: Package and verify canonical release
+        env:
+          CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}
         run: ./package.sh
 
       - name: Upload verified candidate
