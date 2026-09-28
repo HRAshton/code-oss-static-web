@@ -211,6 +211,51 @@ class ToolingTests(unittest.TestCase):
             with self.assertRaises(extension_lock.BuildError):
                 extension_lock.validate_local_vsix(entry, root=root)
 
+    def test_open_vsx_source_is_exact_and_license_gated(self):
+        entry = {
+            'id': 'demo.fixture',
+            'version': '1.2.3',
+            'sha256': '0' * 64,
+            'license': 'MIT',
+            'source': {'type': 'open-vsx', 'registry': 'https://open-vsx.org'},
+        }
+        self.assertEqual(
+            extension_lock.open_vsx_download_url(entry),
+            'https://open-vsx.org/api/demo/fixture/1.2.3/file/demo.fixture-1.2.3.vsix',
+        )
+        policy = {
+            'schemaVersion': 1,
+            'requireDeclared': True,
+            'allowed': ['MIT'],
+            'denied': ['Proprietary'],
+            'overrides': {},
+        }
+        self.assertEqual(
+            extension_lock.enforce_license_policy(entry, {'license': 'MIT'}, policy),
+            'MIT',
+        )
+        denied = dict(entry)
+        denied['license'] = 'Proprietary'
+        with self.assertRaises(extension_lock.BuildError):
+            extension_lock.enforce_license_policy(
+                denied,
+                {'license': 'Proprietary'},
+                policy,
+            )
+
+        with tempfile.TemporaryDirectory() as td:
+            lock_path = Path(td) / 'extensions.lock.json'
+            lock_path.write_text(json.dumps({
+                'schemaVersion': 1,
+                'extensions': [entry],
+            }))
+            loaded = extension_lock.load_extension_lock(lock_path)
+            self.assertEqual(loaded['extensions'][0]['source']['type'], 'open-vsx')
+            self.assertEqual(
+                loaded['extensions'][0]['source']['registry'],
+                'https://open-vsx.org',
+            )
+
     def test_qualification_extension_is_browser_compatible(self):
         fixture = ROOT / 'tests/fixtures/web-extension'
         manifest = json.loads((fixture / 'package.json').read_text())
@@ -305,6 +350,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
         package_source = (ROOT / 'scripts/package_release.py').read_text()
         self.assertIn("license-inventory.json", package_source)
+        self.assertIn('extensionLicensePolicy', package_source)
         self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
         self.assertIn('scripts/run_e2e.py', workflow)
         self.assertIn('--grep-invert @extension', workflow)

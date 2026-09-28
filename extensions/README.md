@@ -1,44 +1,60 @@
 # Extensions
 
-The canonical distribution can include additional browser-compatible extensions through `extensions.lock.json`.
+The canonical distribution can include additional browser-compatible extensions through
+`extensions.lock.json`. Every release input is pinned by exact version and SHA-256; `latest`
+resolution is rejected.
 
 ## Local VSIX source
 
-The first supported source is a local VSIX with an exact SHA-256 digest:
-
 ```json
 {
-  "schemaVersion": 1,
-  "extensions": [
-    {
-      "id": "example.browser-extension",
-      "version": "1.2.3",
-      "sha256": "<64 lowercase hex characters>",
-      "license": "MIT",
-      "source": {
-        "type": "local-vsix",
-        "path": "vendor/example.browser-extension-1.2.3.vsix"
-      }
-    }
-  ]
+  "id": "example.browser-extension",
+  "version": "1.2.3",
+  "sha256": "<64 lowercase hex characters>",
+  "license": "MIT",
+  "source": {
+    "type": "local-vsix",
+    "path": "vendor/example.browser-extension-1.2.3.vsix"
+  }
 }
 ```
 
-Paths are resolved relative to the repository root. Release builds do not resolve `latest` or download an extension implicitly.
+Paths are resolved relative to the repository root.
 
-For every locked local VSIX the build fails unless all of the following hold:
+## Open VSX source
 
-- the file exists and is a `.vsix` ZIP archive;
-- its SHA-256 exactly matches the lock;
+```json
+{
+  "id": "example.browser-extension",
+  "version": "1.2.3",
+  "sha256": "<64 lowercase hex characters>",
+  "license": "MIT",
+  "source": {
+    "type": "open-vsx"
+  }
+}
+```
+
+The default registry is `https://open-vsx.org`. A custom HTTPS Open VSX-compatible registry can
+be supplied with `source.registry`. The exact versioned VSIX is downloaded into
+`.work/extensions-cache/`, then its SHA-256 is checked before the archive is inspected or copied.
+Release builds never request an extension alias such as `latest`.
+
+For every locked extension the build fails unless all of the following hold:
+
+- the VSIX SHA-256 exactly matches the lock;
 - `extension/package.json` exists;
-- the manifest publisher/name matches the locked extension ID;
-- the manifest version matches the locked version;
-- a non-empty `browser` entry point exists;
-- the referenced browser entry point is present inside the VSIX;
-- a declared lockfile license does not contradict the manifest license;
+- manifest publisher/name matches the locked extension ID;
+- manifest version matches the locked version;
+- a non-empty `browser` entry point exists and is present in the archive;
+- the declared license satisfies `extensions/license-policy.json`;
 - the extension ID is not already present in the upstream distribution;
 - the archive contains no absolute paths, parent traversal, or symlink entries.
 
-Installed lockfile extensions are copied into `dist/extensions/` and recorded in `dist/locked-extensions.json`. The generated `extensions.json` then exposes them to the static workbench as built-in browser extensions.
+The default license policy requires a declared license and allows a conservative set of
+redistribution-friendly SPDX identifiers. Project maintainers may add an extension-specific
+`overrides` entry after reviewing its license obligations.
 
-Open VSX acquisition is intentionally not implemented yet. When added, it must pin exact versions and hashes before an artifact can become a release input.
+Installed lockfile extensions are copied into `dist/extensions/` and recorded in
+`dist/locked-extensions.json`. The generated `additional-extensions.json` exposes only those
+post-build additions to the static workbench.
