@@ -12,6 +12,14 @@ class ToolingTests(unittest.TestCase):
         self.assertTrue(lock['qualified'])
         self.assertIn('Qualified in Chromium', lock['qualificationNote'])
 
+    def test_release_tag_contract(self):
+        import check_release_tag
+        lock = json.loads((ROOT / 'upstream.lock.json').read_text())
+        self.assertEqual(
+            check_release_tag.expected_release_tag(lock),
+            'v1.139.1-web.0',
+        )
+
     def test_archives_are_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td); src = base / 'src'; src.mkdir()
@@ -321,6 +329,22 @@ class ToolingTests(unittest.TestCase):
                 bad,
             )
 
+    def test_publication_jobs_use_protected_environment(self):
+        check_policy.check_publication_job_permissions()
+        bad = """jobs:
+  publish:
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_publication_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'publish',
+                bad,
+            )
+
     def test_workflow_actions_are_commit_pinned(self):
         import re
         for workflow in (ROOT / '.github/workflows').glob('*.yml'):
@@ -371,6 +395,17 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("playwright-runtime", runner)
         exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
         self.assertIn("Path('@playwright/test')", exporter)
+
+    def test_release_workflow_uses_clean_qualified_artifact(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertIn('./build.sh --clean-upstream', workflow)
+        self.assertNotIn('actions/cache@', workflow)
+        self.assertIn('environment: release', workflow)
+        self.assertIn('actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e', workflow)
+        self.assertIn('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8', workflow)
+        self.assertIn('gh release create', workflow)
+        dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
+        self.assertIn('@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile)
 
     def test_product_transform_keeps_chat_contract_fail_closed(self):
         transform = json.loads((ROOT / 'config/product-transform.json').read_text())

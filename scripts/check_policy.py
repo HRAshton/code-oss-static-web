@@ -153,6 +153,30 @@ def check_attestation_job_permissions() -> None:
         for job_name, block in workflow_job_blocks(text):
             check_attestation_job_block(workflow, job_name, block)
 
+
+def check_publication_job_block(workflow: Path, job_name: str, block: str) -> None:
+    if not re.search(r"^      (?:contents|packages):\s*write\s*$", block, re.MULTILINE):
+        return
+
+    display = f"{workflow.relative_to(ROOT)}:{job_name}"
+    require(
+        re.search(r"^    environment:\s*release\s*$", block, re.MULTILINE) is not None,
+        f"{display}: publication job must use the release environment",
+    )
+    require("./build.sh" not in block, f"{display}: publication job must not execute upstream builds")
+    if "actions/checkout@" in block:
+        require(
+            "persist-credentials: false" in block,
+            f"{display}: publication checkout must disable persisted credentials",
+        )
+
+
+def check_publication_job_permissions() -> None:
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        for job_name, block in workflow_job_blocks(text):
+            check_publication_job_block(workflow, job_name, block)
+
 def main() -> None:
     check_actions()
     check_shell_scripts()
@@ -160,6 +184,7 @@ def main() -> None:
     check_extension_lock()
     check_build_job_permissions()
     check_attestation_job_permissions()
+    check_publication_job_permissions()
     print("repository policy: ok")
 
 
