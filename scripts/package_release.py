@@ -210,7 +210,6 @@ def build_artifact_manifest(
     }
 
 
-
 def package_version(lock: dict[str, Any], release_tag: str | None = None) -> str:
     if release_tag is None:
         release_tag = os.environ.get('CODE_OSS_STATIC_WEB_RELEASE_TAG')
