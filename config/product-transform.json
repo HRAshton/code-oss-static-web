@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "set": {
+    "builtInExtensions": [],
+    "builtInExtensionsEnabledWithAutoUpdates": [],
+    "defaultChatAgent": {
+      "extensionId": "code-oss-static-web.disabled-completions",
+      "chatExtensionId": "code-oss-static-web.disabled-chat",
+      "chatExtensionOutputId": "code-oss-static-web.disabled-chat.log",
+      "chatExtensionOutputExtensionStateCommand": "code-oss-static-web.disabled-chat.extensionState",
+      "documentationUrl": "https://disabled.invalid.invalid/",
+      "termsStatementUrl": "https://disabled.invalid.invalid/",
+      "privacyStatementUrl": "https://disabled.invalid.invalid/",
+      "skusDocumentationUrl": "https://disabled.invalid.invalid/",
+      "optimizeUsageDocumentationUrl": "https://disabled.invalid.invalid/",
+      "publicCodeMatchesUrl": "https://disabled.invalid.invalid/",
+      "managePlanUrl": "https://disabled.invalid.invalid/",
+      "upgradePlanUrl": "https://disabled.invalid.invalid/",
+      "signUpUrl": "https://disabled.invalid.invalid/",
+      "provider": {
+        "default": {
+          "id": "code-oss-static-web-disabled",
+          "name": "Disabled"
+        },
+        "enterprise": {
+          "id": "code-oss-static-web-disabled-enterprise",
+          "name": "Disabled"
+        },
+        "google": {
+          "id": "code-oss-static-web-disabled-google",
+          "name": "Disabled"
+        },
+        "apple": {
+          "id": "code-oss-static-web-disabled-apple",
+          "name": "Disabled"
+        },
+        "microsoft": {
+          "id": "code-oss-static-web-disabled-microsoft",
+          "name": "Disabled"
+        }
+      },
+      "providerExtensionId": "code-oss-static-web.disabled-auth",
+      "providerUriSetting": "code-oss-static-web.disabled.providerUri",
+      "providerScopes": [],
+      "entitlementUrl": "https://disabled.invalid.invalid/",
+      "entitlementSignupLimitedUrl": "https://disabled.invalid.invalid/",
+      "tokenEntitlementUrl": "https://disabled.invalid.invalid/",
+      "mcpRegistryDataUrl": "https://disabled.invalid.invalid/",
+      "managedSettingsUrl": "https://disabled.invalid.invalid/",
+      "chatQuotaExceededContext": "code-oss-static-web.disabled.chatQuotaExceeded",
+      "completionsQuotaExceededContext": "code-oss-static-web.disabled.completionsQuotaExceeded",
+      "walkthroughCommand": "code-oss-static-web.disabled.walkthrough",
+      "completionsMenuCommand": "code-oss-static-web.disabled.completionsMenu",
+      "chatRefreshTokenCommand": "code-oss-static-web.disabled.refreshToken",
+      "generateCommitMessageCommand": "code-oss-static-web.disabled.generateCommitMessage",
+      "resolveMergeConflictsCommand": "code-oss-static-web.disabled.resolveMergeConflicts",
+      "completionsAdvancedSetting": "code-oss-static-web.disabled.advanced",
+      "completionsEnablementSetting": "code-oss-static-web.disabled.enable",
+      "nextEditSuggestionsSetting": "code-oss-static-web.disabled.nextEditSuggestions"
+    },
+    "webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.invalid.invalid/out/vs/workbench/contrib/webview/browser/pre/",
+    "voiceWsUrl": ""
+  },
+  "remove": ["trustedExtensionAuthAccess"]
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "set", "remove"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "set": {
+      "type": "object",
+      "required": ["builtInExtensions", "builtInExtensionsEnabledWithAutoUpdates", "defaultChatAgent", "webviewContentExternalBaseUrlTemplate", "voiceWsUrl"],
+      "properties": {
+        "builtInExtensions": {"type": "array"},
+        "builtInExtensionsEnabledWithAutoUpdates": {"type": "array"},
+        "defaultChatAgent": {"type": "object"},
+        "webviewContentExternalBaseUrlTemplate": {"type": "string", "pattern": "invalid\\.invalid"},
+        "voiceWsUrl": {"type": "string"}
+      }
+    },
+    "remove": {"type": "array", "items": {"type": "string"}}
+  }
+}

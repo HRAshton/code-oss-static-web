@@ -1,0 +1,24 @@
+name: Upstream check
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 */6 * * *'
+permissions:
+  contents: read
+jobs:
+  latest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare latest upstream release
+        run: |
+          set +e
+          python3 scripts/check_upstream.py
+          rc=$?
+          if [ "$rc" -eq 10 ]; then
+            echo 'A newer upstream release exists.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          exit "$rc"

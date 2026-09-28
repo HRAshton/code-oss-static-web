@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "requireDeclared", "allowed", "denied", "overrides"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "requireDeclared": {"type": "boolean"},
+    "allowed": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "denied": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "overrides": {"type": "object"}
+  }
+}

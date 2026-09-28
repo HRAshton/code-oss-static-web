@@ -1,0 +1,400 @@
+name: Full build qualification
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - upstream.lock.json
+      - build.sh
+      - package.sh
+      - 'scripts/**'
+      - 'config/**'
+      - 'patches/**'
+      - 'extensions/**'
+      - 'tests/e2e/**'
+      - 'tests/fixtures/**'
+      - '.github/workflows/qualify.yml'
+      - '.github/workflows/browser-matrix.yml'
+  workflow_dispatch:
+    inputs:
+      browser:
+        description: Browser qualification target
+        required: true
+        default: chromium
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - webkit
+          - all
+
+concurrency:
+  group: qualify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QUALIFICATION_BROWSER: ${{ inputs.browser || 'chromium' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.18.0'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Restore immutable upstream web build cache
+        id: upstream-cache
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+        with:
+          path: |
+            .work/vscode-web
+            .work/playwright-runtime
+          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-24.18.0-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/product-transform.json', 'patches/**') }}
+
+      - name: Install Code-OSS web build prerequisites
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends
+          pkg-config libx11-dev libxkbfile-dev libkrb5-dev
+
+      - name: Build static Code-OSS candidate
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        shell: bash
+        run: |
+          if [[ "${{ steps.upstream-cache.outputs.cache-hit }}" == 'true' ]]; then
+            ./build.sh --reuse-upstream-build
+          else
+            ./build.sh
+          fi
+
+      - name: Structural artifact smoke test
+        run: python3 scripts/smoke_static.py dist
+
+      - name: Capture runtime component metadata
+        run: >-
+          python3 scripts/generate_runtime_metadata.py
+          --dist dist
+          --lock .work/vscode/package-lock.json
+          --output .work/runtime-components.json
+
+      - name: Upload canonical static distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: static-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload locked Playwright runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-runtime
+          path: .work/playwright-runtime/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload browser qualification harness
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-harness
+          path: |
+            scripts/common.py
+            scripts/run_e2e.py
+            scripts/install_playwright_browser.py
+            scripts/serve_static.py
+            scripts/add_test_extension.py
+            scripts/extensions_index.py
+            tests/e2e/
+            tests/fixtures/web-extension/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload build metadata
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-metadata
+          path: .work/runtime-components.json
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 6
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: build-diagnostics
+          path: .work/product-transform-report.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.18.0'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download canonical static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: dist
+
+      - name: Download locked Playwright runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: playwright-runtime
+          path: .work/playwright-runtime
+
+      - name: Install locked Playwright browser runtime
+        shell: bash
+        run: |
+          case "$QUALIFICATION_BROWSER" in
+            chromium|firefox|webkit)
+              python3 scripts/install_playwright_browser.py --with-deps "$QUALIFICATION_BROWSER"
+              ;;
+            all)
+              python3 scripts/install_playwright_browser.py --with-deps chromium firefox webkit
+              ;;
+            *)
+              echo "Unsupported browser: $QUALIFICATION_BROWSER" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Upload qualified Chromium runtime
+        if: github.event_name == 'workflow_dispatch' && env.QUALIFICATION_BROWSER == 'chromium'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: playwright-browser-chromium
+          path: .work/playwright-browsers/
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 6
+
+      - name: Browser boot gate
+        env:
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/boot
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/boot
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "$QUALIFICATION_BROWSER"
+          --dist dist
+          --grep "packaged workbench boots from static hosting"
+          --grep-invert @extension
+          --retries=0
+
+      - name: Browser qualification of canonical dist
+        env:
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/base
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/base
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "$QUALIFICATION_BROWSER"
+          --dist dist
+          --grep-invert @extension
+
+      - name: Prepare extension-host qualification copy
+        shell: bash
+        run: |
+          rm -rf .work/qualification-dist
+          cp -a dist .work/qualification-dist
+          python3 scripts/add_test_extension.py --dist .work/qualification-dist
+
+      - name: Browser extension-host qualification
+        env:
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/extension
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/extension
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "$QUALIFICATION_BROWSER"
+          --dist .work/qualification-dist
+          --grep @extension
+
+      - name: Upload qualification diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-diagnostics-${{ env.QUALIFICATION_BROWSER }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  secondary-browsers:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.18.0'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download canonical static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: dist
+
+      - name: Download locked Playwright runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: playwright-runtime
+          path: .work/playwright-runtime
+
+      - name: Install locked browser runtime
+        run: python3 scripts/install_playwright_browser.py --with-deps "${{ matrix.browser }}"
+
+      - name: Browser boot gate
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "${{ matrix.browser }}"
+          --dist dist
+          --grep "packaged workbench boots from static hosting"
+          --grep-invert @extension
+          --retries=0
+
+      - name: Browser qualification
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "${{ matrix.browser }}"
+          --dist dist
+          --grep-invert @extension
+
+      - name: Prepare extension-host qualification copy
+        run: |
+          rm -rf .work/qualification-dist
+          cp -a dist .work/qualification-dist
+          python3 scripts/add_test_extension.py --dist .work/qualification-dist
+
+      - name: Browser extension-host qualification
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "${{ matrix.browser }}"
+          --dist .work/qualification-dist
+          --grep @extension
+
+      - name: Upload secondary browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-diagnostics-${{ matrix.browser }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  package:
+    needs: [browser, secondary-browsers]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download qualified static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: dist
+
+      - name: Download build metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: build-metadata
+          path: .work
+
+      - name: Package canonical candidate
+        run: ./package.sh
+
+      - name: Upload canonical candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate
+          path: artifacts/
+          if-no-files-found: error
+          retention-days: 7
+
+  attest:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download verified candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: candidate
+          path: artifacts
+
+      - name: Attest release provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: artifacts/SHA256SUMS
+
+      - name: Attest release SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/code-oss-static-web-*.tar.gz
+            artifacts/code-oss-static-web-*.zip
+          sbom-path: artifacts/sbom.cdx.json

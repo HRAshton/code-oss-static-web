@@ -1,0 +1,9 @@
+.work/
+dist/
+artifacts/
+__pycache__/
+*.pyc
+.DS_Store
+playwright-report/
+test-results/
+node_modules/

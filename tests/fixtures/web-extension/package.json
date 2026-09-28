@@ -1,0 +1,43 @@
+{
+  "name": "code-oss-static-web-test",
+  "displayName": "Code OSS Static Web Qualification",
+  "publisher": "code-oss-static-web",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.139.0"
+  },
+  "browser": "./extension.js",
+  "activationEvents": [
+    "onCommand:codeOssStaticWebTest.markReady",
+    "onCommand:codeOssStaticWebTest.readMarker",
+    "onCommand:codeOssStaticWebTest.writeStorageFile",
+    "onCommand:codeOssStaticWebTest.readStorageFile",
+    "onCommand:codeOssStaticWebTest.probeLanguageService"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "codeOssStaticWebTest.markReady",
+        "title": "Static Web Test: Mark Ready"
+      },
+      {
+        "command": "codeOssStaticWebTest.readMarker",
+        "title": "Static Web Test: Read Marker"
+      },
+      {
+        "command": "codeOssStaticWebTest.writeStorageFile",
+        "title": "Static Web Test: Write Storage File"
+      },
+      {
+        "command": "codeOssStaticWebTest.readStorageFile",
+        "title": "Static Web Test: Read Storage File"
+      },
+      {
+        "command": "codeOssStaticWebTest.probeLanguageService",
+        "title": "Static Web Test: Probe Language Service"
+      }
+    ]
+  }
+}

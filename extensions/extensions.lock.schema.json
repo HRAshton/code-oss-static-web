@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HRAshton/code-oss-static-web/blob/develop/extensions/extensions.lock.schema.json",
+  "title": "Code OSS Static Web extension lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "extensions"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "extensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "version", "sha256", "source"],
+        "properties": {
+          "id": { "type": "string", "minLength": 3, "pattern": "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$" },
+          "version": { "type": "string", "minLength": 1, "not": { "const": "latest" } },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "license": { "type": "string", "minLength": 1 },
+          "source": {
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "path"],
+                "properties": {
+                  "type": { "const": "local-vsix" },
+                  "path": { "type": "string", "minLength": 1 }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type"],
+                "properties": {
+                  "type": { "const": "open-vsx" },
+                  "registry": {
+                    "type": "string",
+                    "pattern": "^https://",
+                    "default": "https://open-vsx.org"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
