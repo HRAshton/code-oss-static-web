@@ -40,11 +40,11 @@ def validate_upstream_lock(path: Path) -> None:
     )
     require(data['schemaVersion'] == 1, 'upstream lock schemaVersion must be 1')
     require(data['repository'] == 'https://github.com/microsoft/vscode.git', 'unexpected upstream repository')
-    require(isinstance(data['tag'], str) and data['tag'], 'upstream tag must be a string')
+    require(isinstance(data['tag'], str) and bool(data['tag']), 'upstream tag must be a string')
     require(isinstance(data['commit'], str) and COMMIT_RE.fullmatch(data['commit']) is not None, 'upstream commit must be a full SHA')
     require(isinstance(data['sourceDateEpoch'], int) and data['sourceDateEpoch'] > 0, 'sourceDateEpoch must be a positive integer')
     require(isinstance(data['qualified'], bool), 'qualified must be boolean')
-    require(isinstance(data['qualificationNote'], str) and data['qualificationNote'], 'qualificationNote must be non-empty')
+    require(isinstance(data['qualificationNote'], str) and bool(data['qualificationNote']), 'qualificationNote must be non-empty')
 
 
 def validate_runtime(path: Path) -> None:
@@ -55,7 +55,7 @@ def validate_runtime(path: Path) -> None:
         'runtime config',
     )
     require(data['schemaVersion'] == 1, 'runtime schemaVersion must be 1')
-    require(isinstance(data['productName'], str) and data['productName'], 'runtime productName must be non-empty')
+    require(isinstance(data['productName'], str) and bool(data['productName']), 'runtime productName must be non-empty')
     require(data['telemetry'] is False, 'base runtime telemetry must be false')
     gallery = require_object(data['gallery'], 'runtime gallery')
     require_exact_keys(gallery, {'mode'}, 'runtime gallery')
