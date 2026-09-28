@@ -26,5 +26,11 @@
       ],
       "automerge": false
     }
-  ]
+  ],
+  "reviewers": [
+    "vodyanica"
+  ],
+  "assignAutomerge": true,
+  "platformAutomerge": true,
+  "automergeStrategy": "merge-commit"
 }
