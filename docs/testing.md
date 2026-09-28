@@ -24,9 +24,9 @@ still regenerating the current static wrapper.
 
 ## Current browser policy
 
-Chromium is the default qualification target. Firefox and WebKit are available in the manual
-qualification workflow but are not claimed as supported until the first real Code-OSS static build
-has passed them.
+Chromium is the default qualification target. Chromium, Firefox and WebKit have all passed the real
+Code-OSS 1.139.1 static qualification artifact. Release tags rerun the release-grade Chromium gate;
+the development qualification workflow continuously covers all three browser engines.
 
 ## Current Playwright coverage
 
@@ -39,10 +39,18 @@ has passed them.
 - zero WebSocket connections during clean startup;
 - CSP rejection of arbitrary cross-origin fetches;
 - telemetry/gallery/webview fail-closed runtime policy;
-- browser extension-host activation using the repository qualification extension.
+- browser extension-host activation using the repository qualification extension;
+- extension global-state and browser-filesystem persistence across workbench reload;
+- JavaScript language-service completion initialization;
+- keyboard command-palette shortcut behavior;
+- Settings UI opening;
+- workspace-trust enablement;
+- explicit absence of a service-worker offline cache in the supported static mode.
 
 Service workers are blocked in the browser test context so they cannot hide network requests from
-qualification.
+qualification. Offline caching is not a release feature: the supported static mode requires the
+hosted assets to remain reachable. Secure webviews are likewise not a supported deployment mode in
+this release candidate and remain fail-closed.
 
 ## Running after a real build
 

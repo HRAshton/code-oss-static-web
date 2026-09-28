@@ -3,8 +3,8 @@
 Independent tooling for producing a **zero-backend static browser build** from an immutable
 MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repository.
 
-> **Status:** Pre-1.0. Code - OSS `1.139.1` is qualified in Chromium; secure webviews, additional
-> browsers and publication workflows remain intentionally incomplete.
+> **Status:** Release-candidate track. Code - OSS `1.139.1` is qualified in Chromium, Firefox and
+> WebKit. Secure webviews remain intentionally disabled/fail-closed in the generic static mode.
 
 ## Implemented now
 
@@ -19,14 +19,15 @@ MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repos
 - fail-closed webview mode on generic static hosting;
 - self-only default `connect-src` CSP;
 - deterministic tar/zip packaging and SHA-256 verification;
-- Playwright qualification for static boot, editing, commands, network policy and extension host;
-- browser-extension activation plus lifecycle persistence qualification;
+- Playwright qualification for static boot, editing, commands, settings, workspace trust, network policy and extension host;
+- browser-extension activation plus global-state/filesystem persistence and language-service qualification;
 - split build/browser/package/attest jobs using the same canonical `dist/`;
 - content-addressed cache for the immutable upstream Code-OSS web bundle;
 - exported minimal Playwright runtime for fast browser-only reruns and local debugging;
 - deterministic artifact manifest and CycloneDX 1.7 SBOM;
 - deterministic license inventory covering every SBOM component;
-- isolated GitHub/Sigstore provenance and SBOM attestations.
+- isolated GitHub/Sigstore provenance and SBOM attestations;
+- reproducibility-gated GitHub Release, Pages and GHCR publication workflows.
 
 ## Build
 
