@@ -439,6 +439,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn('github.event.pull_request.title', workflow)
         self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
         self.assertIn(
             'github.ref_name != github.event.repository.default_branch',
             workflow,
