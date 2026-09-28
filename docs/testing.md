@@ -64,9 +64,14 @@ copies only `@playwright/test`, `playwright` and `playwright-core` into
 `.work/playwright-runtime`. CI publishes that runtime separately from `static-dist`, allowing
 browser tests to run without the upstream checkout or its complete `node_modules`.
 
-For fast local debugging, download `static-dist`, `playwright-runtime`,
-`qualification-harness`, and `playwright-browser-chromium` from the same qualification run.
-Place the browser bundle at `.work/playwright-browsers/` and run:
+For fast local debugging with the exact unmanaged Chromium used by CI, manually dispatch the
+qualification workflow with the `chromium` target. Manual Chromium runs additionally publish the
+large, short-lived `playwright-browser-chromium` artifact; normal push qualification intentionally
+does not upload that browser bundle.
+
+Download `static-dist`, `playwright-runtime`, `qualification-harness`, and
+`playwright-browser-chromium` from that manual run. Place the browser bundle at
+`.work/playwright-browsers/` and run:
 
 ```bash
 PLAYWRIGHT_BROWSERS_PATH=.work/playwright-browsers \
