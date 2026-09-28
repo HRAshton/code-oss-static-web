@@ -1,9 +1,25 @@
 from __future__ import annotations
-import hashlib, json, sys, tempfile, unittest, zipfile
+
+import hashlib
+import json
+import sys
+import tempfile
+import unittest
+import zipfile
 from pathlib import Path
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import check_policy, make_static, package_release, extensions_index, extension_lock, generate_license_inventory, generate_runtime_metadata, generate_sbom, validate_config
+import check_policy
+import extension_lock
+import extensions_index
+import generate_license_inventory
+import generate_runtime_metadata
+import generate_sbom
+import make_static
+import package_release
+import validate_config
+
 
 class ToolingTests(unittest.TestCase):
     def test_upstream_lock_is_exact_commit_and_qualified(self):
@@ -17,6 +33,7 @@ class ToolingTests(unittest.TestCase):
 
     def test_release_tag_contract(self):
         import check_release_tag
+
         lock = json.loads((ROOT / 'upstream.lock.json').read_text())
         self.assertEqual(
             check_release_tag.expected_release_tag(lock),
@@ -25,20 +42,28 @@ class ToolingTests(unittest.TestCase):
 
     def test_archives_are_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td); src = base / 'src'; src.mkdir()
+            base = Path(td)
+            src = base / 'src'
+            src.mkdir()
             (src / 'a.txt').write_text('a\n')
-            (src / 'b').mkdir(); (src / 'b/x.txt').write_text('x\n')
+            (src / 'b').mkdir()
+            (src / 'b/x.txt').write_text('x\n')
             a, b = base / 'a.tar.gz', base / 'b.tar.gz'
             za, zb = base / 'a.zip', base / 'b.zip'
             package_release.build_tar(src, a, 1790307657)
             package_release.build_tar(src, b, 1790307657)
             package_release.build_zip(src, za, 1790307657)
             package_release.build_zip(src, zb, 1790307657)
-            self.assertEqual(hashlib.sha256(a.read_bytes()).digest(), hashlib.sha256(b.read_bytes()).digest())
-            self.assertEqual(hashlib.sha256(za.read_bytes()).digest(), hashlib.sha256(zb.read_bytes()).digest())
+            self.assertEqual(
+                hashlib.sha256(a.read_bytes()).digest(), hashlib.sha256(b.read_bytes()).digest()
+            )
+            self.assertEqual(
+                hashlib.sha256(za.read_bytes()).digest(), hashlib.sha256(zb.read_bytes()).digest()
+            )
 
     def test_distribution_comparison_detects_drift(self):
         import compare_dist
+
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             reference = root / 'reference'
@@ -81,13 +106,17 @@ class ToolingTests(unittest.TestCase):
             extension = dist / 'extensions/demo'
             extension.mkdir(parents=True)
             (extension / 'extension.js').write_text('module.exports = {};\n')
-            (extension / 'package.json').write_text(json.dumps({
-                'publisher': 'demo',
-                'name': 'fixture',
-                'version': '1.2.3',
-                'license': 'MIT',
-                'browser': './extension.js',
-            }))
+            (extension / 'package.json').write_text(
+                json.dumps(
+                    {
+                        'publisher': 'demo',
+                        'name': 'fixture',
+                        'version': '1.2.3',
+                        'license': 'MIT',
+                        'browser': './extension.js',
+                    }
+                )
+            )
             lock = {
                 'lockfileVersion': 3,
                 'packages': {
@@ -142,8 +171,8 @@ class ToolingTests(unittest.TestCase):
             inventory_refs = {component['bomRef'] for component in inventory['components']}
             self.assertEqual(
                 inventory_refs,
-                {bom['metadata']['component']['bom-ref']} |
-                {component['bom-ref'] for component in bom['components']},
+                {bom['metadata']['component']['bom-ref']}
+                | {component['bom-ref'] for component in bom['components']},
             )
             licenses = {
                 component['bomRef']: component['declaredLicense']
@@ -157,19 +186,31 @@ class ToolingTests(unittest.TestCase):
     def test_extension_index_only_marks_browser_extensions(self):
         with tempfile.TemporaryDirectory() as td:
             d = Path(td)
-            web = d / 'extensions/web'; web.mkdir(parents=True)
-            (web / 'package.json').write_text(json.dumps({'publisher':'p','name':'web','version':'1','browser':'dist/web.js'}))
-            node = d / 'extensions/node'; node.mkdir()
-            (node / 'package.json').write_text(json.dumps({'publisher':'p','name':'node','version':'1','main':'dist/node.js'}))
-            values = {x['id']: x['browserCompatible'] for x in extensions_index.build_extension_index(d)['extensions']}
+            web = d / 'extensions/web'
+            web.mkdir(parents=True)
+            (web / 'package.json').write_text(
+                json.dumps(
+                    {'publisher': 'p', 'name': 'web', 'version': '1', 'browser': 'dist/web.js'}
+                )
+            )
+            node = d / 'extensions/node'
+            node.mkdir()
+            (node / 'package.json').write_text(
+                json.dumps(
+                    {'publisher': 'p', 'name': 'node', 'version': '1', 'main': 'dist/node.js'}
+                )
+            )
+            values = {
+                x['id']: x['browserCompatible']
+                for x in extensions_index.build_extension_index(d)['extensions']
+            }
             self.assertEqual(values, {'p.node': False, 'p.web': True})
-
-
 
     def test_local_vsix_lock_validation_and_installation(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            vendor = root / 'vendor'; vendor.mkdir()
+            vendor = root / 'vendor'
+            vendor.mkdir()
             vsix = vendor / 'fixture.vsix'
             manifest = {
                 'publisher': 'fixture',
@@ -183,17 +224,24 @@ class ToolingTests(unittest.TestCase):
                 archive.writestr('extension/extension.js', 'exports.activate = () => {};\n')
             digest = hashlib.sha256(vsix.read_bytes()).hexdigest()
             lock_path = root / 'extensions.lock.json'
-            lock_path.write_text(json.dumps({
-                'schemaVersion': 1,
-                'extensions': [{
-                    'id': 'fixture.browser',
-                    'version': '1.2.3',
-                    'sha256': digest,
-                    'license': 'MIT',
-                    'source': {'type': 'local-vsix', 'path': 'vendor/fixture.vsix'},
-                }],
-            }))
-            dist = root / 'dist'; dist.mkdir()
+            lock_path.write_text(
+                json.dumps(
+                    {
+                        'schemaVersion': 1,
+                        'extensions': [
+                            {
+                                'id': 'fixture.browser',
+                                'version': '1.2.3',
+                                'sha256': digest,
+                                'license': 'MIT',
+                                'source': {'type': 'local-vsix', 'path': 'vendor/fixture.vsix'},
+                            }
+                        ],
+                    }
+                )
+            )
+            dist = root / 'dist'
+            dist.mkdir()
             installed = extension_lock.install_locked_extensions(dist, lock_path, root=root)
             self.assertEqual(installed[0]['id'], 'fixture.browser')
             self.assertTrue((dist / 'extensions/fixture.browser/extension.js').is_file())
@@ -204,13 +252,20 @@ class ToolingTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             vsix = root / 'fixture.vsix'
-            manifest = {'publisher': 'fixture', 'name': 'node', 'version': '1.0.0', 'main': './extension.js'}
+            manifest = {
+                'publisher': 'fixture',
+                'name': 'node',
+                'version': '1.0.0',
+                'main': './extension.js',
+            }
             with zipfile.ZipFile(vsix, 'w') as archive:
                 archive.writestr('extension/package.json', json.dumps(manifest))
                 archive.writestr('extension/extension.js', 'module.exports = {};\n')
             digest = hashlib.sha256(vsix.read_bytes()).hexdigest()
             entry = {
-                'id': 'fixture.node', 'version': '1.0.0', 'sha256': digest,
+                'id': 'fixture.node',
+                'version': '1.0.0',
+                'sha256': digest,
                 'source': {'type': 'local-vsix', 'path': 'fixture.vsix'},
                 'license': None,
             }
@@ -226,12 +281,21 @@ class ToolingTests(unittest.TestCase):
             vsix = root / 'fixture.vsix'
             with zipfile.ZipFile(vsix, 'w') as archive:
                 archive.writestr('../escape.txt', 'bad')
-                archive.writestr('extension/package.json', json.dumps({
-                    'publisher': 'fixture', 'name': 'bad', 'version': '1.0.0', 'browser': './extension.js'
-                }))
+                archive.writestr(
+                    'extension/package.json',
+                    json.dumps(
+                        {
+                            'publisher': 'fixture',
+                            'name': 'bad',
+                            'version': '1.0.0',
+                            'browser': './extension.js',
+                        }
+                    ),
+                )
                 archive.writestr('extension/extension.js', '')
             entry = {
-                'id': 'fixture.bad', 'version': '1.0.0',
+                'id': 'fixture.bad',
+                'version': '1.0.0',
                 'sha256': hashlib.sha256(vsix.read_bytes()).hexdigest(),
                 'source': {'type': 'local-vsix', 'path': 'fixture.vsix'},
                 'license': None,
@@ -273,10 +337,14 @@ class ToolingTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             lock_path = Path(td) / 'extensions.lock.json'
-            lock_path.write_text(json.dumps({
-                'schemaVersion': 1,
-                'extensions': [entry],
-            }))
+            lock_path.write_text(
+                json.dumps(
+                    {
+                        'schemaVersion': 1,
+                        'extensions': [entry],
+                    }
+                )
+            )
             loaded = extension_lock.load_extension_lock(lock_path)
             self.assertEqual(loaded['extensions'][0]['source']['type'], 'open-vsx')
             self.assertEqual(
@@ -310,7 +378,6 @@ class ToolingTests(unittest.TestCase):
         network = (ROOT / 'tests/e2e/network-policy.spec.cjs').read_text()
         self.assertIn('unexpectedRequests', network)
         self.assertIn('webSockets', network)
-
 
     def test_build_jobs_are_unprivileged(self):
         check_policy.check_build_job_permissions()
@@ -367,6 +434,7 @@ class ToolingTests(unittest.TestCase):
 
     def test_workflow_actions_are_commit_pinned(self):
         import re
+
         for workflow in (ROOT / '.github/workflows').glob('*.yml'):
             for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
                 match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
@@ -396,9 +464,11 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
         self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
         package_source = (ROOT / 'scripts/package_release.py').read_text()
-        self.assertIn("license-inventory.json", package_source)
+        self.assertIn('license-inventory.json', package_source)
         self.assertIn('extensionLicensePolicy', package_source)
-        self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
+        self.assertIn(
+            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow
+        )
         self.assertIn('scripts/run_e2e.py', workflow)
         self.assertIn('--grep-invert @extension', workflow)
         self.assertIn('--grep @extension', workflow)
@@ -406,8 +476,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('--reuse-upstream-build', workflow)
 
         extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
-        self.assertIn("codeOssStaticWebTest.markReady", extension_test)
-        self.assertIn("codeOssStaticWebTest.readMarker", extension_test)
+        self.assertIn('codeOssStaticWebTest.markReady', extension_test)
+        self.assertIn('codeOssStaticWebTest.readMarker', extension_test)
         self.assertIn('global state persists across workbench reload', extension_test)
         self.assertIn("toBe('ready')", extension_test)
         self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
@@ -415,7 +485,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('JavaScript language service returns completions', extension_test)
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
-        self.assertIn("playwright-runtime", runner)
+        self.assertIn('playwright-runtime', runner)
         exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
         self.assertIn("Path('@playwright/test')", exporter)
 
@@ -437,7 +507,9 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8', workflow)
         self.assertIn('gh release create', workflow)
         dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
-        self.assertIn('@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile)
+        self.assertIn(
+            '@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile
+        )
 
     def test_product_transform_keeps_chat_contract_fail_closed(self):
         transform = json.loads((ROOT / 'config/product-transform.json').read_text())
@@ -472,4 +544,6 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn('unsafe-eval', make_static.INDEX)
         self.assertIn('invalid.invalid', make_static.BOOTSTRAP)
 
-if __name__ == '__main__': unittest.main()
+
+if __name__ == '__main__':
+    unittest.main()

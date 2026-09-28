@@ -4,8 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from common import require, write_json
 import generate_sbom
+from common import require, write_json
 
 NOASSERTION = 'NOASSERTION'
 
@@ -86,7 +86,10 @@ def build_license_inventory(
         version_value = raw.get('version')
         path = raw.get('path')
         require(isinstance(name, str) and bool(name), 'runtime npm name missing')
-        require(isinstance(version_value, str) and bool(version_value), f'runtime npm version missing: {name}')
+        require(
+            isinstance(version_value, str) and bool(version_value),
+            f'runtime npm version missing: {name}',
+        )
         require(isinstance(path, str) and bool(path), f'runtime npm artifact path missing: {name}')
         components.append(
             component_entry(
@@ -107,7 +110,9 @@ def build_license_inventory(
         extension_id = raw.get('id')
         version_value = raw.get('version')
         path = raw.get('path')
-        require(isinstance(extension_id, str) and bool(extension_id), 'runtime extension id missing')
+        require(
+            isinstance(extension_id, str) and bool(extension_id), 'runtime extension id missing'
+        )
         require(
             isinstance(version_value, str) and bool(version_value),
             f'runtime extension version missing: {extension_id}',
@@ -132,9 +137,7 @@ def build_license_inventory(
     refs = [str(component['bomRef']) for component in components]
     require(len(refs) == len(set(refs)), 'duplicate component bomRef in license inventory')
 
-    no_assertion = sum(
-        1 for component in components if component['declaredLicense'] == NOASSERTION
-    )
+    no_assertion = sum(1 for component in components if component['declaredLicense'] == NOASSERTION)
     return {
         'schemaVersion': 1,
         'project': {

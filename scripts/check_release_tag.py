@@ -7,7 +7,7 @@ from common import ROOT, BuildError, load_json, require
 
 
 def expected_release_tag(lock: dict) -> str:
-    return f"v{lock['tag']}-web.0"
+    return f'v{lock["tag"]}-web.0'
 
 
 def main() -> None:
@@ -26,4 +26,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

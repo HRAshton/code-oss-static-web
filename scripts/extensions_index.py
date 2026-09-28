@@ -8,26 +8,26 @@ from typing import Any
 
 def build_extension_index(dist: Path) -> dict[str, Any]:
     result: list[dict[str, Any]] = []
-    extroot = dist / "extensions"
+    extroot = dist / 'extensions'
     if not extroot.exists():
-        return {"schemaVersion": 1, "extensions": []}
+        return {'schemaVersion': 1, 'extensions': []}
 
-    for pkg in sorted(extroot.glob("*/package.json")):
+    for pkg in sorted(extroot.glob('*/package.json')):
         try:
-            data = json.loads(pkg.read_text(encoding="utf-8"))
+            data = json.loads(pkg.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError):
             continue
 
-        publisher = data.get("publisher", "unknown")
-        name = data.get("name", pkg.parent.name)
+        publisher = data.get('publisher', 'unknown')
+        name = data.get('name', pkg.parent.name)
         result.append(
             {
-                "id": f"{publisher}.{name}",
-                "version": data.get("version"),
-                "path": pkg.parent.relative_to(dist).as_posix() + "/",
-                "browserCompatible": bool(data.get("browser")),
-                "license": data.get("license"),
+                'id': f'{publisher}.{name}',
+                'version': data.get('version'),
+                'path': pkg.parent.relative_to(dist).as_posix() + '/',
+                'browserCompatible': bool(data.get('browser')),
+                'license': data.get('license'),
             }
         )
 
-    return {"schemaVersion": 1, "extensions": result}
+    return {'schemaVersion': 1, 'extensions': result}

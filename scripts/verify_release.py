@@ -66,16 +66,22 @@ def verify_artifact_manifest(directory: Path) -> None:
     )
 
     artifacts = manifest.get('artifacts')
-    require(isinstance(artifacts, list) and len(artifacts) > 0, 'artifact manifest artifacts missing')
-    artifact_names = {
-        artifact.get('name')
-        for artifact in artifacts
-        if isinstance(artifact, dict)
-    }
+    require(
+        isinstance(artifacts, list) and len(artifacts) > 0, 'artifact manifest artifacts missing'
+    )
+    artifact_names = {artifact.get('name') for artifact in artifacts if isinstance(artifact, dict)}
     require('sbom.cdx.json' in artifact_names, 'artifact manifest must include sbom.cdx.json')
-    require('license-inventory.json' in artifact_names, 'artifact manifest must include license-inventory.json')
-    require('LICENSE.Code-OSS.txt' in artifact_names, 'artifact manifest must include Code-OSS license')
-    require('ThirdPartyNotices.Code-OSS.txt' in artifact_names, 'artifact manifest must include Code-OSS notices')
+    require(
+        'license-inventory.json' in artifact_names,
+        'artifact manifest must include license-inventory.json',
+    )
+    require(
+        'LICENSE.Code-OSS.txt' in artifact_names, 'artifact manifest must include Code-OSS license'
+    )
+    require(
+        'ThirdPartyNotices.Code-OSS.txt' in artifact_names,
+        'artifact manifest must include Code-OSS notices',
+    )
     for artifact in artifacts:
         require(isinstance(artifact, dict), 'artifact manifest artifact invalid')
         name = artifact.get('name')
@@ -119,12 +125,15 @@ def verify_sbom(directory: Path) -> None:
     components = sbom.get('components')
     require(isinstance(components, list) and len(components) > 0, 'SBOM components missing')
     component_refs = [
-        component.get('bom-ref')
-        for component in components
-        if isinstance(component, dict)
+        component.get('bom-ref') for component in components if isinstance(component, dict)
     ]
-    require(all(isinstance(ref, str) and bool(ref) for ref in component_refs), 'SBOM component bom-ref missing')
-    require(len(component_refs) == len(set(component_refs)), 'SBOM component bom-ref must be unique')
+    require(
+        all(isinstance(ref, str) and bool(ref) for ref in component_refs),
+        'SBOM component bom-ref missing',
+    )
+    require(
+        len(component_refs) == len(set(component_refs)), 'SBOM component bom-ref must be unique'
+    )
 
     known_refs = set(component_refs)
     known_refs.add(root_ref)
@@ -142,7 +151,6 @@ def verify_sbom(directory: Path) -> None:
         )
 
 
-
 def verify_license_inventory(directory: Path) -> None:
     inventory_path = directory / 'license-inventory.json'
     require(inventory_path.is_file(), f'missing {inventory_path}')
@@ -150,7 +158,9 @@ def verify_license_inventory(directory: Path) -> None:
     require(inventory.get('schemaVersion') == 1, 'license inventory schema must be 1')
 
     components = inventory.get('components')
-    require(isinstance(components, list) and len(components) > 0, 'license inventory components missing')
+    require(
+        isinstance(components, list) and len(components) > 0, 'license inventory components missing'
+    )
     refs: list[str] = []
     no_assertion = 0
     for component in components:
@@ -173,7 +183,9 @@ def verify_license_inventory(directory: Path) -> None:
     summary = inventory.get('summary')
     require(isinstance(summary, dict), 'license inventory summary missing')
     require(summary.get('totalComponents') == len(components), 'license inventory total mismatch')
-    require(summary.get('noAssertion') == no_assertion, 'license inventory NOASSERTION count mismatch')
+    require(
+        summary.get('noAssertion') == no_assertion, 'license inventory NOASSERTION count mismatch'
+    )
     require(
         summary.get('declaredLicenses') == len(components) - no_assertion,
         'license inventory declared license count mismatch',
@@ -185,7 +197,9 @@ def verify_license_inventory(directory: Path) -> None:
         'LICENSE.Code-OSS.txt',
         'ThirdPartyNotices.Code-OSS.txt',
     ):
-        require((directory / required_file).is_file(), f'license notice file missing: {required_file}')
+        require(
+            (directory / required_file).is_file(), f'license notice file missing: {required_file}'
+        )
 
     sbom = load_json(directory / 'sbom.cdx.json')
     metadata = sbom.get('metadata')
@@ -195,15 +209,22 @@ def verify_license_inventory(directory: Path) -> None:
     root_ref = root.get('bom-ref')
     require(isinstance(root_ref, str) and bool(root_ref), 'SBOM root bom-ref missing')
     sbom_components = sbom.get('components')
-    require(isinstance(sbom_components, list), 'SBOM components missing for license inventory comparison')
+    require(
+        isinstance(sbom_components, list),
+        'SBOM components missing for license inventory comparison',
+    )
     sbom_refs = {
-        component.get('bom-ref')
-        for component in sbom_components
-        if isinstance(component, dict)
+        component.get('bom-ref') for component in sbom_components if isinstance(component, dict)
     }
-    require(all(isinstance(ref, str) and bool(ref) for ref in sbom_refs), 'SBOM component bom-ref missing')
+    require(
+        all(isinstance(ref, str) and bool(ref) for ref in sbom_refs),
+        'SBOM component bom-ref missing',
+    )
     sbom_refs.add(root_ref)
-    require(set(refs) == sbom_refs, 'license inventory must cover every SBOM component exactly once')
+    require(
+        set(refs) == sbom_refs, 'license inventory must cover every SBOM component exactly once'
+    )
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -224,4 +245,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

@@ -39,12 +39,24 @@ def validate_upstream_lock(path: Path) -> None:
         'upstream lock',
     )
     require(data['schemaVersion'] == 1, 'upstream lock schemaVersion must be 1')
-    require(data['repository'] == 'https://github.com/microsoft/vscode.git', 'unexpected upstream repository')
+    require(
+        data['repository'] == 'https://github.com/microsoft/vscode.git',
+        'unexpected upstream repository',
+    )
     require(isinstance(data['tag'], str) and bool(data['tag']), 'upstream tag must be a string')
-    require(isinstance(data['commit'], str) and COMMIT_RE.fullmatch(data['commit']) is not None, 'upstream commit must be a full SHA')
-    require(isinstance(data['sourceDateEpoch'], int) and data['sourceDateEpoch'] > 0, 'sourceDateEpoch must be a positive integer')
+    require(
+        isinstance(data['commit'], str) and COMMIT_RE.fullmatch(data['commit']) is not None,
+        'upstream commit must be a full SHA',
+    )
+    require(
+        isinstance(data['sourceDateEpoch'], int) and data['sourceDateEpoch'] > 0,
+        'sourceDateEpoch must be a positive integer',
+    )
     require(isinstance(data['qualified'], bool), 'qualified must be boolean')
-    require(isinstance(data['qualificationNote'], str) and bool(data['qualificationNote']), 'qualificationNote must be non-empty')
+    require(
+        isinstance(data['qualificationNote'], str) and bool(data['qualificationNote']),
+        'qualificationNote must be non-empty',
+    )
 
 
 def validate_runtime(path: Path) -> None:
@@ -55,7 +67,10 @@ def validate_runtime(path: Path) -> None:
         'runtime config',
     )
     require(data['schemaVersion'] == 1, 'runtime schemaVersion must be 1')
-    require(isinstance(data['productName'], str) and bool(data['productName']), 'runtime productName must be non-empty')
+    require(
+        isinstance(data['productName'], str) and bool(data['productName']),
+        'runtime productName must be non-empty',
+    )
     require(data['telemetry'] is False, 'base runtime telemetry must be false')
     gallery = require_object(data['gallery'], 'runtime gallery')
     require_exact_keys(gallery, {'mode'}, 'runtime gallery')
@@ -79,11 +94,23 @@ def validate_product_transform(path: Path) -> None:
     require(data['schemaVersion'] == 1, 'product transform schemaVersion must be 1')
     set_values = require_object(data['set'], 'product transform set')
     remove_values = data['remove']
-    require(isinstance(remove_values, list) and all(isinstance(item, str) for item in remove_values), 'product transform remove must be a string array')
-    require(set_values.get('builtInExtensions') == [], 'upstream downloaded built-in extensions must be removed')
-    require(set_values.get('builtInExtensionsEnabledWithAutoUpdates') == [], 'built-in auto updates must be disabled')
+    require(
+        isinstance(remove_values, list) and all(isinstance(item, str) for item in remove_values),
+        'product transform remove must be a string array',
+    )
+    require(
+        set_values.get('builtInExtensions') == [],
+        'upstream downloaded built-in extensions must be removed',
+    )
+    require(
+        set_values.get('builtInExtensionsEnabledWithAutoUpdates') == [],
+        'built-in auto updates must be disabled',
+    )
     webview_url = set_values.get('webviewContentExternalBaseUrlTemplate')
-    require(isinstance(webview_url, str) and 'invalid.invalid' in webview_url, 'webview URL must fail closed')
+    require(
+        isinstance(webview_url, str) and 'invalid.invalid' in webview_url,
+        'webview URL must fail closed',
+    )
     chat = require_object(set_values.get('defaultChatAgent'), 'defaultChatAgent')
     for key, value in chat.items():
         if key.endswith('Url') and isinstance(value, str):
@@ -100,9 +127,14 @@ def validate_patch_manifest(path: Path) -> None:
     for index, patch in enumerate(patches):
         patch = require_object(patch, f'patches[{index}]')
         require('file' in patch, f'patches[{index}] missing file')
-        require(isinstance(patch['file'], str) and patch['file'].endswith('.patch'), f'patches[{index}] file must end in .patch')
+        require(
+            isinstance(patch['file'], str) and patch['file'].endswith('.patch'),
+            f'patches[{index}] file must end in .patch',
+        )
         patch_id = patch.get('id', patch['file'])
-        require(isinstance(patch_id, str) and patch_id not in ids, f'duplicate patch id: {patch_id}')
+        require(
+            isinstance(patch_id, str) and patch_id not in ids, f'duplicate patch id: {patch_id}'
+        )
         ids.add(patch_id)
 
 
@@ -138,4 +170,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

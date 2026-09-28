@@ -44,4 +44,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

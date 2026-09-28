@@ -113,7 +113,7 @@ def main() -> None:
             'extensions': [
                 {
                     'id': extension['id'],
-                    'path': f"extensions/{extension['id']}/",
+                    'path': f'extensions/{extension["id"]}/',
                 }
                 for extension in installed
             ],
@@ -145,4 +145,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

@@ -20,7 +20,9 @@ def shipped_npm_packages(dist: Path) -> list[tuple[str, str]]:
         if entry.name.startswith('@'):
             for scoped in sorted(entry.iterdir(), key=lambda path: path.name):
                 if scoped.is_dir():
-                    packages.append((f'{entry.name}/{scoped.name}', scoped.relative_to(dist).as_posix()))
+                    packages.append(
+                        (f'{entry.name}/{scoped.name}', scoped.relative_to(dist).as_posix())
+                    )
         else:
             packages.append((entry.name, entry.relative_to(dist).as_posix()))
     return packages
@@ -39,9 +41,14 @@ def extension_components(dist: Path) -> list[dict[str, Any]]:
         publisher = package.get('publisher')
         name = package.get('name')
         version = package.get('version')
-        require(isinstance(publisher, str) and bool(publisher), f'extension publisher missing: {package_json}')
+        require(
+            isinstance(publisher, str) and bool(publisher),
+            f'extension publisher missing: {package_json}',
+        )
         require(isinstance(name, str) and bool(name), f'extension name missing: {package_json}')
-        require(isinstance(version, str) and bool(version), f'extension version missing: {package_json}')
+        require(
+            isinstance(version, str) and bool(version), f'extension version missing: {package_json}'
+        )
         extension_id = f'{publisher}.{name}'
         require(extension_id not in seen, f'duplicate extension id in artifact: {extension_id}')
         seen.add(extension_id)
@@ -121,16 +128,20 @@ def generate_runtime_metadata(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Capture runtime component metadata for the built artifact')
+    parser = argparse.ArgumentParser(
+        description='Capture runtime component metadata for the built artifact'
+    )
     parser.add_argument('--dist', type=Path, default=DIST)
     parser.add_argument('--lock', type=Path, default=WORK / 'vscode/package-lock.json')
     parser.add_argument('--output', type=Path, default=WORK / 'runtime-components.json')
     args = parser.parse_args()
 
-    metadata = generate_runtime_metadata(args.dist.resolve(), args.lock.resolve(), args.output.resolve())
+    metadata = generate_runtime_metadata(
+        args.dist.resolve(), args.lock.resolve(), args.output.resolve()
+    )
     print(
-        f"runtime metadata: {len(metadata['npm'])} npm package(s), "
-        f"{len(metadata['extensions'])} extension(s)"
+        f'runtime metadata: {len(metadata["npm"])} npm package(s), '
+        f'{len(metadata["extensions"])} extension(s)'
     )
 
 
@@ -138,4 +149,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

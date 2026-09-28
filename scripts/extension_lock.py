@@ -26,7 +26,10 @@ def _require_string(value: Any, field: str) -> str:
 def load_extension_lock(path: Path) -> dict[str, Any]:
     data = load_json(path)
     require(isinstance(data, dict), 'extension lock must be a JSON object')
-    require(data.get('schemaVersion') == SUPPORTED_SCHEMA_VERSION, 'unsupported extension lock schemaVersion')
+    require(
+        data.get('schemaVersion') == SUPPORTED_SCHEMA_VERSION,
+        'unsupported extension lock schemaVersion',
+    )
     extensions = data.get('extensions')
     require(isinstance(extensions, list), 'extension lock extensions must be an array')
 
@@ -66,13 +69,15 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
         if license_value is not None:
             _require_string(license_value, f'{prefix}.license')
 
-        normalized.append({
-            'id': extension_id,
-            'version': version,
-            'sha256': digest,
-            'license': license_value,
-            'source': normalized_source,
-        })
+        normalized.append(
+            {
+                'id': extension_id,
+                'version': version,
+                'sha256': digest,
+                'license': license_value,
+                'source': normalized_source,
+            }
+        )
 
     return {'schemaVersion': SUPPORTED_SCHEMA_VERSION, 'extensions': normalized}
 
@@ -84,12 +89,21 @@ def load_license_policy(path: Path) -> dict[str, Any]:
     allowed = data.get('allowed')
     denied = data.get('denied', [])
     overrides = data.get('overrides', {})
-    require(isinstance(allowed, list) and all(isinstance(item, str) for item in allowed), 'license policy allowed must be a string array')
-    require(isinstance(denied, list) and all(isinstance(item, str) for item in denied), 'license policy denied must be a string array')
+    require(
+        isinstance(allowed, list) and all(isinstance(item, str) for item in allowed),
+        'license policy allowed must be a string array',
+    )
+    require(
+        isinstance(denied, list) and all(isinstance(item, str) for item in denied),
+        'license policy denied must be a string array',
+    )
     require(isinstance(overrides, dict), 'license policy overrides must be an object')
     for extension_id, licenses in overrides.items():
         require(isinstance(extension_id, str), 'license policy override id must be a string')
-        require(isinstance(licenses, list) and all(isinstance(item, str) for item in licenses), f'license policy override must be a string array: {extension_id}')
+        require(
+            isinstance(licenses, list) and all(isinstance(item, str) for item in licenses),
+            f'license policy override must be a string array: {extension_id}',
+        )
     return {
         'schemaVersion': 1,
         'requireDeclared': bool(data.get('requireDeclared', True)),
@@ -112,9 +126,14 @@ def enforce_license_policy(
     if effective is None:
         require(not policy['requireDeclared'], f'extension license is required: {entry["id"]}')
         return None
-    require(effective not in policy['denied'], f'extension license is denied for {entry["id"]}: {effective}')
+    require(
+        effective not in policy['denied'],
+        f'extension license is denied for {entry["id"]}: {effective}',
+    )
     allowed = policy['overrides'].get(entry['id'], policy['allowed'])
-    require(effective in allowed, f'extension license is not allowed for {entry["id"]}: {effective}')
+    require(
+        effective in allowed, f'extension license is not allowed for {entry["id"]}: {effective}'
+    )
     return effective
 
 
@@ -192,50 +211,42 @@ def download_open_vsx(
             temporary_path.unlink(missing_ok=True)
             raise
 
-    try:
-        require(
-            sha256_file(temporary_path) == entry['sha256'],
-            f'Open VSX SHA-256 mismatch: {entry["id"]}',
-        )
-        temporary_path.replace(target)
-    except Exception:
+    actual = sha256_file(temporary_path)
+    if actual != entry['sha256']:
         temporary_path.unlink(missing_ok=True)
-        raise
+        raise BuildError(f'VSIX SHA-256 mismatch: {entry["id"]}')
+    temporary_path.replace(target)
     return target
 
 
 def materialize_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> Path:
-    source = entry['source']
-    if source['type'] == 'local-vsix':
-        source_path = Path(source['path'])
+    source_type = entry['source']['type']
+    if source_type == 'local-vsix':
+        source_path = Path(entry['source']['path'])
         if not source_path.is_absolute():
             source_path = root / source_path
-        return source_path.resolve()
-    if source['type'] == 'open-vsx':
+        source_path = source_path.resolve()
+        require(source_path.is_file(), f'locked VSIX does not exist: {source_path}')
+        require(source_path.suffix.lower() == '.vsix', f'local-vsix source must end in .vsix: {source_path}')
+        require(sha256_file(source_path) == entry['sha256'], f'VSIX SHA-256 mismatch: {entry["id"]}')
+        return source_path
+    if source_type == 'open-vsx':
         return download_open_vsx(entry)
-    raise BuildError(f'unsupported extension source type: {source["type"]}')
+    raise BuildError(f'unsupported extension source type: {source_type}')
 
 
-def validate_vsix(entry: dict[str, Any], vsix: Path) -> dict[str, Any]:
-    require(vsix.is_file(), f'locked VSIX does not exist: {vsix}')
-    require(vsix.suffix.lower() == '.vsix', f'extension source must end in .vsix: {vsix}')
-    require(sha256_file(vsix) == entry['sha256'], f'VSIX SHA-256 mismatch: {entry["id"]}')
-
-    manifest, actual_id = _load_vsix_manifest(vsix)
+def validate_vsix(entry: dict[str, Any], source_path: Path) -> dict[str, Any]:
+    manifest, actual_id = _load_vsix_manifest(source_path)
     require(actual_id == entry['id'], f'VSIX id mismatch: locked {entry["id"]}, package contains {actual_id}')
     require(manifest.get('version') == entry['version'], f'VSIX version mismatch for {entry["id"]}')
-    browser = _require_string(manifest.get('browser'), f'extension is not browser-compatible: {entry["id"]}')
+    browser = manifest.get('browser')
+    require(isinstance(browser, str) and browser.strip() != '', f'extension is not browser-compatible: {entry["id"]}')
 
     browser_path = PurePosixPath('extension') / PurePosixPath(browser.lstrip('./'))
-    with zipfile.ZipFile(vsix) as archive:
+    with zipfile.ZipFile(source_path) as archive:
         names = set(archive.namelist())
         require(browser_path.as_posix() in names, f'VSIX browser entrypoint missing for {entry["id"]}: {browser}')
     return manifest
-
-
-def validate_local_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> tuple[Path, dict[str, Any]]:
-    vsix = materialize_vsix(entry, root=root)
-    return vsix, validate_vsix(entry, vsix)
 
 
 def install_locked_extensions(
@@ -279,13 +290,15 @@ def install_locked_extensions(
             require(extracted.is_dir(), f'VSIX extension directory missing: {vsix}')
             shutil.copytree(extracted, destination, symlinks=False)
 
-        installed.append({
-            'id': entry['id'],
-            'version': entry['version'],
-            'sha256': entry['sha256'],
-            'license': effective_license,
-            'source': entry['source'],
-        })
+        installed.append(
+            {
+                'id': entry['id'],
+                'version': entry['version'],
+                'sha256': entry['sha256'],
+                'license': effective_license,
+                'source': entry['source'],
+            }
+        )
         existing_ids.add(entry['id'])
 
     return installed
@@ -294,7 +307,9 @@ def install_locked_extensions(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('--lock', type=Path, default=ROOT / 'extensions/extensions.lock.json')
-    parser.add_argument('--license-policy', type=Path, default=ROOT / 'extensions/license-policy.json')
+    parser.add_argument(
+        '--license-policy', type=Path, default=ROOT / 'extensions/license-policy.json'
+    )
     parser.add_argument('--dist', type=Path)
     args = parser.parse_args()
     lock = load_extension_lock(args.lock)
@@ -318,4 +333,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None

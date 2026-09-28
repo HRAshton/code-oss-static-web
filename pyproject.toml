@@ -13,6 +13,9 @@ extend-exclude = [".work", "artifacts", "dist", "playwright-report", "test-resul
 select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/test_tooling.py" = ["E402"] # imports follow sys.path bootstrap for scripts/
+
 [tool.ruff.format]
 quote-style = "single"
 indent-style = "space"

@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, shutil, subprocess
+
+import argparse
+import shutil
+import subprocess
+
 from common import ROOT, WORK, BuildError, load_json, require, run
+
 
 def head(path):
     return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=path, text=True).strip()
+
 
 def main():
     ap = argparse.ArgumentParser()
@@ -21,11 +27,12 @@ def main():
         run(['git', 'fetch', '--depth=1', 'origin', lock['commit']], cwd=dest)
         run(['git', 'checkout', '--detach', 'FETCH_HEAD'], cwd=dest)
     actual = head(dest)
-    require(actual == lock['commit'], f"upstream HEAD mismatch: {actual} != {lock['commit']}")
-    print(f"verified upstream {lock['tag']} @ {lock['commit']}")
+    require(actual == lock['commit'], f'upstream HEAD mismatch: {actual} != {lock["commit"]}')
+    print(f'verified upstream {lock["tag"]} @ {lock["commit"]}')
+
 
 if __name__ == '__main__':
     try:
         main()
     except BuildError as e:
-        raise SystemExit(str(e))
+        raise SystemExit(str(e)) from None

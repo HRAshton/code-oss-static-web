@@ -13,10 +13,20 @@ import tarfile
 import zipfile
 from pathlib import Path
 
-from common import ARTIFACTS, DIST, ROOT, WORK, BuildError, load_json, require, sha256_file, write_json
+import generate_license_inventory
 import generate_runtime_metadata as runtime_metadata_generator
 import generate_sbom
-import generate_license_inventory
+from common import (
+    ARTIFACTS,
+    DIST,
+    ROOT,
+    WORK,
+    BuildError,
+    load_json,
+    require,
+    sha256_file,
+    write_json,
+)
 
 PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
 PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
@@ -62,7 +72,7 @@ def build_tar(src: Path, out: Path, epoch: int):
 def build_zip(src: Path, out: Path, epoch: int):
     timestamp = datetime.datetime.fromtimestamp(
         max(epoch, 315532800),
-        datetime.timezone.utc,
+        datetime.UTC,
     )
     stamp = (
         timestamp.year,
@@ -98,11 +108,15 @@ def resolve_project_commit() -> str:
         return github_sha
 
     try:
-        project_commit = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'],
-            cwd=ROOT,
-            text=True,
-        ).strip().lower()
+        project_commit = (
+            subprocess.check_output(
+                ['git', 'rev-parse', 'HEAD'],
+                cwd=ROOT,
+                text=True,
+            )
+            .strip()
+            .lower()
+        )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise BuildError('unable to resolve project commit') from exc
 
@@ -204,7 +218,7 @@ def main():
         if path.is_file():
             path.unlink()
 
-    version = f"{lock['tag']}-web.0"
+    version = f'{lock["tag"]}-web.0'
     project_commit = resolve_project_commit()
     runtime_metadata_path = WORK / 'runtime-components.json'
     if not runtime_metadata_path.is_file():
@@ -292,9 +306,7 @@ def main():
     )
     lines = []
     for path in sorted(
-        item
-        for item in ARTIFACTS.iterdir()
-        if item.is_file() and item.name != 'SHA256SUMS'
+        item for item in ARTIFACTS.iterdir() if item.is_file() and item.name != 'SHA256SUMS'
     ):
         lines.append(f'{sha256_file(path)}  {path.name}')
     (ARTIFACTS / 'SHA256SUMS').write_text(
@@ -308,4 +320,4 @@ if __name__ == '__main__':
     try:
         main()
     except BuildError as exc:
-        raise SystemExit(str(exc))
+        raise SystemExit(str(exc)) from None
