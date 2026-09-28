@@ -466,6 +466,7 @@ jobs:
               prefix="refs/tags/v${version}-web."
               max_revision=-1
               found_zero=0
+              latest_tag=''
               while IFS= read -r ref; do
                 suffix="${ref#"$prefix"}"
                 [[ "$suffix" =~ ^(0|[1-9][0-9]*)$ ]] || continue
@@ -475,6 +476,7 @@ jobs:
                 fi
                 if (( revision > max_revision )); then
                   max_revision="$revision"
+                  latest_tag="${ref#refs/tags/}"
                 fi
               done < <(
                 gh api --paginate                   "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v${version}-web."                   --jq '.[].ref'
@@ -484,6 +486,13 @@ jobs:
                 echo "Cannot create a patch release before v${version}-web.0 exists." >&2
                 exit 1
               fi
+
+              latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$latest_tag" --jq '.sha')"
+              if [[ "$latest_sha" == "$GITHUB_SHA" ]]; then
+                echo "$latest_tag already points to this qualification commit; retry that immutable release instead." >&2
+                exit 1
+              fi
+
               tag="v${version}-web.$((max_revision + 1))"
               ;;
             *)

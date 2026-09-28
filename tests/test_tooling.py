@@ -79,6 +79,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('upstream)', workflow)
         self.assertIn('patch)', workflow)
         self.assertIn('matching-refs/tags/v${version}-web.', workflow)
+        self.assertIn('already points to this qualification commit', workflow)
         self.assertIn('name: release-qualification', workflow)
         self.assertIn('releaseMode: $releaseMode', workflow)
         self.assertIn('gh workflow run release.yml', workflow)
