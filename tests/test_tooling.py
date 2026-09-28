@@ -457,6 +457,18 @@ class ToolingTests(unittest.TestCase):
                         f'{workflow}:{line_number} must pin an immutable action commit',
                     )
 
+    def test_canonical_distribution_artifacts_include_hidden_files(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertIn(
+            'name: static-dist\\n          path: dist/\\n          include-hidden-files: true',
+            qualification,
+        )
+        self.assertIn(
+            'name: release-static-dist\\n          path: dist/\\n          include-hidden-files: true',
+            release,
+        )
+
     def test_qualification_workflow_runs_browser_and_extension_suites(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
         self.assertIn('actions/cache@caa296126883cff596d87d8935842f9db880ef25', workflow)
