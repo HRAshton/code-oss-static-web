@@ -396,6 +396,13 @@ class ToolingTests(unittest.TestCase):
         exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
         self.assertIn("Path('@playwright/test')", exporter)
 
+    def test_browser_matrix_reuses_qualified_artifacts(self):
+        workflow = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+        self.assertIn("workflows: ['Full build qualification']", workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('run-id: ${{ env.SOURCE_RUN_ID }}', workflow)
+        self.assertNotIn('./build.sh', workflow)
+
     def test_release_workflow_uses_clean_qualified_artifact(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()
         self.assertIn('./build.sh --clean-upstream', workflow)

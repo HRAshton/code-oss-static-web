@@ -1,0 +1,100 @@
+name: Browser matrix qualification
+
+on:
+  workflow_run:
+    workflows: ['Full build qualification']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  browsers:
+    if: github.event.workflow_run.conclusion == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [firefox, webkit]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    env:
+      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.18.0'
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Download canonical static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: dist
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Download locked Playwright runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: playwright-runtime
+          path: .work/playwright-runtime
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Install locked browser runtime
+        run: python3 scripts/install_playwright_browser.py --with-deps "${{ matrix.browser }}"
+
+      - name: Browser boot gate
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "${{ matrix.browser }}"
+          --dist dist
+          --grep "packaged workbench boots from static hosting"
+          --grep-invert @extension
+          --retries=0
+
+      - name: Browser qualification
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "${{ matrix.browser }}"
+          --dist dist
+          --grep-invert @extension
+
+      - name: Prepare extension-host qualification copy
+        run: |
+          rm -rf .work/qualification-dist
+          cp -a dist .work/qualification-dist
+          python3 scripts/add_test_extension.py --dist .work/qualification-dist
+
+      - name: Browser extension-host qualification
+        run: >-
+          python3 scripts/run_e2e.py
+          --project "${{ matrix.browser }}"
+          --dist .work/qualification-dist
+          --grep @extension
+
+      - name: Upload matrix diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: browser-matrix-${{ matrix.browser }}-${{ env.SOURCE_SHA }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 7

@@ -14,6 +14,7 @@ on:
       - 'tests/e2e/**'
       - 'tests/fixtures/**'
       - '.github/workflows/qualify.yml'
+      - '.github/workflows/browser-matrix.yml'
   workflow_dispatch:
     inputs:
       browser:
