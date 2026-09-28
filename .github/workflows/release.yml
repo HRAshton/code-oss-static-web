@@ -12,7 +12,28 @@ concurrency:
 permissions: read-all
 
 jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Verify release commit is on protected default branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          compare_status="$(
+            gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch" --jq '.status'
+          )"
+          if [[ "$compare_status" != 'ahead' && "$compare_status" != 'identical' ]]; then
+            echo "release commit $GITHUB_SHA is not contained in protected default branch $default_branch" >&2
+            exit 1
+          fi
+
   build:
+    needs: authorize
     runs-on: ubuntu-latest
     permissions:
       contents: read

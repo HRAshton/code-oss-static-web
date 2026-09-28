@@ -191,6 +191,28 @@ def check_publication_job_permissions() -> None:
 
 def check_release_integrity_policy() -> None:
     workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+    jobs = dict(workflow_job_blocks(workflow))
+    authorize = jobs.get('authorize')
+    require(authorize is not None, 'release workflow must have an authorization job')
+    assert authorize is not None
+    for required in (
+        'name: Verify release commit is on protected default branch',
+        'repos/$GITHUB_REPOSITORY',
+        "--jq '.default_branch'",
+        'repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch',
+        '"$compare_status" != \'ahead\'',
+        '"$compare_status" != \'identical\'',
+    ):
+        require(required in authorize, f'release authorization missing guard: {required}')
+
+    build = jobs.get('build')
+    require(build is not None, 'release workflow must have a build job')
+    assert build is not None
+    require(
+        re.search(r'^    needs:\s*authorize\s*$', build, re.MULTILINE) is not None,
+        'release build must depend on release authorization',
+    )
+
     require(
         workflow.count('name: Verify immutable release ref') == 3,
         'release workflow must verify the immutable tag before every publication path',

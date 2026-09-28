@@ -38,6 +38,11 @@ their normalized distributions before publishing immutable release assets.
 
 Release tags matching `v*-web.*` must be protected by the repository ruleset represented in
 `.github/rulesets/immutable-release-tags.json`: active tag targeting, update restriction, deletion
-restriction, and no bypass actors. Every GitHub Release, Pages, and OCI publication path checks that
-this ruleset is active and that `GITHUB_REF_NAME` still resolves to the workflow's immutable
+restriction, and no bypass actors. Release authorization also resolves the repository's default
+branch and requires the tagged `GITHUB_SHA` to be an ancestor of, or identical to, that branch
+before any release build can proceed. This prevents an otherwise-authorized repository writer from
+turning an arbitrary off-branch commit into a release merely by creating a matching tag.
+
+Every GitHub Release, Pages, and OCI publication path additionally checks that the release-tag
+ruleset is active and that `GITHUB_REF_NAME` still resolves to the workflow's immutable
 `GITHUB_SHA` immediately before publication. Publication fails closed if either invariant is false.
