@@ -25,19 +25,20 @@ def _require_string(value: Any, field: str) -> str:
 
 def load_extension_lock(path: Path) -> dict[str, Any]:
     data = load_json(path)
-    require(isinstance(data, dict), 'extension lock must be a JSON object')
     require(
         data.get('schemaVersion') == SUPPORTED_SCHEMA_VERSION,
         'unsupported extension lock schemaVersion',
     )
-    extensions = data.get('extensions')
-    require(isinstance(extensions, list), 'extension lock extensions must be an array')
+    extensions_value = data.get('extensions')
+    require(isinstance(extensions_value, list), 'extension lock extensions must be an array')
+    extensions = cast(list[object], extensions_value)
 
     ids: set[str] = set()
     normalized: list[dict[str, Any]] = []
-    for index, raw in enumerate(extensions):
+    for index, raw_value in enumerate(extensions):
         prefix = f'extensions[{index}]'
-        require(isinstance(raw, dict), f'{prefix} must be an object')
+        require(isinstance(raw_value, dict), f'{prefix} must be an object')
+        raw = cast(dict[str, Any], raw_value)
         extension_id = _require_string(raw.get('id'), f'{prefix}.id')
         version = _require_string(raw.get('version'), f'{prefix}.version')
         require(version != 'latest', f'{prefix}.version must pin an exact version')
@@ -49,8 +50,9 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
         require(extension_id not in ids, f'duplicate extension id in lock: {extension_id}')
         ids.add(extension_id)
 
-        source = raw.get('source')
-        require(isinstance(source, dict), f'{prefix}.source must be an object')
+        source_value = raw.get('source')
+        require(isinstance(source_value, dict), f'{prefix}.source must be an object')
+        source = cast(dict[str, Any], source_value)
         source_type = _require_string(source.get('type'), f'{prefix}.source.type')
         if source_type == 'local-vsix':
             normalized_source = {
@@ -84,29 +86,32 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
 
 def load_license_policy(path: Path) -> dict[str, Any]:
     data = load_json(path)
-    require(isinstance(data, dict), 'extension license policy must be a JSON object')
     require(data.get('schemaVersion') == 1, 'unsupported extension license policy schemaVersion')
     allowed_value = data.get('allowed')
     denied_value = data.get('denied', [])
     overrides_value = data.get('overrides', {})
     require(
-        isinstance(allowed_value, list) and all(isinstance(item, str) for item in allowed_value),
+        isinstance(allowed_value, list)
+        and all(isinstance(item, str) for item in cast(list[object], allowed_value)),
         'license policy allowed must be a string array',
     )
     require(
-        isinstance(denied_value, list) and all(isinstance(item, str) for item in denied_value),
+        isinstance(denied_value, list)
+        and all(isinstance(item, str) for item in cast(list[object], denied_value)),
         'license policy denied must be a string array',
     )
     require(isinstance(overrides_value, dict), 'license policy overrides must be an object')
     allowed = cast(list[str], allowed_value)
     denied = cast(list[str], denied_value)
-    overrides = cast(dict[str, list[str]], overrides_value)
-    for extension_id, licenses in overrides.items():
-        require(isinstance(extension_id, str), 'license policy override id must be a string')
+    overrides_raw = cast(dict[str, object], overrides_value)
+    overrides: dict[str, list[str]] = {}
+    for extension_id, licenses_value in overrides_raw.items():
         require(
-            isinstance(licenses, list) and all(isinstance(item, str) for item in licenses),
+            isinstance(licenses_value, list)
+            and all(isinstance(item, str) for item in cast(list[object], licenses_value)),
             f'license policy override must be a string array: {extension_id}',
         )
+        overrides[extension_id] = cast(list[str], licenses_value)
     return {
         'schemaVersion': 1,
         'requireDeclared': bool(data.get('requireDeclared', True)),
@@ -170,13 +175,14 @@ def _load_vsix_manifest(vsix: Path) -> tuple[dict[str, Any], str]:
             manifest_name = 'extension/package.json'
             require(manifest_name in archive.namelist(), f'VSIX is missing {manifest_name}: {vsix}')
             try:
-                manifest = json.loads(archive.read(manifest_name).decode('utf-8'))
+                manifest_value: object = json.loads(archive.read(manifest_name).decode('utf-8'))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise BuildError(f'invalid VSIX package.json: {vsix}: {exc}') from exc
     except zipfile.BadZipFile as exc:
         raise BuildError(f'invalid VSIX zip archive: {vsix}') from exc
 
-    require(isinstance(manifest, dict), f'VSIX package.json must be an object: {vsix}')
+    require(isinstance(manifest_value, dict), f'VSIX package.json must be an object: {vsix}')
+    manifest = cast(dict[str, Any], manifest_value)
     publisher = _require_string(manifest.get('publisher'), f'{vsix}: publisher')
     name = _require_string(manifest.get('name'), f'{vsix}: name')
     return manifest, f'{publisher}.{name}'
@@ -280,9 +286,12 @@ def install_locked_extensions(
     existing_ids: set[str] = set()
     for package_json in extroot.glob('*/package.json'):
         try:
-            manifest = json.loads(package_json.read_text(encoding='utf-8'))
+            manifest_value: object = json.loads(package_json.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError):
             continue
+        if not isinstance(manifest_value, dict):
+            continue
+        manifest = cast(dict[str, Any], manifest_value)
         publisher = manifest.get('publisher')
         name = manifest.get('name')
         if isinstance(publisher, str) and isinstance(name, str):

@@ -25,6 +25,6 @@ line-ending = "lf"
 include = ["scripts"]
 exclude = [".work", "artifacts", "dist"]
 pythonVersion = "3.11"
-typeCheckingMode = "basic"
+typeCheckingMode = "strict"
 reportMissingTypeStubs = false
 reportMissingImports = "error"

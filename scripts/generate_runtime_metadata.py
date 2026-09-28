@@ -37,7 +37,6 @@ def extension_components(dist: Path) -> list[dict[str, Any]]:
     seen: set[str] = set()
     for package_json in sorted(extensions_root.glob('*/package.json')):
         package = load_json(package_json)
-        require(isinstance(package, dict), f'invalid extension manifest: {package_json}')
         publisher = package.get('publisher')
         name = package.get('name')
         version = package.get('version')

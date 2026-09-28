@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from common import ROOT, BuildError, load_json, require
 from extension_lock import load_extension_lock, load_license_policy
@@ -95,7 +95,8 @@ def validate_product_transform(path: Path) -> None:
     set_values = require_object(data['set'], 'product transform set')
     remove_values = data['remove']
     require(
-        isinstance(remove_values, list) and all(isinstance(item, str) for item in remove_values),
+        isinstance(remove_values, list)
+        and all(isinstance(item, str) for item in cast(list[object], remove_values)),
         'product transform remove must be a string array',
     )
     require(

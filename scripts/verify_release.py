@@ -4,11 +4,36 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
+from typing import Any, cast
 
 from common import BuildError, load_json, require, sha256_file
 
 COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 DIGEST_RE = re.compile(r'^[0-9a-f]{64}$')
+
+
+def _object(value: Any, message: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise BuildError(message)
+    return cast(dict[str, Any], value)
+
+
+def _array(value: Any, message: str) -> list[Any]:
+    if not isinstance(value, list):
+        raise BuildError(message)
+    return cast(list[Any], value)
+
+
+def _string(value: Any, message: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise BuildError(message)
+    return value
+
+
+def _integer(value: Any, message: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise BuildError(message)
+    return value
 
 
 def verify_checksums(directory: Path) -> int:
@@ -35,41 +60,46 @@ def verify_artifact_manifest(directory: Path) -> None:
     require(manifest_path.is_file(), f'missing {manifest_path}')
     manifest = load_json(manifest_path)
     require(manifest.get('schemaVersion') == 1, 'unsupported artifact manifest schema')
-    require(isinstance(manifest.get('version'), str), 'artifact manifest version missing')
+    _string(manifest.get('version'), 'artifact manifest version missing')
 
-    project = manifest.get('project')
-    require(isinstance(project, dict), 'artifact manifest project missing')
-    project_commit = project.get('commit')
+    project = _object(manifest.get('project'), 'artifact manifest project missing')
+    project_commit = _string(project.get('commit'), 'artifact manifest project commit invalid')
     require(
-        isinstance(project_commit, str) and COMMIT_RE.fullmatch(project_commit) is not None,
+        COMMIT_RE.fullmatch(project_commit) is not None,
         'artifact manifest project commit invalid',
     )
 
-    upstream = manifest.get('upstream')
-    require(isinstance(upstream, dict), 'artifact manifest upstream missing')
-    upstream_commit = upstream.get('commit')
+    upstream = _object(manifest.get('upstream'), 'artifact manifest upstream missing')
+    upstream_commit = _string(upstream.get('commit'), 'artifact manifest upstream commit invalid')
     require(
-        isinstance(upstream_commit, str) and COMMIT_RE.fullmatch(upstream_commit) is not None,
+        COMMIT_RE.fullmatch(upstream_commit) is not None,
         'artifact manifest upstream commit invalid',
     )
 
-    distribution = manifest.get('distribution')
-    require(isinstance(distribution, dict), 'artifact manifest distribution missing')
-    tree_digest = distribution.get('treeSha256')
-    require(
-        isinstance(tree_digest, str) and DIGEST_RE.fullmatch(tree_digest) is not None,
+    distribution = _object(manifest.get('distribution'), 'artifact manifest distribution missing')
+    tree_digest = _string(
+        distribution.get('treeSha256'),
         'artifact manifest distribution digest invalid',
     )
     require(
-        isinstance(distribution.get('fileCount'), int) and distribution['fileCount'] > 0,
+        DIGEST_RE.fullmatch(tree_digest) is not None,
+        'artifact manifest distribution digest invalid',
+    )
+    file_count = _integer(
+        distribution.get('fileCount'),
         'artifact manifest distribution file count invalid',
     )
+    require(file_count > 0, 'artifact manifest distribution file count invalid')
 
-    artifacts = manifest.get('artifacts')
-    require(
-        isinstance(artifacts, list) and len(artifacts) > 0, 'artifact manifest artifacts missing'
-    )
-    artifact_names = {artifact.get('name') for artifact in artifacts if isinstance(artifact, dict)}
+    artifacts = _array(manifest.get('artifacts'), 'artifact manifest artifacts missing')
+    require(len(artifacts) > 0, 'artifact manifest artifacts missing')
+    artifact_objects = [
+        _object(artifact, 'artifact manifest artifact invalid') for artifact in artifacts
+    ]
+    artifact_names = {
+        _string(artifact.get('name'), 'artifact manifest artifact name missing')
+        for artifact in artifact_objects
+    }
     require('sbom.cdx.json' in artifact_names, 'artifact manifest must include sbom.cdx.json')
     require(
         'license-inventory.json' in artifact_names,
@@ -82,20 +112,21 @@ def verify_artifact_manifest(directory: Path) -> None:
         'ThirdPartyNotices.Code-OSS.txt' in artifact_names,
         'artifact manifest must include Code-OSS notices',
     )
-    for artifact in artifacts:
-        require(isinstance(artifact, dict), 'artifact manifest artifact invalid')
-        name = artifact.get('name')
-        expected_digest = artifact.get('sha256')
-        expected_size = artifact.get('size')
-        require(isinstance(name, str) and bool(name), 'artifact manifest artifact name missing')
-        require(
-            isinstance(expected_digest, str) and DIGEST_RE.fullmatch(expected_digest) is not None,
+    for artifact in artifact_objects:
+        name = _string(artifact.get('name'), 'artifact manifest artifact name missing')
+        expected_digest = _string(
+            artifact.get('sha256'),
             f'artifact manifest digest invalid: {name}',
         )
-        require(
-            isinstance(expected_size, int) and expected_size >= 0,
+        expected_size = _integer(
+            artifact.get('size'),
             f'artifact manifest size invalid: {name}',
         )
+        require(
+            DIGEST_RE.fullmatch(expected_digest) is not None,
+            f'artifact manifest digest invalid: {name}',
+        )
+        require(expected_size >= 0, f'artifact manifest size invalid: {name}')
         path = directory / name
         require(path.is_file(), f'artifact manifest file missing: {name}')
         require(sha256_file(path) == expected_digest, f'artifact digest mismatch: {name}')
@@ -109,46 +140,37 @@ def verify_sbom(directory: Path) -> None:
     require(sbom.get('bomFormat') == 'CycloneDX', 'SBOM format must be CycloneDX')
     require(sbom.get('specVersion') == '1.7', 'SBOM must use CycloneDX 1.7')
     require(sbom.get('version') == 1, 'SBOM document version must be 1')
-    serial = sbom.get('serialNumber')
-    require(
-        isinstance(serial, str) and serial.startswith('urn:uuid:'),
-        'SBOM serialNumber must be a UUID URN',
-    )
+    serial = _string(sbom.get('serialNumber'), 'SBOM serialNumber must be a UUID URN')
+    require(serial.startswith('urn:uuid:'), 'SBOM serialNumber must be a UUID URN')
 
-    metadata = sbom.get('metadata')
-    require(isinstance(metadata, dict), 'SBOM metadata missing')
-    root_component = metadata.get('component')
-    require(isinstance(root_component, dict), 'SBOM root component missing')
-    root_ref = root_component.get('bom-ref')
-    require(isinstance(root_ref, str) and bool(root_ref), 'SBOM root bom-ref missing')
+    metadata = _object(sbom.get('metadata'), 'SBOM metadata missing')
+    root_component = _object(metadata.get('component'), 'SBOM root component missing')
+    root_ref = _string(root_component.get('bom-ref'), 'SBOM root bom-ref missing')
 
-    components = sbom.get('components')
-    require(isinstance(components, list) and len(components) > 0, 'SBOM components missing')
-    component_refs = [
-        component.get('bom-ref') for component in components if isinstance(component, dict)
-    ]
-    require(
-        all(isinstance(ref, str) and bool(ref) for ref in component_refs),
-        'SBOM component bom-ref missing',
-    )
+    components = _array(sbom.get('components'), 'SBOM components missing')
+    require(len(components) > 0, 'SBOM components missing')
+    component_refs: list[str] = []
+    for component_value in components:
+        component = _object(component_value, 'SBOM component invalid')
+        component_refs.append(_string(component.get('bom-ref'), 'SBOM component bom-ref missing'))
     require(
         len(component_refs) == len(set(component_refs)), 'SBOM component bom-ref must be unique'
     )
 
     known_refs = set(component_refs)
     known_refs.add(root_ref)
-    dependencies = sbom.get('dependencies')
-    require(isinstance(dependencies, list), 'SBOM dependencies missing')
-    for dependency in dependencies:
-        require(isinstance(dependency, dict), 'SBOM dependency entry invalid')
-        ref = dependency.get('ref')
-        require(isinstance(ref, str) and ref in known_refs, f'SBOM dependency ref unknown: {ref}')
-        depends_on = dependency.get('dependsOn', [])
-        require(isinstance(depends_on, list), f'SBOM dependsOn invalid: {ref}')
-        require(
-            all(isinstance(item, str) and item in known_refs for item in depends_on),
-            f'SBOM dependsOn contains unknown refs: {ref}',
-        )
+    dependencies = _array(sbom.get('dependencies'), 'SBOM dependencies missing')
+    for dependency_value in dependencies:
+        dependency = _object(dependency_value, 'SBOM dependency entry invalid')
+        ref = _string(dependency.get('ref'), 'SBOM dependency ref missing')
+        require(ref in known_refs, f'SBOM dependency ref unknown: {ref}')
+        depends_on = _array(dependency.get('dependsOn', []), f'SBOM dependsOn invalid: {ref}')
+        for item in depends_on:
+            dependency_ref = _string(item, f'SBOM dependsOn contains invalid ref: {ref}')
+            require(
+                dependency_ref in known_refs,
+                f'SBOM dependsOn contains unknown refs: {ref}',
+            )
 
 
 def verify_license_inventory(directory: Path) -> None:
@@ -157,19 +179,15 @@ def verify_license_inventory(directory: Path) -> None:
     inventory = load_json(inventory_path)
     require(inventory.get('schemaVersion') == 1, 'license inventory schema must be 1')
 
-    components = inventory.get('components')
-    require(
-        isinstance(components, list) and len(components) > 0, 'license inventory components missing'
-    )
+    components = _array(inventory.get('components'), 'license inventory components missing')
+    require(len(components) > 0, 'license inventory components missing')
     refs: list[str] = []
     no_assertion = 0
-    for component in components:
-        require(isinstance(component, dict), 'license inventory component invalid')
-        ref = component.get('bomRef')
-        license_name = component.get('declaredLicense')
-        status = component.get('licenseStatus')
-        require(isinstance(ref, str) and bool(ref), 'license inventory bomRef missing')
-        require(isinstance(license_name, str) and bool(license_name), f'license missing: {ref}')
+    for component_value in components:
+        component = _object(component_value, 'license inventory component invalid')
+        ref = _string(component.get('bomRef'), 'license inventory bomRef missing')
+        license_name = _string(component.get('declaredLicense'), f'license missing: {ref}')
+        status = _string(component.get('licenseStatus'), f'license status invalid: {ref}')
         require(status in ('declared', 'no-assertion'), f'license status invalid: {ref}')
         require(
             (license_name == 'NOASSERTION') == (status == 'no-assertion'),
@@ -180,8 +198,7 @@ def verify_license_inventory(directory: Path) -> None:
             no_assertion += 1
 
     require(len(refs) == len(set(refs)), 'license inventory bomRef must be unique')
-    summary = inventory.get('summary')
-    require(isinstance(summary, dict), 'license inventory summary missing')
+    summary = _object(inventory.get('summary'), 'license inventory summary missing')
     require(summary.get('totalComponents') == len(components), 'license inventory total mismatch')
     require(
         summary.get('noAssertion') == no_assertion, 'license inventory NOASSERTION count mismatch'
@@ -202,31 +219,30 @@ def verify_license_inventory(directory: Path) -> None:
         )
 
     sbom = load_json(directory / 'sbom.cdx.json')
-    metadata = sbom.get('metadata')
-    require(isinstance(metadata, dict), 'SBOM metadata missing for license inventory comparison')
-    root = metadata.get('component')
-    require(isinstance(root, dict), 'SBOM root component missing for license inventory comparison')
-    root_ref = root.get('bom-ref')
-    require(isinstance(root_ref, str) and bool(root_ref), 'SBOM root bom-ref missing')
-    sbom_components = sbom.get('components')
-    require(
-        isinstance(sbom_components, list),
+    metadata = _object(
+        sbom.get('metadata'),
+        'SBOM metadata missing for license inventory comparison',
+    )
+    root = _object(
+        metadata.get('component'),
+        'SBOM root component missing for license inventory comparison',
+    )
+    root_ref = _string(root.get('bom-ref'), 'SBOM root bom-ref missing')
+    sbom_components = _array(
+        sbom.get('components'),
         'SBOM components missing for license inventory comparison',
     )
-    sbom_refs = {
-        component.get('bom-ref') for component in sbom_components if isinstance(component, dict)
-    }
-    require(
-        all(isinstance(ref, str) and bool(ref) for ref in sbom_refs),
-        'SBOM component bom-ref missing',
-    )
+    sbom_refs: set[str] = set()
+    for component_value in sbom_components:
+        component = _object(component_value, 'SBOM component invalid')
+        sbom_refs.add(_string(component.get('bom-ref'), 'SBOM component bom-ref missing'))
     sbom_refs.add(root_ref)
     require(
         set(refs) == sbom_refs, 'license inventory must cover every SBOM component exactly once'
     )
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument('directory', nargs='?', default='artifacts')
     args = parser.parse_args()

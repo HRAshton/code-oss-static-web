@@ -6,7 +6,7 @@ import os
 import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / '.work'
@@ -19,10 +19,10 @@ class BuildError(RuntimeError):
 
 
 def load_json(path: Path) -> dict[str, Any]:
-    value: Any = json.loads(path.read_text(encoding='utf-8'))
+    value: object = json.loads(path.read_text(encoding='utf-8'))
     if not isinstance(value, dict):
         raise BuildError(f'JSON root must be an object: {path}')
-    return value
+    return cast(dict[str, Any], value)
 
 
 def write_json(path: Path, value: Any) -> None:

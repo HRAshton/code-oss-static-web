@@ -305,7 +305,7 @@ def main() -> None:
             runtime_metadata=runtime_metadata_path,
         ),
     )
-    lines = []
+    lines: list[str] = []
     for path in sorted(
         item for item in ARTIFACTS.iterdir() if item.is_file() and item.name != 'SHA256SUMS'
     ):
