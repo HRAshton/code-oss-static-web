@@ -188,6 +188,44 @@ def check_publication_job_permissions() -> None:
             check_publication_job_block(workflow, job_name, block)
 
 
+def check_release_integrity_policy() -> None:
+    workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+    require(
+        workflow.count('name: Verify immutable release ref') == 3,
+        'release workflow must verify the immutable tag before every publication path',
+    )
+    for required in (
+        'repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME',
+        'repos/$GITHUB_REPOSITORY/rulesets',
+        "expected_pattern='refs/tags/v*-web.*'",
+        'index("update")',
+        'index("deletion")',
+        'length) == 0',
+        'tag_sha_after',
+    ):
+        require(required in workflow, f'release workflow missing integrity guard: {required}')
+
+    ruleset = load_json(ROOT / '.github/rulesets/immutable-release-tags.json')
+    require(ruleset.get('target') == 'tag', 'release-tag ruleset must target tags')
+    require(ruleset.get('enforcement') == 'active', 'release-tag ruleset must be active')
+    require(ruleset.get('bypass_actors') == [], 'release-tag ruleset must not allow bypass actors')
+
+    conditions = ruleset.get('conditions')
+    require(isinstance(conditions, dict), 'release-tag ruleset conditions must be an object')
+    ref_name = conditions.get('ref_name')
+    require(isinstance(ref_name, dict), 'release-tag ruleset ref_name condition must be an object')
+    require(
+        ref_name.get('include') == ['refs/tags/v*-web.*'],
+        'release-tag ruleset must cover refs/tags/v*-web.*',
+    )
+
+    rules = ruleset.get('rules')
+    require(isinstance(rules, list), 'release-tag ruleset rules must be an array')
+    rule_types = {rule.get('type') for rule in rules if isinstance(rule, dict)}
+    require('update' in rule_types, 'release-tag ruleset must restrict updates')
+    require('deletion' in rule_types, 'release-tag ruleset must restrict deletions')
+
+
 def main() -> None:
     check_actions()
     check_shell_scripts()
@@ -196,6 +234,7 @@ def main() -> None:
     check_build_job_permissions()
     check_attestation_job_permissions()
     check_publication_job_permissions()
+    check_release_integrity_policy()
     print('repository policy: ok')
 
 

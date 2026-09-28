@@ -33,8 +33,11 @@ gh attestation verify code-oss-static-web-1.139.1-web.0.tar.gz \
 ```
 
 Development qualification may reuse the content-addressed upstream web-build cache. Cache hits are
-an optimization, not provenance. A future publication/release workflow should perform the chosen
-release-grade clean/reproducibility gate before publishing immutable release assets.
+an optimization, not provenance. Release publication performs independent clean builds and compares
+their normalized distributions before publishing immutable release assets.
 
-Remaining release-security work includes comprehensive license-policy review, protected-environment
-publication, canonical GitHub Release/Pages/OCI publishing, and independent reproducibility checks.
+Release tags matching `v*-web.*` must be protected by the repository ruleset represented in
+`.github/rulesets/immutable-release-tags.json`: active tag targeting, update restriction, deletion
+restriction, and no bypass actors. Every GitHub Release, Pages, and OCI publication path checks that
+this ruleset is active and that `GITHUB_REF_NAME` still resolves to the workflow's immutable
+`GITHUB_SHA` immediately before publication. Publication fails closed if either invariant is false.

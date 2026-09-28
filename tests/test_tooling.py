@@ -505,6 +505,27 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e', workflow)
         self.assertIn('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8', workflow)
         self.assertIn('gh release create', workflow)
+        self.assertEqual(workflow.count('name: Verify immutable release ref'), 3)
+        self.assertIn('repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME', workflow)
+        self.assertIn("expected_pattern='refs/tags/v*-web.*'", workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/rulesets', workflow)
+        self.assertIn('index("update")', workflow)
+        self.assertIn('index("deletion")', workflow)
+        self.assertIn('tag_sha_after', workflow)
+        ruleset = json.loads(
+            (ROOT / '.github/rulesets/immutable-release-tags.json').read_text()
+        )
+        self.assertEqual(ruleset['target'], 'tag')
+        self.assertEqual(ruleset['enforcement'], 'active')
+        self.assertEqual(ruleset['bypass_actors'], [])
+        self.assertEqual(
+            ruleset['conditions']['ref_name']['include'],
+            ['refs/tags/v*-web.*'],
+        )
+        self.assertEqual(
+            {rule['type'] for rule in ruleset['rules']},
+            {'update', 'deletion'},
+        )
         dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
         self.assertIn(
             '@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile
