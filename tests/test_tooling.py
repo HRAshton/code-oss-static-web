@@ -643,8 +643,14 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
         self.assertNotIn('actions/cache@', workflow)
         self.assertNotIn('environment: release', workflow)
-        self.assertIn('actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e', workflow)
-        self.assertIn('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8', workflow)
+        self.assertRegex(
+            workflow,
+            r'actions/deploy-pages@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertRegex(
+            workflow,
+            r'docker/build-push-action@[0-9a-f]{40}\s+# v[0-9]+',
+        )
         self.assertNotIn('docker/setup-qemu-action@', workflow)
         self.assertIn(
             'image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8',
