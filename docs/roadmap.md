@@ -54,6 +54,6 @@
 - [x] expand Ruff from critical correctness rules to the configured full lint ruleset;
 - [x] make Ruff formatting a blocking CI gate;
 - [x] tighten Pyright to `strict`;
-- add schema validation for all JSON/YAML configuration;
+- [x] add JSON Schema validation for repository configuration and YAML syntax validation for workflows;
 - [x] enforce that jobs executing upstream builds have read-only permissions, no OIDC and no persisted checkout credentials;
 - [x] enforce attestation jobs as source-free, shell-free consumers of verified candidates.

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "productName", "telemetry", "gallery", "webviews"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "productName": {"type": "string", "minLength": 1},
+    "telemetry": {"const": false},
+    "gallery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {"mode": {"const": "disabled"}}
+    },
+    "webviews": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {"mode": {"const": "disabled"}}
+    }
+  }
+}

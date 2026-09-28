@@ -7,9 +7,9 @@ RUBY ?= ruby
 PYTHON_PATHS := scripts tests
 SHELL_SCRIPTS := build.sh package.sh
 
-.PHONY: check format format-check lint typecheck shellcheck syntax config workflow-yaml test policy
+.PHONY: check format format-check lint typecheck shellcheck syntax schema config workflow-yaml test policy
 
-check: format-check lint typecheck shellcheck syntax config workflow-yaml test policy
+check: format-check lint typecheck shellcheck syntax schema config workflow-yaml test policy
 
 format:
 	$(RUFF) format $(PYTHON_PATHS)
@@ -29,6 +29,9 @@ shellcheck:
 syntax:
 	$(PYTHON) -m compileall -q scripts tests
 	@for file in tests/e2e/*.cjs tests/fixtures/web-extension/*.js; do node --check "$$file"; done
+
+schema:
+	$(PYTHON) scripts/validate_json_schema.py
 
 config:
 	$(PYTHON) scripts/validate_config.py

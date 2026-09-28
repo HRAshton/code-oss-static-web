@@ -21,6 +21,9 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
 
+      - name: JSON schema validation
+        run: python3 scripts/validate_json_schema.py
+
       - name: Configuration validation
         run: python3 scripts/validate_config.py
 
