@@ -471,6 +471,15 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('unexpectedRequests', network)
         self.assertIn('webSockets', network)
 
+    def test_action_policy_accepts_digest_pinned_container_actions(self):
+        check_policy.check_actions()
+        self.assertTrue(
+            check_policy.DOCKER_DIGEST.fullmatch(
+                'sha256:85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e'
+            )
+        )
+        self.assertIsNone(check_policy.DOCKER_DIGEST.fullmatch('sha256:not-a-digest'))
+
     def test_build_jobs_are_unprivileged(self):
         check_policy.check_build_job_permissions()
         bad = """jobs:
