@@ -133,6 +133,7 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(manifest['browser'], './extension.js')
         self.assertEqual(manifest['engines']['vscode'], '^1.139.0')
         self.assertIn('codeOssStaticWebTest.markReady', manifest['activationEvents'][0])
+        self.assertIn('codeOssStaticWebTest.readMarker', manifest['activationEvents'][1])
         self.assertTrue((fixture / 'extension.js').is_file())
 
     def test_playwright_suite_uses_subpath_and_blocks_service_workers(self):
@@ -193,7 +194,9 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('--reuse-upstream-build', workflow)
 
         extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
-        self.assertIn("commands.executeCommand('codeOssStaticWebTest.markReady')", extension_test)
+        self.assertIn("codeOssStaticWebTest.markReady", extension_test)
+        self.assertIn("codeOssStaticWebTest.readMarker", extension_test)
+        self.assertIn('global state persists across workbench reload', extension_test)
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn("playwright-runtime", runner)

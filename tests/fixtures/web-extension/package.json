@@ -10,13 +10,18 @@
   },
   "browser": "./extension.js",
   "activationEvents": [
-    "onCommand:codeOssStaticWebTest.markReady"
+    "onCommand:codeOssStaticWebTest.markReady",
+    "onCommand:codeOssStaticWebTest.readMarker"
   ],
   "contributes": {
     "commands": [
       {
         "command": "codeOssStaticWebTest.markReady",
         "title": "Static Web Test: Mark Ready"
+      },
+      {
+        "command": "codeOssStaticWebTest.readMarker",
+        "title": "Static Web Test: Read Marker"
       }
     ]
   }
