@@ -516,6 +516,14 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('environment: release', workflow)
         self.assertIn('actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e', workflow)
         self.assertIn('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8', workflow)
+        self.assertNotIn('docker/setup-qemu-action@', workflow)
+        self.assertIn(
+            'image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8',
+            workflow,
+        )
+        self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
+        self.assertIn('pages-release-gate:', workflow)
+        self.assertIn('needs: [attest, pages-release-gate]', workflow)
         self.assertIn('gh release create', workflow)
         self.assertIn('needs: authorize', workflow)
         self.assertIn('name: Verify release commit is on protected default branch', workflow)
@@ -545,6 +553,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn(
             '@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile
         )
+        self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
 
     def test_product_transform_keeps_chat_contract_fail_closed(self):
         transform = json.loads((ROOT / 'config/product-transform.json').read_text())

@@ -339,8 +339,17 @@ jobs:
           --generate-notes
           --title "$GITHUB_REF_NAME"
 
-  pages:
+  pages-release-gate:
     needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - name: Release approval for Pages
+        run: echo "Pages publication approved"
+
+  pages:
+    needs: [attest, pages-release-gate]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -483,12 +492,16 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        with:
+          driver-opts: |
+            image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
 
       - name: Build and push OCI image
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ghcr.io/hrashton/code-oss-static-web:${{ github.ref_name }}
           labels: |
