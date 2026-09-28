@@ -27,10 +27,16 @@ jobs:
       - name: Commit message policy
         if: >-
           github.event_name == 'push' &&
+          startsWith(github.ref, 'refs/heads/') &&
           github.ref_name != github.event.repository.default_branch
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
+
+      - name: REUSE compliance
+        run: |
+          python3 -m pip install --disable-pip-version-check 'reuse==6.2.0'
+          reuse lint
 
       - name: JSON schema validation
         run: python3 scripts/validate_json_schema.py
@@ -45,20 +51,21 @@ jobs:
         run: python3 scripts/check_policy.py
 
       - name: Ruff lint
+        id: ruff-lint
         uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
         with:
           version: '0.16.9'
           args: 'check'
 
       - name: Export normalization workspace
-        if: always()
+        if: steps.ruff-lint.outcome == 'success'
         shell: bash
         run: |
           mkdir -p .work/style-tool
           cp "$(command -v ruff)" .work/style-tool/ruff
 
       - name: Upload normalization workspace
-        if: always()
+        if: steps.ruff-lint.outcome == 'success'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: style-normalization

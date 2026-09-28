@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible problem in Code OSS Static Web
+title: "fix: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not report security vulnerabilities here. Use the private process in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Release or commit
+      description: The release tag or commit SHA where the problem occurs.
+      placeholder: v1.139.1-web.0 or 40-character commit SHA
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser, hosting path, operating system, and any relevant proxy/CDN details.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true

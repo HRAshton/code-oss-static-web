@@ -28,6 +28,42 @@ class ToolingTests(unittest.TestCase):
         self.assertTrue(lock['qualified'])
         self.assertIn('Qualified in Chromium', lock['qualificationNote'])
 
+    def test_renovate_manages_upstream_as_unqualified_integration_update(self):
+        config = json.loads((ROOT / 'renovate.json').read_text())
+        self.assertEqual(config['reviewers'], ['vodyanica'])
+        self.assertTrue(config['assignAutomerge'])
+        self.assertTrue(config['platformAutomerge'])
+        self.assertEqual(config['automergeStrategy'], 'merge-commit')
+        self.assertEqual(config['semanticCommits'], 'enabled')
+        self.assertEqual(config['commitMessageLowerCase'], 'never')
+
+        manager = next(
+            item
+            for item in config['customManagers']
+            if item.get('depNameTemplate') == 'microsoft/vscode'
+        )
+        self.assertEqual(manager['datasourceTemplate'], 'github-tags')
+        replacement = manager['autoReplaceStringTemplate']
+        self.assertIn('"commit": "{{{newDigest}}}"', replacement)
+        self.assertIn('"qualified": false', replacement)
+        self.assertIn('Pending qualification for Code - OSS {{{newValue}}}', replacement)
+
+        upstream_rule = next(
+            item
+            for item in config['packageRules']
+            if item.get('matchPackageNames') == ['microsoft/vscode']
+        )
+        self.assertTrue(upstream_rule['automerge'])
+        self.assertEqual(upstream_rule['semanticCommitScope'], 'upstream')
+
+    def test_unqualified_upstream_merge_dispatches_full_qualification(self):
+        workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()
+        self.assertIn('branches: [master]', workflow)
+        self.assertIn('- upstream.lock.json', workflow)
+        self.assertIn('if [[ "$qualified" == \'false\' ]]; then', workflow)
+        self.assertIn('gh workflow run qualify.yml', workflow)
+        self.assertIn('-f browser=all', workflow)
+
     def test_repository_configuration_is_valid(self):
         validate_config.validate_all()
 
@@ -439,6 +475,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn('github.event.pull_request.title', workflow)
         self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
         self.assertIn(
             'github.ref_name != github.event.repository.default_branch',
             workflow,

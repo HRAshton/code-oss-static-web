@@ -1,10 +1,12 @@
 # Code OSS Static Web
 
+[![CI](https://github.com/HRAshton/code-oss-static-web/actions/workflows/ci.yml/badge.svg)](https://github.com/HRAshton/code-oss-static-web/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/HRAshton/code-oss-static-web/badge)](https://scorecard.dev/viewer/?uri=github.com/HRAshton/code-oss-static-web)
+[![REUSE status](https://api.reuse.software/badge/github.com/HRAshton/code-oss-static-web)](https://api.reuse.software/info/github.com/HRAshton/code-oss-static-web)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Independent tooling for producing a **zero-backend static browser build** from an immutable
 MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repository.
-
-> **Status:** Stable-release track. Code - OSS `1.139.1` is qualified in Chromium, Firefox and
-> WebKit. Secure webviews remain intentionally disabled/fail-closed in the generic static mode.
 
 ## Implemented now
 
@@ -69,6 +71,14 @@ See `docs/testing.md` for the extension-host qualification path and browser poli
 Secure webviews are intentionally not enabled. Code - OSS normally relies on an isolated webview
 origin/subdomain. Until a secure deployment-independent design is qualified, webview content is
 configured to fail closed.
+
+## Project links
+
+- [Releases](https://github.com/HRAshton/code-oss-static-web/releases) - immutable qualified release artifacts.
+- [Issues](https://github.com/HRAshton/code-oss-static-web/issues) - bugs and enhancement requests.
+- [Contributing](CONTRIBUTING.md) - contribution process, review requirements, and local checks.
+- [Security](SECURITY.md) - private vulnerability reporting and supported-version policy.
+- [Release security](docs/release-security.md) - provenance, SBOM, attestation, and publication boundaries.
 
 ## Upstream
 

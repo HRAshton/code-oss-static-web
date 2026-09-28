@@ -1,0 +1,24 @@
+name: Enhancement request
+description: Propose an improvement or new capability
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user or integration problem should this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the externally visible behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and compatibility considerations
+      description: Note any effects on trust boundaries, CSP, webviews, extensions, release integrity, or upstream compatibility.

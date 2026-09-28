@@ -3,13 +3,14 @@ RUFF ?= ruff
 PYRIGHT ?= pyright
 SHELLCHECK ?= shellcheck
 RUBY ?= ruby
+REUSE ?= reuse
 
 PYTHON_PATHS := scripts tests
 SHELL_SCRIPTS := build.sh package.sh
 
-.PHONY: check format format-check lint typecheck shellcheck syntax schema config workflow-yaml test policy
+.PHONY: check format format-check lint typecheck shellcheck syntax schema config workflow-yaml reuse test policy
 
-check: format-check lint typecheck shellcheck syntax schema config workflow-yaml test policy
+check: format-check lint typecheck shellcheck syntax schema config workflow-yaml reuse test policy
 
 format:
 	$(RUFF) format $(PYTHON_PATHS)
@@ -38,6 +39,9 @@ config:
 
 workflow-yaml:
 	$(RUBY) scripts/check_workflow_yaml.rb
+
+reuse:
+	$(REUSE) lint
 
 test:
 	$(PYTHON) -m unittest discover -s tests -v
