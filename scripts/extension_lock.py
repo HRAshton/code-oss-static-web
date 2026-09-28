@@ -253,6 +253,7 @@ def validate_local_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> dict[str
     source = entry.get('source')
     if not isinstance(source, dict):
         raise BuildError('local VSIX source must be an object')
+    source = cast(dict[str, Any], source)
     source_type = source.get('type')
     require(source_type == 'local-vsix', 'extension source must be local-vsix')
     source_path = materialize_vsix(entry, root=root)
