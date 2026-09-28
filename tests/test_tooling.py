@@ -3,7 +3,7 @@ import hashlib, json, sys, tempfile, unittest, zipfile
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-import check_policy, make_static, package_release, extensions_index, extension_lock, generate_runtime_metadata, generate_sbom
+import check_policy, make_static, package_release, extensions_index, extension_lock, generate_license_inventory, generate_runtime_metadata, generate_sbom
 
 class ToolingTests(unittest.TestCase):
     def test_upstream_lock_is_exact_commit_and_unqualified(self):
@@ -103,6 +103,27 @@ class ToolingTests(unittest.TestCase):
             self.assertIn('pkg:npm/%40scope/pkg@4.5.6', refs)
             self.assertIn('vscode-extension:demo.fixture@1.2.3', refs)
             self.assertNotIn('timestamp', bom['metadata'])
+
+            inventory = generate_license_inventory.build_license_inventory(
+                metadata=metadata,
+                version='1.139.1-web.0',
+                project_commit='a' * 40,
+                upstream=upstream,
+            )
+            inventory_refs = {component['bomRef'] for component in inventory['components']}
+            self.assertEqual(
+                inventory_refs,
+                {bom['metadata']['component']['bom-ref']} |
+                {component['bom-ref'] for component in bom['components']},
+            )
+            licenses = {
+                component['bomRef']: component['declaredLicense']
+                for component in inventory['components']
+            }
+            self.assertEqual(licenses['pkg:npm/%40scope/pkg@4.5.6'], 'Apache-2.0')
+            self.assertEqual(licenses['vscode-extension:demo.fixture@1.2.3'], 'MIT')
+            self.assertEqual(inventory['summary']['noAssertion'], 0)
+            self.assertEqual(generate_license_inventory.declared_license(None), 'NOASSERTION')
 
     def test_extension_index_only_marks_browser_extensions(self):
         with tempfile.TemporaryDirectory() as td:
@@ -276,6 +297,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
         self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
         self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn("license-inventory.json", package_source)
         self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
         self.assertIn('scripts/run_e2e.py', workflow)
         self.assertIn('--grep-invert @extension', workflow)

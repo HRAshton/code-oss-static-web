@@ -73,6 +73,9 @@ def verify_artifact_manifest(directory: Path) -> None:
         if isinstance(artifact, dict)
     }
     require('sbom.cdx.json' in artifact_names, 'artifact manifest must include sbom.cdx.json')
+    require('license-inventory.json' in artifact_names, 'artifact manifest must include license-inventory.json')
+    require('LICENSE.Code-OSS.txt' in artifact_names, 'artifact manifest must include Code-OSS license')
+    require('ThirdPartyNotices.Code-OSS.txt' in artifact_names, 'artifact manifest must include Code-OSS notices')
     for artifact in artifacts:
         require(isinstance(artifact, dict), 'artifact manifest artifact invalid')
         name = artifact.get('name')
@@ -139,6 +142,69 @@ def verify_sbom(directory: Path) -> None:
         )
 
 
+
+def verify_license_inventory(directory: Path) -> None:
+    inventory_path = directory / 'license-inventory.json'
+    require(inventory_path.is_file(), f'missing {inventory_path}')
+    inventory = load_json(inventory_path)
+    require(inventory.get('schemaVersion') == 1, 'license inventory schema must be 1')
+
+    components = inventory.get('components')
+    require(isinstance(components, list) and len(components) > 0, 'license inventory components missing')
+    refs: list[str] = []
+    no_assertion = 0
+    for component in components:
+        require(isinstance(component, dict), 'license inventory component invalid')
+        ref = component.get('bomRef')
+        license_name = component.get('declaredLicense')
+        status = component.get('licenseStatus')
+        require(isinstance(ref, str) and bool(ref), 'license inventory bomRef missing')
+        require(isinstance(license_name, str) and bool(license_name), f'license missing: {ref}')
+        require(status in ('declared', 'no-assertion'), f'license status invalid: {ref}')
+        require(
+            (license_name == 'NOASSERTION') == (status == 'no-assertion'),
+            f'license status inconsistent: {ref}',
+        )
+        refs.append(ref)
+        if license_name == 'NOASSERTION':
+            no_assertion += 1
+
+    require(len(refs) == len(set(refs)), 'license inventory bomRef must be unique')
+    summary = inventory.get('summary')
+    require(isinstance(summary, dict), 'license inventory summary missing')
+    require(summary.get('totalComponents') == len(components), 'license inventory total mismatch')
+    require(summary.get('noAssertion') == no_assertion, 'license inventory NOASSERTION count mismatch')
+    require(
+        summary.get('declaredLicenses') == len(components) - no_assertion,
+        'license inventory declared license count mismatch',
+    )
+
+    for required_file in (
+        'LICENSE',
+        'THIRD_PARTY_NOTICES.md',
+        'LICENSE.Code-OSS.txt',
+        'ThirdPartyNotices.Code-OSS.txt',
+    ):
+        require((directory / required_file).is_file(), f'license notice file missing: {required_file}')
+
+    sbom = load_json(directory / 'sbom.cdx.json')
+    metadata = sbom.get('metadata')
+    require(isinstance(metadata, dict), 'SBOM metadata missing for license inventory comparison')
+    root = metadata.get('component')
+    require(isinstance(root, dict), 'SBOM root component missing for license inventory comparison')
+    root_ref = root.get('bom-ref')
+    require(isinstance(root_ref, str) and bool(root_ref), 'SBOM root bom-ref missing')
+    sbom_components = sbom.get('components')
+    require(isinstance(sbom_components, list), 'SBOM components missing for license inventory comparison')
+    sbom_refs = {
+        component.get('bom-ref')
+        for component in sbom_components
+        if isinstance(component, dict)
+    }
+    require(all(isinstance(ref, str) and bool(ref) for ref in sbom_refs), 'SBOM component bom-ref missing')
+    sbom_refs.add(root_ref)
+    require(set(refs) == sbom_refs, 'license inventory must cover every SBOM component exactly once')
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('directory', nargs='?', default='artifacts')
@@ -148,7 +214,10 @@ def main():
     count = verify_checksums(directory)
     verify_artifact_manifest(directory)
     verify_sbom(directory)
-    print(f'verified {count} release files, artifact manifest and CycloneDX SBOM')
+    verify_license_inventory(directory)
+    print(
+        f'verified {count} release files, artifact manifest, CycloneDX SBOM and license inventory'
+    )
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ from pathlib import Path
 from common import ARTIFACTS, DIST, ROOT, WORK, BuildError, load_json, require, sha256_file, write_json
 import generate_runtime_metadata as runtime_metadata_generator
 import generate_sbom
+import generate_license_inventory
 
 PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
 PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
@@ -235,6 +236,29 @@ def main():
         distribution_tree_sha256=distribution_tree_sha256,
     )
 
+    license_inventory_path = ARTIFACTS / 'license-inventory.json'
+    generate_license_inventory.write_license_inventory(
+        license_inventory_path,
+        metadata=runtime_metadata,
+        version=version,
+        project_commit=project_commit,
+        upstream=lock,
+    )
+
+    project_license_path = ARTIFACTS / 'LICENSE'
+    upstream_license_path = ARTIFACTS / 'LICENSE.Code-OSS.txt'
+    upstream_notices_path = ARTIFACTS / 'ThirdPartyNotices.Code-OSS.txt'
+    project_notices_path = ARTIFACTS / 'THIRD_PARTY_NOTICES.md'
+    require((DIST / 'LICENSE.Code-OSS.txt').is_file(), 'Code-OSS license missing from distribution')
+    require(
+        (DIST / 'ThirdPartyNotices.Code-OSS.txt').is_file(),
+        'Code-OSS third-party notices missing from distribution',
+    )
+    shutil.copy2(ROOT / 'LICENSE', project_license_path)
+    shutil.copy2(DIST / 'LICENSE.Code-OSS.txt', upstream_license_path)
+    shutil.copy2(DIST / 'ThirdPartyNotices.Code-OSS.txt', upstream_notices_path)
+    shutil.copy2(ROOT / 'THIRD_PARTY_NOTICES.md', project_notices_path)
+
     write_json(
         ARTIFACTS / 'upstream.json',
         {
@@ -251,13 +275,20 @@ def main():
             version=version,
             project_commit=project_commit,
             upstream=lock,
-            release_files=[tar_path, zip_path, sbom_path],
+            release_files=[
+                tar_path,
+                zip_path,
+                sbom_path,
+                license_inventory_path,
+                project_license_path,
+                upstream_license_path,
+                upstream_notices_path,
+                project_notices_path,
+            ],
             distribution=DIST,
             runtime_metadata=runtime_metadata_path,
         ),
     )
-    shutil.copy2(ROOT / 'LICENSE', ARTIFACTS / 'LICENSE')
-
     lines = []
     for path in sorted(
         item
