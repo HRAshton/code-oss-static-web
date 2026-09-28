@@ -182,7 +182,6 @@ def build_artifact_manifest(
             'tag': upstream['tag'],
             'commit': upstream['commit'],
             'sourceDateEpoch': int(upstream['sourceDateEpoch']),
-            'qualified': bool(upstream['qualified']),
         },
         'distribution': {
             'treeSha256': tree_digest,
@@ -282,7 +281,6 @@ def main() -> None:
             'tag': lock['tag'],
             'commit': lock['commit'],
             'sourceDateEpoch': epoch,
-            'qualified': lock['qualified'],
         },
     )
     write_json(

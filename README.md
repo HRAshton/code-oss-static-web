@@ -82,8 +82,8 @@ configured to fail closed.
 
 ## Upstream
 
-Qualified target: Code - OSS `1.139.1`, commit
-`04c0d99f4fb0d8afe6ce4f0c58e31e183ac3e4b1`.
+The exact Code - OSS tag and commit are pinned in `upstream.lock.json`. A changed upstream
+revision is published only after the automated full-browser qualification succeeds.
 
 This project is not Microsoft's Visual Studio Code distribution and is not endorsed by Microsoft.
 

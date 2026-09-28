@@ -3,7 +3,5 @@
   "repository": "https://github.com/microsoft/vscode.git",
   "tag": "1.139.1",
   "commit": "04c0d99f4fb0d8afe6ce4f0c58e31e183ac3e4b1",
-  "sourceDateEpoch": 1790307657,
-  "qualified": true,
-  "qualificationNote": "Qualified in Chromium on 2026-09-28: static boot/editor/network/CSP, browser extension activation and lifecycle persistence, deterministic packaging, CycloneDX SBOM, license inventory, provenance and SBOM attestations."
+  "sourceDateEpoch": 1790307657
 }

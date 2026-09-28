@@ -33,8 +33,6 @@ def validate_upstream_lock(path: Path) -> None:
             'tag',
             'commit',
             'sourceDateEpoch',
-            'qualified',
-            'qualificationNote',
         },
         'upstream lock',
     )
@@ -51,11 +49,6 @@ def validate_upstream_lock(path: Path) -> None:
     require(
         isinstance(data['sourceDateEpoch'], int) and data['sourceDateEpoch'] > 0,
         'sourceDateEpoch must be a positive integer',
-    )
-    require(isinstance(data['qualified'], bool), 'qualified must be boolean')
-    require(
-        isinstance(data['qualificationNote'], str) and bool(data['qualificationNote']),
-        'qualificationNote must be non-empty',
     )
 
 

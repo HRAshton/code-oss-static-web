@@ -421,3 +421,65 @@ jobs:
             artifacts/code-oss-static-web-*.tar.gz
             artifacts/code-oss-static-web-*.zip
           sbom-path: artifacts/sbom.cdx.json
+
+
+  release:
+    needs: [build, browser, secondary-browsers, package, attest]
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref_name == 'master' &&
+      inputs.browser == 'all'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Record release qualification
+        id: qualification
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(jq -r '.tag' upstream.lock.json)"
+          tag="v${version}-web.0"
+          python3 scripts/check_release_tag.py "$tag"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+          mkdir -p .work
+          jq -n             --arg commit "$GITHUB_SHA"             --arg tag "$tag"             --argjson workflowRunId "$GITHUB_RUN_ID"             '{commit: $commit, tag: $tag, workflowRunId: $workflowRunId}'             > .work/release-qualification.json
+
+      - name: Upload release qualification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-qualification
+          path: .work/release-qualification.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create immutable release tag and dispatch publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.qualification.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$RELEASE_TAG" 2>/dev/null)"; then
+            existing_sha="$(jq -r '.object.sha' <<<"$ref")"
+            if [[ "$existing_sha" != "$GITHUB_SHA" ]]; then
+              echo "release tag $RELEASE_TAG already points to $existing_sha, not $GITHUB_SHA" >&2
+              exit 1
+            fi
+          else
+            gh api               --method POST               "repos/$GITHUB_REPOSITORY/git/refs"               -f ref="refs/tags/$RELEASE_TAG"               -f sha="$GITHUB_SHA" >/dev/null
+          fi
+
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $RELEASE_TAG already exists; publication is complete"
+            exit 0
+          fi
+
+          gh workflow run release.yml             --repo "$GITHUB_REPOSITORY"             --ref "$RELEASE_TAG"             -f qualification_run_id="$GITHUB_RUN_ID"
