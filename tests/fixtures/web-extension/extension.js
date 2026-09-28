@@ -9,8 +9,7 @@ function activate(context) {
       vscode.window.showInformationMessage('Static web test extension activated');
     }),
     vscode.commands.registerCommand('codeOssStaticWebTest.readMarker', () => {
-      const marker = context.globalState.get('qualificationMarker', 'missing');
-      vscode.window.showInformationMessage(`Static web test extension marker: ${marker}`);
+      return context.globalState.get('qualificationMarker', 'missing');
     })
   );
 }

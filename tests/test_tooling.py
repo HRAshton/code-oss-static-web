@@ -196,6 +196,8 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(manifest['engines']['vscode'], '^1.139.0')
         self.assertIn('codeOssStaticWebTest.markReady', manifest['activationEvents'][0])
         self.assertIn('codeOssStaticWebTest.readMarker', manifest['activationEvents'][1])
+        source = (fixture / 'extension.js').read_text()
+        self.assertIn("return context.globalState.get('qualificationMarker', 'missing')", source)
         self.assertTrue((fixture / 'extension.js').is_file())
 
     def test_playwright_suite_uses_subpath_and_blocks_service_workers(self):
@@ -259,6 +261,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("codeOssStaticWebTest.markReady", extension_test)
         self.assertIn("codeOssStaticWebTest.readMarker", extension_test)
         self.assertIn('global state persists across workbench restart', extension_test)
+        self.assertIn("toBe('ready')", extension_test)
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn("playwright-runtime", runner)

@@ -36,10 +36,14 @@ test('@extension global state persists across workbench restart', async ({ page,
   const restartedPage = await context.newPage();
   await openWorkbench(restartedPage);
 
-  await executeCommandWhenReady(restartedPage, 'codeOssStaticWebTest.readMarker');
-  await expect(
-    restartedPage.locator('.notification-toast').filter({
-      hasText: 'Static web test extension marker: ready',
-    }).first()
-  ).toBeVisible({ timeout: 15_000 });
+  await expect.poll(async () => {
+    return restartedPage.evaluate(async () => {
+      try {
+        const { commands } = await import('./out/vs/workbench/workbench.web.main.internal.js');
+        return await commands.executeCommand('codeOssStaticWebTest.readMarker');
+      } catch {
+        return 'not-ready';
+      }
+    });
+  }, { timeout: 15_000 }).toBe('ready');
 });
