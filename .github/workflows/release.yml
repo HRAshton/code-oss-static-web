@@ -20,6 +20,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      pages: read
     steps:
       - name: Verify release qualification evidence
         env:
@@ -87,6 +88,17 @@ jobs:
           )"
           if [[ "$compare_status" != 'ahead' && "$compare_status" != 'identical' ]]; then
             echo "release commit $GITHUB_SHA is not contained in protected default branch $default_branch" >&2
+            exit 1
+          fi
+
+      - name: Verify GitHub Pages is enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$GITHUB_REPOSITORY/pages" >/dev/null 2>&1; then
+            echo "GitHub Pages is not enabled. Set Settings > Pages > Build and deployment > Source to GitHub Actions." >&2
             exit 1
           fi
 

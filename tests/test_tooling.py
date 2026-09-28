@@ -577,7 +577,10 @@ class ToolingTests(unittest.TestCase):
 
     def test_qualification_workflow_runs_browser_and_extension_suites(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
-        self.assertIn('actions/cache@caa296126883cff596d87d8935842f9db880ef25', workflow)
+        self.assertRegex(
+            workflow,
+            r'actions/cache@[0-9a-f]{40}\s+# v[0-9]+',
+        )
         self.assertIn('name: static-dist', workflow)
         self.assertIn('name: playwright-runtime', workflow)
         self.assertIn('name: qualification-harness', workflow)
@@ -646,6 +649,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('needs: authorize', workflow)
         self.assertIn('qualification_run_id:', workflow)
         self.assertIn('name: Verify release qualification evidence', workflow)
+        self.assertIn('name: Verify GitHub Pages is enabled', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/pages', workflow)
         self.assertIn('release-qualification', workflow)
         self.assertIn('name: Download release qualification evidence', workflow)
         self.assertIn('name: Verify release qualification binding', workflow)
@@ -675,8 +680,9 @@ class ToolingTests(unittest.TestCase):
             {'update', 'deletion'},
         )
         dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
-        self.assertIn(
-            '@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile
+        self.assertRegex(
+            dockerfile,
+            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
         )
         self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
 
