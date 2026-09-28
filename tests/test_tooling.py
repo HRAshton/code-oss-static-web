@@ -460,14 +460,22 @@ class ToolingTests(unittest.TestCase):
     def test_canonical_distribution_artifacts_include_hidden_files(self):
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
         release = (ROOT / '.github/workflows/release.yml').read_text()
-        self.assertIn(
-            'name: static-dist\\n          path: dist/\\n          include-hidden-files: true',
-            qualification,
+        qualification_upload = '\n'.join(
+            [
+                'name: static-dist',
+                '          path: dist/',
+                '          include-hidden-files: true',
+            ]
         )
-        self.assertIn(
-            'name: release-static-dist\\n          path: dist/\\n          include-hidden-files: true',
-            release,
+        release_upload = '\n'.join(
+            [
+                'name: release-static-dist',
+                '          path: dist/',
+                '          include-hidden-files: true',
+            ]
         )
+        self.assertIn(qualification_upload, qualification)
+        self.assertIn(release_upload, release)
 
     def test_qualification_workflow_runs_browser_and_extension_suites(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
