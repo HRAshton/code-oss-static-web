@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any, cast
 
 from common import ROOT, BuildError, load_json, require
 
@@ -210,18 +211,31 @@ def check_release_integrity_policy() -> None:
     require(ruleset.get('enforcement') == 'active', 'release-tag ruleset must be active')
     require(ruleset.get('bypass_actors') == [], 'release-tag ruleset must not allow bypass actors')
 
-    conditions = ruleset.get('conditions')
-    require(isinstance(conditions, dict), 'release-tag ruleset conditions must be an object')
-    ref_name = conditions.get('ref_name')
-    require(isinstance(ref_name, dict), 'release-tag ruleset ref_name condition must be an object')
+    conditions_value = ruleset.get('conditions')
+    if not isinstance(conditions_value, dict):
+        raise BuildError('release-tag ruleset conditions must be an object')
+    conditions = cast(dict[str, Any], conditions_value)
+
+    ref_name_value = conditions.get('ref_name')
+    if not isinstance(ref_name_value, dict):
+        raise BuildError('release-tag ruleset ref_name condition must be an object')
+    ref_name = cast(dict[str, Any], ref_name_value)
     require(
         ref_name.get('include') == ['refs/tags/v*-web.*'],
         'release-tag ruleset must cover refs/tags/v*-web.*',
     )
 
-    rules = ruleset.get('rules')
-    require(isinstance(rules, list), 'release-tag ruleset rules must be an array')
-    rule_types = {rule.get('type') for rule in rules if isinstance(rule, dict)}
+    rules_value = ruleset.get('rules')
+    if not isinstance(rules_value, list):
+        raise BuildError('release-tag ruleset rules must be an array')
+    rule_types: set[str] = set()
+    for rule_value in cast(list[object], rules_value):
+        if not isinstance(rule_value, dict):
+            continue
+        rule = cast(dict[str, Any], rule_value)
+        rule_type = rule.get('type')
+        if isinstance(rule_type, str):
+            rule_types.add(rule_type)
     require('update' in rule_types, 'release-tag ruleset must restrict updates')
     require('deletion' in rule_types, 'release-tag ruleset must restrict deletions')
 
