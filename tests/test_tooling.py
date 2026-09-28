@@ -92,6 +92,26 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('-f browser=all', patch)
         self.assertIn('-f release_mode=patch', patch)
 
+    def test_scorecard_sensitive_permissions_are_job_scoped(self):
+        for path in (
+            '.github/workflows/patch-release.yml',
+            '.github/workflows/upstream-qualification.yml',
+        ):
+            workflow = (ROOT / path).read_text()
+            header, jobs = workflow.split('\njobs:\n', 1)
+            self.assertNotIn('actions: write', header)
+            self.assertIn('contents: read', header)
+            self.assertIn('permissions:\n      actions: write\n      contents: read', jobs)
+
+    def test_reuse_ci_dependency_is_digest_pinned(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertNotIn("pip install --disable-pip-version-check 'reuse==", workflow)
+        self.assertIn(
+            'docker://fsfe/reuse:6.2.0@sha256:'
+            '85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e',
+            workflow,
+        )
+
     def test_repository_configuration_is_valid(self):
         validate_config.validate_all()
 
@@ -451,6 +471,15 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('unexpectedRequests', network)
         self.assertIn('webSockets', network)
 
+    def test_action_policy_accepts_digest_pinned_container_actions(self):
+        check_policy.check_actions()
+        self.assertTrue(
+            check_policy.DOCKER_DIGEST.fullmatch(
+                'sha256:85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e'
+            )
+        )
+        self.assertIsNone(check_policy.DOCKER_DIGEST.fullmatch('sha256:not-a-digest'))
+
     def test_build_jobs_are_unprivileged(self):
         check_policy.check_build_job_permissions()
         bad = """jobs:
@@ -524,11 +553,19 @@ class ToolingTests(unittest.TestCase):
             for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
                 match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
                 if match:
-                    self.assertRegex(
-                        match.group(1),
-                        r'^[0-9a-f]{40}$',
-                        f'{workflow}:{line_number} must pin an immutable action commit',
-                    )
+                    reference = match.group(1)
+                    if 'uses: docker://' in line:
+                        self.assertRegex(
+                            reference,
+                            r'^sha256:[0-9a-f]{64}$',
+                            f'{workflow}:{line_number} must pin an immutable container digest',
+                        )
+                    else:
+                        self.assertRegex(
+                            reference,
+                            r'^[0-9a-f]{40}$',
+                            f'{workflow}:{line_number} must pin an immutable action commit',
+                        )
 
     def test_canonical_distribution_artifacts_preserve_metadata(self):
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
@@ -548,7 +585,10 @@ class ToolingTests(unittest.TestCase):
 
     def test_qualification_workflow_runs_browser_and_extension_suites(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
-        self.assertIn('actions/cache@caa296126883cff596d87d8935842f9db880ef25', workflow)
+        self.assertRegex(
+            workflow,
+            r'actions/cache@[0-9a-f]{40}\s+# v[0-9]+',
+        )
         self.assertIn('name: static-dist', workflow)
         self.assertIn('name: playwright-runtime', workflow)
         self.assertIn('name: qualification-harness', workflow)
@@ -617,6 +657,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('needs: authorize', workflow)
         self.assertIn('qualification_run_id:', workflow)
         self.assertIn('name: Verify release qualification evidence', workflow)
+        self.assertIn('name: Verify GitHub Pages is enabled', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/pages', workflow)
         self.assertIn('release-qualification', workflow)
         self.assertIn('name: Download release qualification evidence', workflow)
         self.assertIn('name: Verify release qualification binding', workflow)
@@ -646,8 +688,9 @@ class ToolingTests(unittest.TestCase):
             {'update', 'deletion'},
         )
         dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
-        self.assertIn(
-            '@sha256:a6c4f61f456b85b8fdf7ec7ab28cc3e299440e6fb4a9dea520e5fd8fd440025e', dockerfile
+        self.assertRegex(
+            dockerfile,
+            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
         )
         self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
 

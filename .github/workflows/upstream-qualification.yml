@@ -7,12 +7,14 @@ on:
       - upstream.lock.json
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
   dispatch:
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
     steps:
       - name: Detect upstream revision change
         id: upstream

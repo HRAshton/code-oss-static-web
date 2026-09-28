@@ -93,6 +93,12 @@ GitHub-generated release notes are published automatically from the merged chang
 advisories and other material project notes should be added to the repository before release so they
 are part of the immutable release history.
 
+## One-time repository setup
+
+GitHub Pages must be enabled separately from the `github-pages` environment. In repository
+**Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**. The Release
+workflow checks this before starting its expensive independent rebuild.
+
 ## Verify
 
 After publication:

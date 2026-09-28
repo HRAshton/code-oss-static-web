@@ -9,6 +9,7 @@ from common import ROOT, BuildError, load_json, require
 
 ACTION_REF = re.compile(r'uses:\s*[^@\s]+@([^\s#]+)')
 FULL_SHA = re.compile(r'^[0-9a-f]{40}$')
+DOCKER_DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
 JOB_HEADER = re.compile(r'^  ([A-Za-z0-9_-]+):\s*$')
 WRITE_PERMISSION = re.compile(r'^\s{6}[A-Za-z0-9-]+:\s*write\s*$', re.MULTILINE)
 FORBIDDEN_PATTERNS = {
@@ -25,10 +26,20 @@ def check_actions() -> None:
         for line_number, line in enumerate(workflow.read_text(encoding='utf-8').splitlines(), 1):
             match = ACTION_REF.search(line)
             if match:
-                require(
-                    FULL_SHA.fullmatch(match.group(1)) is not None,
-                    f'{workflow.relative_to(ROOT)}:{line_number}: action must use a full commit SHA',
-                )
+                reference = match.group(1)
+                if 'uses: docker://' in line:
+                    require(
+                        DOCKER_DIGEST.fullmatch(reference) is not None,
+                        (
+                            f'{workflow.relative_to(ROOT)}:{line_number}: '
+                            'container action must use a sha256 digest'
+                        ),
+                    )
+                else:
+                    require(
+                        FULL_SHA.fullmatch(reference) is not None,
+                        f'{workflow.relative_to(ROOT)}:{line_number}: action must use a full commit SHA',
+                    )
 
 
 def check_shell_scripts() -> None:
