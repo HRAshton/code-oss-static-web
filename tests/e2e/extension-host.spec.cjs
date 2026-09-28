@@ -24,7 +24,7 @@ test('@extension repository qualification web extension activates', async ({ pag
   ).toBeVisible({ timeout: 15_000 });
 });
 
-test('@extension global state persists across workbench reload', async ({ page }) => {
+test('@extension global state persists across workbench restart', async ({ page, context }) => {
   await openWorkbench(page);
   await executeCommandWhenReady(page, 'codeOssStaticWebTest.markReady');
 
@@ -32,11 +32,14 @@ test('@extension global state persists across workbench reload', async ({ page }
     page.locator('.notification-toast').filter({ hasText: 'Static web test extension activated' }).first()
   ).toBeVisible({ timeout: 15_000 });
 
-  await page.reload({ waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.monaco-workbench')).toBeVisible({ timeout: 60_000 });
+  await page.close();
+  const restartedPage = await context.newPage();
+  await openWorkbench(restartedPage);
 
-  await executeCommandWhenReady(page, 'codeOssStaticWebTest.readMarker');
+  await executeCommandWhenReady(restartedPage, 'codeOssStaticWebTest.readMarker');
   await expect(
-    page.locator('.notification-toast').filter({ hasText: 'Static web test extension marker: ready' }).first()
+    restartedPage.locator('.notification-toast').filter({
+      hasText: 'Static web test extension marker: ready',
+    }).first()
   ).toBeVisible({ timeout: 15_000 });
 });
