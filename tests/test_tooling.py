@@ -553,11 +553,19 @@ class ToolingTests(unittest.TestCase):
             for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
                 match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
                 if match:
-                    self.assertRegex(
-                        match.group(1),
-                        r'^[0-9a-f]{40}$',
-                        f'{workflow}:{line_number} must pin an immutable action commit',
-                    )
+                    reference = match.group(1)
+                    if 'uses: docker://' in line:
+                        self.assertRegex(
+                            reference,
+                            r'^sha256:[0-9a-f]{64}$',
+                            f'{workflow}:{line_number} must pin an immutable container digest',
+                        )
+                    else:
+                        self.assertRegex(
+                            reference,
+                            r'^[0-9a-f]{40}$',
+                            f'{workflow}:{line_number} must pin an immutable action commit',
+                        )
 
     def test_canonical_distribution_artifacts_preserve_metadata(self):
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
