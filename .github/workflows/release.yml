@@ -353,6 +353,7 @@ jobs:
           path: artifacts
 
       - name: Attest release provenance
+        id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: artifacts/SHA256SUMS
@@ -365,16 +366,40 @@ jobs:
             artifacts/code-oss-static-web-*.zip
           sbom-path: artifacts/sbom.cdx.json
 
+      - name: Export provenance bundle for release consumers
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$PROVENANCE_BUNDLE"
+          cp "$PROVENANCE_BUNDLE" artifacts/release-provenance.sigstore.json
+
+      - name: Upload release provenance bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-attestation
+          path: artifacts/release-provenance.sigstore.json
+          if-no-files-found: error
+          retention-days: 14
+
   github-release:
     needs: attest
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
     steps:
       - name: Download verified candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-candidate
+          path: artifacts
+
+      - name: Download release provenance bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-attestation
           path: artifacts
 
       - name: Verify immutable release ref
@@ -432,6 +457,15 @@ jobs:
           --verify-tag
           --generate-notes
           --title "$GITHUB_REF_NAME"
+
+      - name: Refresh OpenSSF Scorecard after publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          gh workflow run scorecard.yml --repo "$GITHUB_REPOSITORY" --ref "$default_branch"
 
   pages:
     needs: attest
