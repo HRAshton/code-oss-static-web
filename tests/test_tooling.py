@@ -263,7 +263,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("codeOssStaticWebTest.readMarker", extension_test)
         self.assertIn('global state persists across workbench reload', extension_test)
         self.assertIn("toBe('ready')", extension_test)
-        self.assertIn("page.reload({ waitUntil: 'domcontentloaded' })", extension_test)
+        self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn("playwright-runtime", runner)

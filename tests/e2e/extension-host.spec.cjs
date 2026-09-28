@@ -32,7 +32,13 @@ test('@extension global state persists across workbench reload', async ({ page }
     page.locator('.notification-toast').filter({ hasText: 'Static web test extension activated' }).first()
   ).toBeVisible({ timeout: 15_000 });
 
-  await page.reload({ waitUntil: 'domcontentloaded' });
+  const navigation = page.waitForNavigation({ waitUntil: 'domcontentloaded' });
+  await page.evaluate(() => {
+    void import('./out/vs/workbench/workbench.web.main.internal.js').then(({ commands }) => {
+      void commands.executeCommand('workbench.action.reloadWindow');
+    });
+  });
+  await navigation;
   await expect(page.locator('.monaco-workbench')).toBeVisible({ timeout: 60_000 });
 
   await expect.poll(async () => {
