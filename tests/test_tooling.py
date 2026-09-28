@@ -432,6 +432,18 @@ class ToolingTests(unittest.TestCase):
                 bad,
             )
 
+    def test_ci_validates_pr_titles_and_skips_default_branch_merge_messages(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn('name: Pull request title policy', workflow)
+        self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
+        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertIn('github.event.pull_request.title', workflow)
+        self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn(
+            'github.ref_name != github.event.repository.default_branch',
+            workflow,
+        )
+
     def test_workflow_actions_are_commit_pinned(self):
         import re
 

@@ -1,5 +1,8 @@
 name: CI
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
 permissions: read-all
 jobs:
   tooling:
@@ -15,8 +18,16 @@ jobs:
         with:
           node-version: '24'
 
+      - name: Pull request title policy
+        if: github.event_name == 'pull_request'
+        env:
+          COMMIT_MESSAGE: ${{ github.event.pull_request.title }}
+        run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
+
       - name: Commit message policy
-        if: github.event_name == 'push'
+        if: >-
+          github.event_name == 'push' &&
+          github.ref_name != github.event.repository.default_branch
         env:
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
