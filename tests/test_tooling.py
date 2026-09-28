@@ -50,7 +50,7 @@ class ToolingTests(unittest.TestCase):
             replacement,
             '"tag": "{{{newValue}}}",\n  "commit": "{{{newDigest}}}"',
         )
-        self.assertNotIn('\\\"', replacement)
+        self.assertNotIn('\\', replacement)
         self.assertNotIn('qualified', replacement)
 
         workflow = (ROOT / '.github/workflows/renovate-auto-approve.yml').read_text()
