@@ -75,11 +75,16 @@ jobs:
           --lock .work/vscode/package-lock.json
           --output .work/runtime-components.json
 
+      - name: Archive canonical static distribution
+        run: |
+          mkdir -p .work
+          tar -C dist -cf .work/release-static-dist.tar .
+
       - name: Upload canonical static distribution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-static-dist
-          path: dist/
+          path: .work/release-static-dist.tar
           if-no-files-found: error
           retention-days: 7
           compression-level: 6
@@ -124,7 +129,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-static-dist
-          path: reference-dist
+          path: .work/release-static-dist
+
+      - name: Extract reference distribution
+        run: |
+          rm -rf reference-dist
+          mkdir -p reference-dist
+          tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar
 
       - name: Install Code-OSS web build prerequisites
         run: >-
@@ -165,7 +176,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-static-dist
-          path: dist
+          path: .work/release-static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
 
       - name: Download locked Playwright runtime
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -223,7 +240,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-static-dist
-          path: dist
+          path: .work/release-static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
 
       - name: Download build metadata
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -363,7 +386,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-static-dist
-          path: dist
+          path: .work/release-static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
 
       - name: Verify immutable release ref
         env:
@@ -481,7 +510,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-static-dist
-          path: dist
+          path: .work/release-static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
 
       - name: Log in to GHCR
         uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
