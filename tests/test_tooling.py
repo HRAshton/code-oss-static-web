@@ -218,8 +218,13 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(manifest['engines']['vscode'], '^1.139.0')
         self.assertIn('codeOssStaticWebTest.markReady', manifest['activationEvents'][0])
         self.assertIn('codeOssStaticWebTest.readMarker', manifest['activationEvents'][1])
+        self.assertIn('codeOssStaticWebTest.writeStorageFile', manifest['activationEvents'][2])
+        self.assertIn('codeOssStaticWebTest.readStorageFile', manifest['activationEvents'][3])
+        self.assertIn('codeOssStaticWebTest.probeLanguageService', manifest['activationEvents'][4])
         source = (fixture / 'extension.js').read_text()
         self.assertIn("return context.globalState.get('qualificationMarker', 'missing')", source)
+        self.assertIn('vscode.workspace.fs.writeFile', source)
+        self.assertIn("'vscode.executeCompletionItemProvider'", source)
         self.assertTrue((fixture / 'extension.js').is_file())
 
     def test_playwright_suite_uses_subpath_and_blocks_service_workers(self):
@@ -313,6 +318,8 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('global state persists across workbench reload', extension_test)
         self.assertIn("toBe('ready')", extension_test)
         self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
+        self.assertIn('browser filesystem persists across workbench reload', extension_test)
+        self.assertIn('JavaScript language service returns completions', extension_test)
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn("playwright-runtime", runner)
