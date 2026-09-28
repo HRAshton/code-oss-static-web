@@ -457,25 +457,21 @@ class ToolingTests(unittest.TestCase):
                         f'{workflow}:{line_number} must pin an immutable action commit',
                     )
 
-    def test_canonical_distribution_artifacts_include_hidden_files(self):
+    def test_canonical_distribution_artifacts_preserve_metadata(self):
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
         release = (ROOT / '.github/workflows/release.yml').read_text()
-        qualification_upload = '\n'.join(
-            [
-                'name: static-dist',
-                '          path: dist/',
-                '          include-hidden-files: true',
-            ]
+        browser_matrix = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+
+        self.assertIn('tar -C dist -cf .work/static-dist.tar .', qualification)
+        self.assertIn('path: .work/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -cf .work/release-static-dist.tar .', release)
+        self.assertIn('path: .work/release-static-dist.tar', release)
+        self.assertIn(
+            'tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar',
+            release,
         )
-        release_upload = '\n'.join(
-            [
-                'name: release-static-dist',
-                '          path: dist/',
-                '          include-hidden-files: true',
-            ]
-        )
-        self.assertIn(qualification_upload, qualification)
-        self.assertIn(release_upload, release)
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', browser_matrix)
 
     def test_qualification_workflow_runs_browser_and_extension_suites(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()

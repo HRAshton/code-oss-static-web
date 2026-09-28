@@ -94,12 +94,16 @@ jobs:
           --lock .work/vscode/package-lock.json
           --output .work/runtime-components.json
 
+      - name: Archive canonical static distribution
+        run: |
+          mkdir -p .work
+          tar -C dist -cf .work/static-dist.tar .
+
       - name: Upload canonical static distribution
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: static-dist
-          path: dist/
-          include-hidden-files: true
+          path: .work/static-dist.tar
           if-no-files-found: error
           retention-days: 3
           compression-level: 6
@@ -172,7 +176,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: static-dist
-          path: dist
+          path: .work/static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/static-dist/static-dist.tar
 
       - name: Download locked Playwright runtime
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -284,7 +294,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: static-dist
-          path: dist
+          path: .work/static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/static-dist/static-dist.tar
 
       - name: Download locked Playwright runtime
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -353,7 +369,13 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: static-dist
-          path: dist
+          path: .work/static-dist
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/static-dist/static-dist.tar
 
       - name: Download build metadata
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

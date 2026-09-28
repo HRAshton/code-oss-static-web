@@ -42,10 +42,16 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: static-dist
-          path: dist
+          path: .work/static-dist
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
           run-id: ${{ env.SOURCE_RUN_ID }}
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/static-dist/static-dist.tar
 
       - name: Download locked Playwright runtime
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
