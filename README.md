@@ -33,6 +33,10 @@ MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repos
 
 ## Release outputs
 
+Microsoft Code - OSS updates publish automatically as `web.0`. Project-side fixes can be
+published deliberately as monotonic `web.1`, `web.2`, and later patch revisions for the same
+Microsoft version.
+
 Each immutable `v*-web.*` release publishes the same qualified static distribution as:
 
 - deterministic `.tar.gz` and `.zip` archives on the GitHub Release;

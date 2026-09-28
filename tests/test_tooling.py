@@ -68,27 +68,48 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("steps.upstream.outputs.changed == 'true'", workflow)
         self.assertIn('gh workflow run qualify.yml', workflow)
         self.assertIn('-f browser=all', workflow)
+        self.assertIn('-f release_mode=upstream', workflow)
 
-    def test_full_qualification_dispatches_web_zero_release(self):
+    def test_full_qualification_supports_upstream_and_patch_release_modes(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
-        self.assertIn('release:', workflow)
+        self.assertIn('release_mode:', workflow)
+        self.assertIn('default: none', workflow)
         self.assertIn("inputs.browser == 'all'", workflow)
-        self.assertIn('-web.0', workflow)
+        self.assertIn("inputs.release_mode != 'none'", workflow)
+        self.assertIn('upstream)', workflow)
+        self.assertIn('patch)', workflow)
+        self.assertIn('matching-refs/tags/v${version}-web.', workflow)
         self.assertIn('name: release-qualification', workflow)
+        self.assertIn('releaseMode: $releaseMode', workflow)
         self.assertIn('gh workflow run release.yml', workflow)
         self.assertIn('qualification_run_id="$GITHUB_RUN_ID"', workflow)
+
+        patch = (ROOT / '.github/workflows/patch-release.yml').read_text()
+        self.assertIn('name: Patch release', patch)
+        self.assertIn('No v${version}-web.0 exists', patch)
+        self.assertIn('already points to current master', patch)
+        self.assertIn('-f browser=all', patch)
+        self.assertIn('-f release_mode=patch', patch)
 
     def test_repository_configuration_is_valid(self):
         validate_config.validate_all()
 
-    def test_release_tag_contract(self):
+    def test_release_tag_contract_supports_patch_revisions(self):
         import check_release_tag
 
         lock = json.loads((ROOT / 'upstream.lock.json').read_text())
+        self.assertEqual(check_release_tag.expected_release_tag(lock), 'v1.139.1-web.0')
+        self.assertEqual(check_release_tag.expected_release_tag(lock, 3), 'v1.139.1-web.3')
+        self.assertEqual(check_release_tag.release_revision(lock, 'v1.139.1-web.0'), 0)
+        self.assertEqual(check_release_tag.release_revision(lock, 'v1.139.1-web.7'), 7)
         self.assertEqual(
-            check_release_tag.expected_release_tag(lock),
-            'v1.139.1-web.0',
+            package_release.package_version(lock, 'v1.139.1-web.2'),
+            '1.139.1-web.2',
         )
+        with self.assertRaises(check_release_tag.BuildError):
+            check_release_tag.release_revision(lock, 'v1.139.1-web.01')
+        with self.assertRaises(check_release_tag.BuildError):
+            check_release_tag.release_revision(lock, 'v1.140.0-web.0')
 
     def test_archives_are_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
@@ -596,6 +617,10 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('qualification_run_id:', workflow)
         self.assertIn('name: Verify release qualification evidence', workflow)
         self.assertIn('release-qualification', workflow)
+        self.assertIn('name: Download release qualification evidence', workflow)
+        self.assertIn('name: Verify release qualification binding', workflow)
+        self.assertIn('.tag == $tag', workflow)
+        self.assertIn('CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}', workflow)
         self.assertIn('name: Verify release commit is on protected default branch', workflow)
         self.assertIn('repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch', workflow)
         self.assertIn('"$compare_status" != \'ahead\'', workflow)

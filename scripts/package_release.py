@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import check_release_tag
 import generate_license_inventory
 import generate_runtime_metadata as runtime_metadata_generator
 import generate_sbom
@@ -209,6 +210,15 @@ def build_artifact_manifest(
     }
 
 
+
+def package_version(lock: dict[str, Any], release_tag: str | None = None) -> str:
+    if release_tag is None:
+        release_tag = os.environ.get('CODE_OSS_STATIC_WEB_RELEASE_TAG')
+    if release_tag is None:
+        release_tag = check_release_tag.expected_release_tag(lock)
+    return check_release_tag.release_version(lock, release_tag)
+
+
 def main() -> None:
     require((DIST / 'index.html').is_file(), 'dist/ missing; run the build first')
     lock = load_json(ROOT / 'upstream.lock.json')
@@ -218,7 +228,7 @@ def main() -> None:
         if path.is_file():
             path.unlink()
 
-    version = f'{lock["tag"]}-web.0'
+    version = package_version(lock)
     project_commit = resolve_project_commit()
     runtime_metadata_path = WORK / 'runtime-components.json'
     if not runtime_metadata_path.is_file():

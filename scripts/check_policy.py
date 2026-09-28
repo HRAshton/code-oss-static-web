@@ -207,6 +207,11 @@ def check_release_integrity_policy() -> None:
         'name: Verify release qualification evidence',
         'release-qualification',
         'Full build qualification',
+        'name: Download release qualification evidence',
+        'run-id: ${{ inputs.qualification_run_id }}',
+        'name: Verify release qualification binding',
+        '.tag == $tag',
+        '.commit == $commit',
     ):
         require(required in authorize, f'release authorization missing guard: {required}')
 

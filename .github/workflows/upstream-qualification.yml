@@ -46,3 +46,4 @@ jobs:
           --repo "$GITHUB_REPOSITORY"
           --ref master
           -f browser=all
+          -f release_mode=upstream
