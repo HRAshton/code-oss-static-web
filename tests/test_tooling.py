@@ -248,6 +248,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('name: qualification-harness', workflow)
         self.assertIn('name: playwright-browser-chromium', workflow)
         self.assertIn('PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers', workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
         self.assertIn('needs: build', workflow)
         self.assertIn('needs: browser', workflow)
         self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
