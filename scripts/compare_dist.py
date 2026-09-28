@@ -13,14 +13,10 @@ def compare_distributions(reference: Path, candidate: Path) -> tuple[str, int]:
     require((candidate / 'index.html').is_file(), f'not a static distribution: {candidate}')
 
     reference_files = {
-        path.relative_to(reference).as_posix()
-        for path in reference.rglob('*')
-        if path.is_file()
+        path.relative_to(reference).as_posix() for path in reference.rglob('*') if path.is_file()
     }
     candidate_files = {
-        path.relative_to(candidate).as_posix()
-        for path in candidate.rglob('*')
-        if path.is_file()
+        path.relative_to(candidate).as_posix() for path in candidate.rglob('*') if path.is_file()
     }
     missing = sorted(reference_files - candidate_files)
     extra = sorted(candidate_files - reference_files)
