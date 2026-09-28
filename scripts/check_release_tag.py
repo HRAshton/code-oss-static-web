@@ -12,7 +12,7 @@ RELEASE_REVISION_RE = re.compile(r'^(0|[1-9][0-9]*)$')
 
 def expected_release_tag(lock: dict[str, Any], revision: int = 0) -> str:
     require(
-        isinstance(revision, int) and not isinstance(revision, bool) and revision >= 0,
+        not isinstance(revision, bool) and revision >= 0,
         'release revision must be a non-negative integer',
     )
     return f'v{lock["tag"]}-web.{revision}'
