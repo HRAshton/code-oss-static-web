@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing GitHub release tag to sign; empty uses the latest release
+        description: Existing GitHub release tag to backfill; empty uses the latest release
         required: false
         type: string
   push:
@@ -19,16 +19,13 @@ concurrency:
 permissions: read-all
 
 jobs:
-  sign:
+  backfill:
     runs-on: ubuntu-latest
     permissions:
       actions: write
       contents: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
     steps:
-      - name: Resolve release and verify published asset digests
+      - name: Export and verify existing release provenance
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -55,52 +52,59 @@ jobs:
             exit 0
           fi
 
-          mkdir -p artifacts .work
-          gh release download "$tag"             --repo "$GITHUB_REPOSITORY"             --pattern SHA256SUMS             --dir artifacts
+          artifact_name="$(
+            jq -r '[.assets[].name | select(endswith(".tar.gz"))][0] // empty' <<<"$release"
+          )"
+          if [[ -z "$artifact_name" ]]; then
+            echo "release $tag has no tar.gz artifact to verify" >&2
+            exit 1
+          fi
 
-          while read -r digest asset; do
-            asset="${asset#\*}"
-            [[ -n "$digest" && -n "$asset" ]] || continue
-            api_digest="$(jq -r --arg asset "$asset" '.assets[] | select(.name == $asset) | .digest // empty' <<<"$release")"
-            if [[ "$api_digest" != "sha256:$digest" ]]; then
-              echo "digest mismatch for release asset $asset: checksums=sha256:$digest api=${api_digest:-missing}" >&2
-              exit 1
-            fi
-          done < artifacts/SHA256SUMS
+          expected_digest="$(
+            jq -r --arg asset "$artifact_name" '.assets[] | select(.name == $asset) | .digest // empty' <<<"$release"
+          )"
+          if [[ ! "$expected_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "release asset $artifact_name has no usable GitHub SHA-256 digest" >&2
+            exit 1
+          fi
 
-          release_id="$(jq -r '.id' <<<"$release")"
-          jq -n             --arg repository "$GITHUB_REPOSITORY"             --arg tag "$tag"             --arg releaseId "$release_id"             '{
-              repository: $repository,
-              releaseTag: $tag,
-              releaseId: $releaseId,
-              backfill: true,
-              purpose: "Cryptographically bind the already-published release asset digests without claiming a new build."
-            }' > .work/release-signature-predicate.json
+          mkdir -p artifacts .work/release .work/attestations
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$artifact_name" --dir .work/release
+
+          actual_digest="sha256:$(sha256sum ".work/release/$artifact_name" | awk '{print $1}')"
+          if [[ "$actual_digest" != "$expected_digest" ]]; then
+            echo "downloaded release asset digest mismatch: expected $expected_digest, got $actual_digest" >&2
+            exit 1
+          fi
+
+          gh attestation verify ".work/release/$artifact_name"             --repo "$GITHUB_REPOSITORY"             --predicate-type https://slsa.dev/provenance/v1
+
+          (
+            cd .work/attestations
+            gh attestation download "../release/$artifact_name"               --repo "$GITHUB_REPOSITORY"               --predicate-type https://slsa.dev/provenance/v1               --limit 1
+          )
+
+          mapfile -t bundles < <(find .work/attestations -maxdepth 1 -type f -name '*.jsonl' -print)
+          if [[ "${#bundles[@]}" != 1 ]]; then
+            echo "expected exactly one provenance bundle, found ${#bundles[@]}" >&2
+            exit 1
+          fi
+
+          jq -c . "${bundles[0]}" > artifacts/release-provenance.sigstore.json
+          jq -e . artifacts/release-provenance.sigstore.json >/dev/null
 
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "already_signed=false" >> "$GITHUB_OUTPUT"
 
-      - name: Create keyless Sigstore attestation for existing release
-        if: steps.release.outputs.already_signed != 'true'
-        id: signature
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-checksums: artifacts/SHA256SUMS
-          predicate-type: https://github.com/HRAshton/code-oss-static-web/attestations/release-signature/v1
-          predicate-path: .work/release-signature-predicate.json
-
-      - name: Attach signature bundle to existing release
+      - name: Attach original provenance bundle to existing release
         if: steps.release.outputs.already_signed != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          SIGNATURE_BUNDLE: ${{ steps.signature.outputs.bundle-path }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          test -s "$SIGNATURE_BUNDLE"
-          cp "$SIGNATURE_BUNDLE" artifacts/release-signature.sigstore.json
-          gh release upload "$RELEASE_TAG"             artifacts/release-signature.sigstore.json             --repo "$GITHUB_REPOSITORY"             --clobber
+          gh release upload "$RELEASE_TAG"             artifacts/release-provenance.sigstore.json             --repo "$GITHUB_REPOSITORY"             --clobber
 
       - name: Refresh OpenSSF Scorecard
         env:
