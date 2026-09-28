@@ -64,5 +64,6 @@
       "versioningTemplate": "semver",
       "autoReplaceStringTemplate": "\"tag\": \"{{{newValue}}}\",\n  \"commit\": \"{{{newDigest}}}\",\n  \"sourceDateEpoch\": {{{currentEpoch}}},\n  \"qualified\": false,\n  \"qualificationNote\": \"Pending qualification for Code - OSS {{{newValue}}}\""
     }
-  ]
+  ],
+  "commitMessageLowerCase": "never"
 }

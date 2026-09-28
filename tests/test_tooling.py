@@ -35,6 +35,7 @@ class ToolingTests(unittest.TestCase):
         self.assertTrue(config['platformAutomerge'])
         self.assertEqual(config['automergeStrategy'], 'merge-commit')
         self.assertEqual(config['semanticCommits'], 'enabled')
+        self.assertEqual(config['commitMessageLowerCase'], 'never')
 
         manager = next(
             item
