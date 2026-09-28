@@ -7,31 +7,38 @@ on:
       - upstream.lock.json
 
 permissions:
-  contents: read
   actions: write
+  contents: read
 
 jobs:
   dispatch:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Check qualification state
-        id: qualification
+      - name: Detect upstream revision change
+        id: upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
-          qualified="$(jq -r '.qualified' upstream.lock.json)"
-          if [[ "$qualified" == 'false' ]]; then
-            echo 'dispatch=true' >> "$GITHUB_OUTPUT"
+          old_lock="$(
+            gh api -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$BEFORE_SHA"
+          )"
+          new_lock="$(
+            gh api -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$AFTER_SHA"
+          )"
+          old_revision="$(jq -r '[.tag, .commit] | @tsv' <<<"$old_lock")"
+          new_revision="$(jq -r '[.tag, .commit] | @tsv' <<<"$new_lock")"
+          if [[ "$old_revision" == "$new_revision" ]]; then
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
           else
-            echo 'dispatch=false' >> "$GITHUB_OUTPUT"
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
           fi
 
       - name: Start full browser qualification
-        if: steps.qualification.outputs.dispatch == 'true'
+        if: steps.upstream.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-

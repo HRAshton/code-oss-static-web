@@ -22,20 +22,22 @@ import validate_config
 
 
 class ToolingTests(unittest.TestCase):
-    def test_upstream_lock_is_exact_commit_and_qualified(self):
+    def test_upstream_lock_is_exact_commit(self):
         lock = json.loads((ROOT / 'upstream.lock.json').read_text())
         self.assertRegex(lock['commit'], r'^[0-9a-f]{40}$')
-        self.assertTrue(lock['qualified'])
-        self.assertIn('Qualified in Chromium', lock['qualificationNote'])
+        self.assertNotIn('qualified', lock)
+        self.assertNotIn('qualificationNote', lock)
 
-    def test_renovate_manages_upstream_as_unqualified_integration_update(self):
+    def test_renovate_updates_auto_merge_without_human_reviewer(self):
         config = json.loads((ROOT / 'renovate.json').read_text())
-        self.assertEqual(config['reviewers'], ['vodyanica'])
-        self.assertTrue(config['assignAutomerge'])
+        self.assertTrue(config['automerge'])
+        self.assertEqual(config['automergeType'], 'pr')
         self.assertTrue(config['platformAutomerge'])
         self.assertEqual(config['automergeStrategy'], 'merge-commit')
         self.assertEqual(config['semanticCommits'], 'enabled')
         self.assertEqual(config['commitMessageLowerCase'], 'never')
+        self.assertNotIn('reviewers', config)
+        self.assertNotIn('assignAutomerge', config)
 
         manager = next(
             item
@@ -44,25 +46,37 @@ class ToolingTests(unittest.TestCase):
         )
         self.assertEqual(manager['datasourceTemplate'], 'github-tags')
         replacement = manager['autoReplaceStringTemplate']
-        self.assertIn('"commit": "{{{newDigest}}}"', replacement)
-        self.assertIn('"qualified": false', replacement)
-        self.assertIn('Pending qualification for Code - OSS {{{newValue}}}', replacement)
-
-        upstream_rule = next(
-            item
-            for item in config['packageRules']
-            if item.get('matchPackageNames') == ['microsoft/vscode']
+        self.assertEqual(
+            replacement,
+            '"tag": "{{{newValue}}}",\n  "commit": "{{{newDigest}}}"',
         )
-        self.assertTrue(upstream_rule['automerge'])
-        self.assertEqual(upstream_rule['semanticCommitScope'], 'upstream')
+        self.assertNotIn('\\', replacement)
+        self.assertNotIn('qualified', replacement)
 
-    def test_unqualified_upstream_merge_dispatches_full_qualification(self):
+        workflow = (ROOT / '.github/workflows/renovate-auto-approve.yml').read_text()
+        self.assertIn('.user.login == "renovate[bot]"', workflow)
+        self.assertIn('pull-requests: write', workflow)
+        self.assertIn('event=APPROVE', workflow)
+        self.assertIn('--auto --merge', workflow)
+
+    def test_upstream_revision_change_dispatches_full_qualification(self):
         workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()
         self.assertIn('branches: [master]', workflow)
         self.assertIn('- upstream.lock.json', workflow)
-        self.assertIn('if [[ "$qualified" == \'false\' ]]; then', workflow)
+        self.assertIn('old_revision=', workflow)
+        self.assertIn('new_revision=', workflow)
+        self.assertIn("steps.upstream.outputs.changed == 'true'", workflow)
         self.assertIn('gh workflow run qualify.yml', workflow)
         self.assertIn('-f browser=all', workflow)
+
+    def test_full_qualification_dispatches_web_zero_release(self):
+        workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        self.assertIn('release:', workflow)
+        self.assertIn("inputs.browser == 'all'", workflow)
+        self.assertIn('-web.0', workflow)
+        self.assertIn('name: release-qualification', workflow)
+        self.assertIn('gh workflow run release.yml', workflow)
+        self.assertIn('qualification_run_id="$GITHUB_RUN_ID"', workflow)
 
     def test_repository_configuration_is_valid(self):
         validate_config.validate_all()
@@ -566,7 +580,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('needs: [build, reproducibility]', workflow)
         self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
         self.assertNotIn('actions/cache@', workflow)
-        self.assertIn('environment: release', workflow)
+        self.assertNotIn('environment: release', workflow)
         self.assertIn('actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e', workflow)
         self.assertIn('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8', workflow)
         self.assertNotIn('docker/setup-qemu-action@', workflow)
@@ -575,10 +589,13 @@ class ToolingTests(unittest.TestCase):
             workflow,
         )
         self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
-        self.assertIn('pages-release-gate:', workflow)
-        self.assertIn('needs: [attest, pages-release-gate]', workflow)
+        self.assertNotIn('pages-release-gate:', workflow)
+        self.assertIn('needs: attest', workflow)
         self.assertIn('gh release create', workflow)
         self.assertIn('needs: authorize', workflow)
+        self.assertIn('qualification_run_id:', workflow)
+        self.assertIn('name: Verify release qualification evidence', workflow)
+        self.assertIn('release-qualification', workflow)
         self.assertIn('name: Verify release commit is on protected default branch', workflow)
         self.assertIn('repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch', workflow)
         self.assertIn('"$compare_status" != \'ahead\'', workflow)

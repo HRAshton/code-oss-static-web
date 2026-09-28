@@ -17,7 +17,6 @@ def main() -> None:
     args = parser.parse_args()
 
     lock = load_json(ROOT / 'upstream.lock.json')
-    require(lock.get('qualified') is True, 'upstream revision is not qualified')
     expected = expected_release_tag(lock)
     require(args.tag == expected, f'release tag mismatch: expected {expected}, got {args.tag}')
     print(f'release tag contract: {args.tag}')

@@ -24,9 +24,10 @@ still regenerating the current static wrapper.
 
 ## Current browser policy
 
-Chromium is the default qualification target. Chromium, Firefox and WebKit have all passed the real
-Code-OSS 1.139.1 static qualification artifact. Release tags rerun the release-grade Chromium gate;
-the development qualification workflow continuously covers all three browser engines.
+Chromium is the default interactive qualification target. Microsoft upstream updates run the full
+Chromium, Firefox and WebKit qualification automatically before the immutable release tag is created.
+The release workflow independently rebuilds the tagged revision and reruns its release-grade
+Chromium and reproducibility gates.
 
 ## Current Playwright coverage
 

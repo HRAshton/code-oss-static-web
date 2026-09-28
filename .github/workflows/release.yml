@@ -1,9 +1,12 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*-web.*'
+  workflow_dispatch:
+    inputs:
+      qualification_run_id:
+        description: Successful Full build qualification workflow run
+        required: true
+        type: string
 
 concurrency:
   group: release-${{ github.ref }}
@@ -15,8 +18,42 @@ jobs:
   authorize:
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
     steps:
+      - name: Verify release qualification evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          qualification=''
+          for _ in $(seq 1 60); do
+            qualification="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID")"
+            if [[ "$(jq -r '.status' <<<"$qualification")" == 'completed' ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          [[ "$(jq -r '.status' <<<"$qualification")" == 'completed' ]]
+          [[ "$(jq -r '.conclusion' <<<"$qualification")" == 'success' ]]
+          [[ "$(jq -r '.event' <<<"$qualification")" == 'workflow_dispatch' ]]
+          [[ "$(jq -r '.name' <<<"$qualification")" == 'Full build qualification' ]]
+          [[ "$(jq -r '.path' <<<"$qualification")" == '.github/workflows/qualify.yml' ]]
+          [[ "$(jq -r '.head_branch' <<<"$qualification")" == 'master' ]]
+          [[ "$(jq -r '.head_sha' <<<"$qualification")" == "$GITHUB_SHA" ]]
+
+          evidence_count="$(
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALIFICATION_RUN_ID/artifacts"               --jq '[.artifacts[] | select(.name == "release-qualification" and .expired == false)] | length'
+          )"
+          if [[ "$evidence_count" != 1 ]]; then
+            echo "qualification evidence artifact missing for run $QUALIFICATION_RUN_ID" >&2
+            exit 1
+          fi
+
       - name: Verify release commit is on protected default branch
         env:
           GH_TOKEN: ${{ github.token }}
@@ -296,7 +333,6 @@ jobs:
   github-release:
     needs: attest
     runs-on: ubuntu-latest
-    environment: release
     permissions:
       contents: write
     steps:
@@ -362,17 +398,8 @@ jobs:
           --generate-notes
           --title "$GITHUB_REF_NAME"
 
-  pages-release-gate:
-    needs: attest
-    runs-on: ubuntu-latest
-    environment: release
-    permissions: {}
-    steps:
-      - name: Release approval for Pages
-        run: echo "Pages publication approved"
-
   pages:
-    needs: [attest, pages-release-gate]
+    needs: attest
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -453,7 +480,6 @@ jobs:
   oci:
     needs: attest
     runs-on: ubuntu-latest
-    environment: release
     permissions:
       contents: read
       packages: write

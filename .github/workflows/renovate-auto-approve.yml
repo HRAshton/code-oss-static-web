@@ -1,0 +1,63 @@
+name: Renovate auto-approval
+
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  approve:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve trusted Renovate update
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          prs="$(gh api "repos/$GITHUB_REPOSITORY/commits/$SOURCE_SHA/pulls")"
+          count="$(
+            jq --arg sha "$SOURCE_SHA" '
+              [.[] | select(.state == "open" and .user.login == "renovate[bot]" and .head.sha == $sha)] | length
+            ' <<<"$prs"
+          )"
+          if [[ "$count" != 1 ]]; then
+            echo "No unique open Renovate PR for $SOURCE_SHA; nothing to approve."
+            exit 0
+          fi
+          pr_number="$(
+            jq -r --arg sha "$SOURCE_SHA" '
+              .[] | select(.state == "open" and .user.login == "renovate[bot]" and .head.sha == $sha) | .number
+            ' <<<"$prs"
+          )"
+          head_repo="$(jq -r --argjson number "$pr_number" '.[] | select(.number == $number) | .head.repo.full_name' <<<"$prs")"
+          [[ "$head_repo" == "$GITHUB_REPOSITORY" ]] || {
+            echo "Unexpected Renovate head repository: $head_repo" >&2
+            exit 1
+          }
+
+          while IFS= read -r path; do
+            case "$path" in
+              upstream.lock.json|deploy/Dockerfile|.github/workflows/*.yml) ;;
+              *)
+                echo "Refusing unexpected Renovate path: $path" >&2
+                exit 1
+                ;;
+            esac
+          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$pr_number/files" --jq '.[].filename')
+
+          approved="$(
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number/reviews"               --jq '[.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED")] | length'
+          )"
+          if [[ "$approved" == 0 ]]; then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$pr_number/reviews" -f event=APPROVE >/dev/null
+          fi
+          gh pr merge "$pr_number" --repo "$GITHUB_REPOSITORY" --auto --merge

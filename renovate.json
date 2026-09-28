@@ -9,24 +9,6 @@
   ],
   "packageRules": [
     {
-      "description": "Automerge safe non-major dependency updates",
-      "matchUpdateTypes": [
-        "digest",
-        "pin",
-        "patch"
-      ],
-      "automerge": true,
-      "automergeType": "pr"
-    },
-    {
-      "description": "Keep minor and major updates reviewable",
-      "matchUpdateTypes": [
-        "minor",
-        "major"
-      ],
-      "automerge": false
-    },
-    {
       "description": "Automerge Microsoft Code OSS integration updates",
       "matchManagers": [
         "custom.regex"
@@ -34,17 +16,11 @@
       "matchPackageNames": [
         "microsoft/vscode"
       ],
-      "automerge": true,
-      "automergeType": "pr",
       "semanticCommitType": "chore",
       "semanticCommitScope": "upstream",
       "commitMessageTopic": "Code OSS"
     }
   ],
-  "reviewers": [
-    "vodyanica"
-  ],
-  "assignAutomerge": true,
   "platformAutomerge": true,
   "automergeStrategy": "merge-commit",
   "semanticCommits": "enabled",
@@ -57,13 +33,15 @@
         "/^upstream\\.lock\\.json$/"
       ],
       "matchStrings": [
-        "\"tag\":\\s*\"(?<currentValue>[^\"]+)\",\\s*\\n\\s*\"commit\":\\s*\"(?<currentDigest>[0-9a-f]{40})\",\\s*\\n\\s*\"sourceDateEpoch\":\\s*(?<currentEpoch>\\d+),\\s*\\n\\s*\"qualified\":\\s*(?:true|false),\\s*\\n\\s*\"qualificationNote\":\\s*\"[^\"]*\""
+        "\"tag\":\\s*\"(?<currentValue>[^\"]+)\",\\s*\\n\\s*\"commit\":\\s*\"(?<currentDigest>[0-9a-f]{40})\""
       ],
       "depNameTemplate": "microsoft/vscode",
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver",
-      "autoReplaceStringTemplate": "\"tag\": \"{{{newValue}}}\",\n  \"commit\": \"{{{newDigest}}}\",\n  \"sourceDateEpoch\": {{{currentEpoch}}},\n  \"qualified\": false,\n  \"qualificationNote\": \"Pending qualification for Code - OSS {{{newValue}}}\""
+      "autoReplaceStringTemplate": "\"tag\": \"{{{newValue}}}\",\n  \"commit\": \"{{{newDigest}}}\""
     }
   ],
-  "commitMessageLowerCase": "never"
+  "commitMessageLowerCase": "never",
+  "automerge": true,
+  "automergeType": "pr"
 }

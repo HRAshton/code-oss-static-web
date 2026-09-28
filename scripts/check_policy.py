@@ -169,21 +169,11 @@ def check_publication_job_block(workflow: Path, job_name: str, block: str) -> No
         return
 
     display = f'{workflow.relative_to(ROOT)}:{job_name}'
-    if 'pages' in write_permissions:
-        require(
-            re.search(
-                r'^    needs:\s*\[attest,\s*pages-release-gate\]\s*$',
-                block,
-                re.MULTILINE,
-            )
-            is not None,
-            f'{display}: Pages publication must depend on the release environment gate',
-        )
-    else:
-        require(
-            re.search(r'^    environment:\s*release\s*$', block, re.MULTILINE) is not None,
-            f'{display}: publication job must use the release environment',
-        )
+    needs = re.search(r'^    needs:\s*(.+)$', block, re.MULTILINE)
+    require(
+        needs is not None and 'attest' in needs.group(1),
+        f'{display}: publication job must depend on attestation',
+    )
     require(
         './build.sh' not in block, f'{display}: publication job must not execute upstream builds'
     )
@@ -214,6 +204,9 @@ def check_release_integrity_policy() -> None:
         'repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch',
         '"$compare_status" != \'ahead\'',
         '"$compare_status" != \'identical\'',
+        'name: Verify release qualification evidence',
+        'release-qualification',
+        'Full build qualification',
     ):
         require(required in authorize, f'release authorization missing guard: {required}')
 
@@ -225,33 +218,17 @@ def check_release_integrity_policy() -> None:
         'release build must depend on release authorization',
     )
 
-    pages_gate = jobs.get('pages-release-gate')
-    require(pages_gate is not None, 'release workflow must have a Pages release gate')
-    assert pages_gate is not None
-    require(
-        re.search(r'^    needs:\s*attest\s*$', pages_gate, re.MULTILINE) is not None,
-        'Pages release gate must depend on attestation',
-    )
-    require(
-        re.search(r'^    environment:\s*release\s*$', pages_gate, re.MULTILINE) is not None,
-        'Pages release gate must use the release environment',
-    )
-    require(
-        re.search(r'^    permissions:\s*\{\}\s*$', pages_gate, re.MULTILINE) is not None,
-        'Pages release gate must not receive repository permissions',
-    )
-
     pages = jobs.get('pages')
     require(pages is not None, 'release workflow must have a Pages publication job')
     assert pages is not None
     require(
         re.search(
-            r'^    needs:\s*\[attest,\s*pages-release-gate\]\s*$',
+            r'^    needs:\s*attest\s*$',
             pages,
             re.MULTILINE,
         )
         is not None,
-        'Pages publication must depend on the release environment gate',
+        'Pages publication must depend on attestation',
     )
 
     oci = jobs.get('oci')
