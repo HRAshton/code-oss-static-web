@@ -113,12 +113,53 @@ def check_build_job_permissions() -> None:
             check_build_job_block(workflow, job_name, block)
 
 
+
+def check_attestation_job_block(workflow: Path, job_name: str, block: str) -> None:
+    if "actions/attest@" not in block:
+        return
+
+    display = f"{workflow.relative_to(ROOT)}:{job_name}"
+    require(
+        re.search(r"^    permissions:\s*$", block, re.MULTILINE) is not None,
+        f"{display}: attestation job must declare explicit permissions",
+    )
+    require(
+        re.search(r"^      contents:\s*read\s*$", block, re.MULTILINE) is not None,
+        f"{display}: attestation job must use contents: read",
+    )
+    require(
+        re.search(r"^      id-token:\s*write\s*$", block, re.MULTILINE) is not None,
+        f"{display}: attestation job must use id-token: write",
+    )
+    require(
+        re.search(r"^      attestations:\s*write\s*$", block, re.MULTILINE) is not None,
+        f"{display}: attestation job must use attestations: write",
+    )
+    require(
+        re.search(r"^      artifact-metadata:\s*write\s*$", block, re.MULTILINE) is not None,
+        f"{display}: attestation job must use artifact-metadata: write",
+    )
+    require("actions/checkout@" not in block, f"{display}: attestation job must not checkout source")
+    require("./build.sh" not in block, f"{display}: attestation job must not execute upstream builds")
+    require(
+        re.search(r"^\s+-?\s*run:\s*", block, re.MULTILINE) is None,
+        f"{display}: attestation job must not execute shell commands",
+    )
+
+
+def check_attestation_job_permissions() -> None:
+    for workflow in sorted((ROOT / ".github/workflows").glob("*.yml")):
+        text = workflow.read_text(encoding="utf-8")
+        for job_name, block in workflow_job_blocks(text):
+            check_attestation_job_block(workflow, job_name, block)
+
 def main() -> None:
     check_actions()
     check_shell_scripts()
     check_forbidden_execution_patterns()
     check_extension_lock()
     check_build_job_permissions()
+    check_attestation_job_permissions()
     print("repository policy: ok")
 
 

@@ -228,6 +228,27 @@ class ToolingTests(unittest.TestCase):
         with self.assertRaises(check_policy.BuildError):
             check_policy.check_build_job_block(ROOT / '.github/workflows/example.yml', 'build', bad)
 
+    def test_attestation_jobs_are_isolated(self):
+        check_policy.check_attestation_job_permissions()
+        bad = """jobs:
+  attest:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - uses: actions/attest@0000000000000000000000000000000000000000
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_attestation_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'attest',
+                bad,
+            )
+
     def test_workflow_actions_are_commit_pinned(self):
         import re
         for workflow in (ROOT / '.github/workflows').glob('*.yml'):
@@ -251,6 +272,10 @@ class ToolingTests(unittest.TestCase):
         self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
         self.assertIn('needs: build', workflow)
         self.assertIn('needs: browser', workflow)
+        self.assertIn('needs: package', workflow)
+        self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
+        self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
+        self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
         self.assertIn('actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow)
         self.assertIn('scripts/run_e2e.py', workflow)
         self.assertIn('--grep-invert @extension', workflow)

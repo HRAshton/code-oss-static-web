@@ -290,3 +290,31 @@ jobs:
           path: artifacts/
           if-no-files-found: error
           retention-days: 7
+
+  attest:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download verified candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: candidate
+          path: artifacts
+
+      - name: Attest release provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-checksums: artifacts/SHA256SUMS
+
+      - name: Attest release SBOM
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            artifacts/code-oss-static-web-*.tar.gz
+            artifacts/code-oss-static-web-*.zip
+          sbom-path: artifacts/sbom.cdx.json
