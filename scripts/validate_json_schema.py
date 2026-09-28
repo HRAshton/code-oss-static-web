@@ -80,12 +80,15 @@ def _validate(value: Any, schema: dict[str, Any], path: str) -> None:
             _fail(path, f'minimum is {schema["minimum"]}')
 
     if isinstance(value, list):
-        if 'minItems' in schema and len(value) < schema['minItems']:
-            _fail(path, f'minItems is {schema["minItems"]}')
+        array_value = cast(list[Any], value)
+        min_items = schema.get('minItems')
+        if isinstance(min_items, int) and len(array_value) < min_items:
+            _fail(path, f'minItems is {min_items}')
         item_schema = schema.get('items')
         if isinstance(item_schema, dict):
-            for index, item in enumerate(value):
-                _validate(item, cast(dict[str, Any], item_schema), f'{path}[{index}]')
+            typed_item_schema = cast(dict[str, Any], item_schema)
+            for index, item in enumerate(array_value):
+                _validate(item, typed_item_schema, f'{path}[{index}]')
 
     if isinstance(value, dict):
         object_value = cast(dict[str, Any], value)
