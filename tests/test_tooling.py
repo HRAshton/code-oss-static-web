@@ -42,8 +42,8 @@ class ToolingTests(unittest.TestCase):
             candidate = root / 'candidate'
             for directory in (reference, candidate):
                 directory.mkdir()
-                (directory / 'index.html').write_text('ok\n')
-                (directory / 'asset.js').write_text('same\n')
+                (directory / 'index.html').write_text('ok\\n')
+                (directory / 'asset.js').write_text('same\\n')
             digest, count = compare_dist.compare_distributions(reference, candidate)
             self.assertRegex(digest, r'^[0-9a-f]{64}        with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -462,7 +462,7 @@ class ToolingTests(unittest.TestCase):
 if __name__ == '__main__': unittest.main()
 )
             self.assertEqual(count, 2)
-            (candidate / 'asset.js').write_text('changed\n')
+            (candidate / 'asset.js').write_text('changed\\n')
             with self.assertRaises(compare_dist.BuildError):
                 compare_dist.compare_distributions(reference, candidate)
 
