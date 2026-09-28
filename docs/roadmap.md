@@ -5,13 +5,13 @@
 - [x] qualify the complete Code-OSS 1.139.1 static build in Chromium;
 - [x] resolve current upstream web embedder/bootstrap compatibility without source patches;
 - [x] run Chromium Playwright qualification against the real static artifact;
-- record the first explicit clean-start network trace artifact;
+- [x] qualify clean startup as zero cross-origin HTTP requests and zero WebSockets;
 - [x] determine whether upstream source patches are required for 1.139.1: none.
 
 ## Browser qualification
 
 - [x] stabilize selectors against the real artifact;
-- [x] add browser-extension activation and global-state persistence qualification;
+- [x] add browser-extension activation and lifecycle-backed global-state persistence qualification;
 - add filesystem/workspace persistence tests;
 - add worker/language-service tests;
 - qualify Firefox;
@@ -26,16 +26,19 @@
 - [x] add browser-entrypoint compatibility checks;
 - add Open VSX acquisition with exact versions/hashes;
 - [x] add extension and shipped npm runtime components to the release SBOM;
-- add extension license inventory.
+- [x] include extensions in the deterministic artifact license inventory;
+- add explicit license-policy allow/deny rules for bundled extensions.
 
 ## Supply chain/release
 
 - [x] deterministic release archives and checksums;
 - [x] deterministic artifact manifest bound to project/upstream/build inputs;
 - [x] artifact-level CycloneDX 1.7 SBOM;
-- [x] release verification command for checksums, manifest and SBOM;
-- provenance attestation;
-- artifact-level license inventory;
+- [x] deterministic artifact-level license inventory;
+- [x] release verification command for checksums, manifest, SBOM and license inventory;
+- [x] isolated SLSA provenance attestation;
+- [x] isolated CycloneDX SBOM attestation;
+- protected publication environment;
 - canonical GitHub Release;
 - Pages deployment from the exact canonical `dist/`;
 - OCI image built from that same `dist/`;
@@ -53,4 +56,4 @@
 - tighten Pyright from `basic` to `strict`;
 - add schema validation for all JSON/YAML configuration;
 - [x] enforce that jobs executing upstream builds have read-only permissions, no OIDC and no persisted checkout credentials;
-- add further release-contract checks for attest/publish job separation and immutable release inputs.
+- [x] enforce attestation jobs as source-free, shell-free consumers of verified candidates.
