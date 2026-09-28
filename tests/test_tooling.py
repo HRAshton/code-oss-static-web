@@ -92,6 +92,26 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('-f browser=all', patch)
         self.assertIn('-f release_mode=patch', patch)
 
+    def test_scorecard_sensitive_permissions_are_job_scoped(self):
+        for path in (
+            '.github/workflows/patch-release.yml',
+            '.github/workflows/upstream-qualification.yml',
+        ):
+            workflow = (ROOT / path).read_text()
+            header, jobs = workflow.split('\njobs:\n', 1)
+            self.assertNotIn('actions: write', header)
+            self.assertIn('contents: read', header)
+            self.assertIn('permissions:\n      actions: write\n      contents: read', jobs)
+
+    def test_reuse_ci_dependency_is_digest_pinned(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertNotIn("pip install --disable-pip-version-check 'reuse==", workflow)
+        self.assertIn(
+            'docker://fsfe/reuse:6.2.0@sha256:'
+            '85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e',
+            workflow,
+        )
+
     def test_repository_configuration_is_valid(self):
         validate_config.validate_all()
 
