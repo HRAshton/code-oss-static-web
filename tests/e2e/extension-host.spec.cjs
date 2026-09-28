@@ -24,7 +24,7 @@ test('@extension repository qualification web extension activates', async ({ pag
   ).toBeVisible({ timeout: 15_000 });
 });
 
-test('@extension global state persists across workbench restart', async ({ page, context }) => {
+test('@extension global state persists across workbench reload', async ({ page }) => {
   await openWorkbench(page);
   await executeCommandWhenReady(page, 'codeOssStaticWebTest.markReady');
 
@@ -32,12 +32,11 @@ test('@extension global state persists across workbench restart', async ({ page,
     page.locator('.notification-toast').filter({ hasText: 'Static web test extension activated' }).first()
   ).toBeVisible({ timeout: 15_000 });
 
-  await page.close();
-  const restartedPage = await context.newPage();
-  await openWorkbench(restartedPage);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await expect(page.locator('.monaco-workbench')).toBeVisible({ timeout: 60_000 });
 
   await expect.poll(async () => {
-    return restartedPage.evaluate(async () => {
+    return page.evaluate(async () => {
       try {
         const { commands } = await import('./out/vs/workbench/workbench.web.main.internal.js');
         return await commands.executeCommand('codeOssStaticWebTest.readMarker');
