@@ -227,8 +227,13 @@ def materialize_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> Path:
             source_path = root / source_path
         source_path = source_path.resolve()
         require(source_path.is_file(), f'locked VSIX does not exist: {source_path}')
-        require(source_path.suffix.lower() == '.vsix', f'local-vsix source must end in .vsix: {source_path}')
-        require(sha256_file(source_path) == entry['sha256'], f'VSIX SHA-256 mismatch: {entry["id"]}')
+        require(
+            source_path.suffix.lower() == '.vsix',
+            f'local-vsix source must end in .vsix: {source_path}',
+        )
+        require(
+            sha256_file(source_path) == entry['sha256'], f'VSIX SHA-256 mismatch: {entry["id"]}'
+        )
         return source_path
     if source_type == 'open-vsx':
         return download_open_vsx(entry)
@@ -237,15 +242,24 @@ def materialize_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> Path:
 
 def validate_vsix(entry: dict[str, Any], source_path: Path) -> dict[str, Any]:
     manifest, actual_id = _load_vsix_manifest(source_path)
-    require(actual_id == entry['id'], f'VSIX id mismatch: locked {entry["id"]}, package contains {actual_id}')
+    require(
+        actual_id == entry['id'],
+        f'VSIX id mismatch: locked {entry["id"]}, package contains {actual_id}',
+    )
     require(manifest.get('version') == entry['version'], f'VSIX version mismatch for {entry["id"]}')
     browser = manifest.get('browser')
-    require(isinstance(browser, str) and browser.strip() != '', f'extension is not browser-compatible: {entry["id"]}')
+    require(
+        isinstance(browser, str) and browser.strip() != '',
+        f'extension is not browser-compatible: {entry["id"]}',
+    )
 
     browser_path = PurePosixPath('extension') / PurePosixPath(browser.lstrip('./'))
     with zipfile.ZipFile(source_path) as archive:
         names = set(archive.namelist())
-        require(browser_path.as_posix() in names, f'VSIX browser entrypoint missing for {entry["id"]}: {browser}')
+        require(
+            browser_path.as_posix() in names,
+            f'VSIX browser entrypoint missing for {entry["id"]}: {browser}',
+        )
     return manifest
 
 
@@ -274,7 +288,10 @@ def install_locked_extensions(
             existing_ids.add(f'{publisher}.{name}')
 
     for entry in lock['extensions']:
-        require(entry['id'] not in existing_ids, f'extension id already exists in distribution: {entry["id"]}')
+        require(
+            entry['id'] not in existing_ids,
+            f'extension id already exists in distribution: {entry["id"]}',
+        )
         vsix = materialize_vsix(entry, root=root)
         manifest = validate_vsix(entry, vsix)
         effective_license = enforce_license_policy(entry, manifest, policy)
