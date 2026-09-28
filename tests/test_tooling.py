@@ -57,7 +57,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('.user.login == "renovate[bot]"', workflow)
         self.assertIn('pull-requests: write', workflow)
         self.assertIn('event=APPROVE', workflow)
-        self.assertIn('--auto --merge', workflow)
+        self.assertNotIn('gh pr merge', workflow)
 
     def test_upstream_revision_change_dispatches_full_qualification(self):
         workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()

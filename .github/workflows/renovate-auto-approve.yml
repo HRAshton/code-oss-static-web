@@ -60,4 +60,3 @@ jobs:
           if [[ "$approved" == 0 ]]; then
             gh api --method POST "repos/$GITHUB_REPOSITORY/pulls/$pr_number/reviews" -f event=APPROVE >/dev/null
           fi
-          gh pr merge "$pr_number" --repo "$GITHUB_REPOSITORY" --auto --merge
