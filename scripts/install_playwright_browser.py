@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from common import WORK, BuildError, require
+from common import WORK, BuildError
 
 
 def playwright_cli() -> Path:
@@ -32,7 +32,8 @@ def main() -> None:
 
     cli = playwright_cli()
     node = shutil.which('node')
-    require(node is not None, 'node executable not found')
+    if node is None:
+        raise BuildError('node executable not found')
 
     command = [node, str(cli), 'install']
     if args.with_deps:

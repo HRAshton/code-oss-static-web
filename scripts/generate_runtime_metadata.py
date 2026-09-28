@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from common import DIST, ROOT, WORK, BuildError, load_json, require, write_json
 
@@ -74,15 +74,17 @@ def build_runtime_metadata(
     package_lock: dict[str, Any],
     upstream: dict[str, Any],
 ) -> dict[str, Any]:
-    packages_section = package_lock.get('packages')
-    if not isinstance(packages_section, dict):
+    packages_value = package_lock.get('packages')
+    if not isinstance(packages_value, dict):
         raise BuildError('package-lock.json packages object missing')
+    packages_section = cast(dict[str, Any], packages_value)
 
     npm_components: list[dict[str, Any]] = []
     for name, relative_path in shipped_npm_packages(dist):
-        lock_entry = packages_section.get(f'node_modules/{name}')
-        if not isinstance(lock_entry, dict):
+        lock_value = packages_section.get(f'node_modules/{name}')
+        if not isinstance(lock_value, dict):
             raise BuildError(f'shipped npm package missing from package lock: {name}')
+        lock_entry = cast(dict[str, Any], lock_value)
         version = lock_entry.get('version')
         if not isinstance(version, str) or not version:
             raise BuildError(f'locked npm version missing: {name}')

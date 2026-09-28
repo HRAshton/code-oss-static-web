@@ -5,7 +5,13 @@ import argparse
 import posixpath
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from typing import cast
 from urllib.parse import unquote, urlsplit
+
+
+class StaticServer(ThreadingHTTPServer):
+    static_root: Path
+    base_path: str
 
 
 class StaticHandler(SimpleHTTPRequestHandler):
@@ -22,8 +28,9 @@ class StaticHandler(SimpleHTTPRequestHandler):
     def translate_path(self, path: str) -> str:
         parsed = urlsplit(path)
         request_path = unquote(parsed.path)
-        base_path: str = self.server.base_path  # type: ignore[attr-defined]
-        root: Path = self.server.static_root  # type: ignore[attr-defined]
+        server = cast(StaticServer, self.server)
+        base_path = server.base_path
+        root = server.static_root
 
         if base_path != '/':
             prefix = base_path.rstrip('/')
@@ -57,9 +64,9 @@ def main() -> None:
         raise SystemExit(f'not a static distribution: {root}')
 
     base_path = '/' + args.base_path.strip('/') + '/' if args.base_path != '/' else '/'
-    server = ThreadingHTTPServer((args.host, args.port), StaticHandler)
-    server.static_root = root  # type: ignore[attr-defined]
-    server.base_path = base_path  # type: ignore[attr-defined]
+    server = StaticServer((args.host, args.port), StaticHandler)
+    server.static_root = root
+    server.base_path = base_path
     print(f'serving {root} at http://{args.host}:{args.port}{base_path}', flush=True)
     server.serve_forever()
 

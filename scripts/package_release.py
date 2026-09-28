@@ -12,6 +12,7 @@ import subprocess
 import tarfile
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import generate_license_inventory
 import generate_runtime_metadata as runtime_metadata_generator
@@ -32,7 +33,7 @@ PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
 PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 
 
-def iter_files(root: Path):
+def iter_files(root: Path) -> list[Path]:
     return sorted(
         (path for path in root.rglob('*') if path.is_file()),
         key=lambda path: path.relative_to(root).as_posix(),
@@ -51,7 +52,7 @@ def distribution_tree_digest(root: Path) -> tuple[str, int]:
     return digest.hexdigest(), count
 
 
-def build_tar(src: Path, out: Path, epoch: int):
+def build_tar(src: Path, out: Path, epoch: int) -> None:
     with out.open('wb') as raw:
         with gzip.GzipFile(filename='', mode='wb', fileobj=raw, mtime=epoch) as gz:
             with tarfile.open(fileobj=gz, mode='w', format=tarfile.PAX_FORMAT) as archive:
@@ -69,7 +70,7 @@ def build_tar(src: Path, out: Path, epoch: int):
                     archive.addfile(info, io.BytesIO(data))
 
 
-def build_zip(src: Path, out: Path, epoch: int):
+def build_zip(src: Path, out: Path, epoch: int) -> None:
     timestamp = datetime.datetime.fromtimestamp(
         max(epoch, 315532800),
         datetime.UTC,
@@ -163,11 +164,11 @@ def build_artifact_manifest(
     *,
     version: str,
     project_commit: str,
-    upstream: dict,
+    upstream: dict[str, Any],
     release_files: list[Path],
     distribution: Path,
     runtime_metadata: Path,
-) -> dict:
+) -> dict[str, Any]:
     tree_digest, file_count = distribution_tree_digest(distribution)
     return {
         'schemaVersion': 1,
@@ -209,7 +210,7 @@ def build_artifact_manifest(
     }
 
 
-def main():
+def main() -> None:
     require((DIST / 'index.html').is_file(), 'dist/ missing; run the build first')
     lock = load_json(ROOT / 'upstream.lock.json')
     epoch = int(lock['sourceDateEpoch'])

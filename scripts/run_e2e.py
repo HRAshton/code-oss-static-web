@@ -36,7 +36,8 @@ def main() -> None:
     node_modules = playwright_node_modules()
     cli = node_modules / '@playwright/test/cli.js'
     node = shutil.which('node')
-    require(node is not None, 'node executable not found')
+    if node is None:
+        raise BuildError('node executable not found')
     require((args.dist / 'index.html').is_file(), f'static distribution missing: {args.dist}')
 
     env = os.environ.copy()

@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import argparse
+from typing import Any
 
 from common import ROOT, BuildError, load_json, require
 
 
-def expected_release_tag(lock: dict) -> str:
+def expected_release_tag(lock: dict[str, Any]) -> str:
     return f'v{lock["tag"]}-web.0'
 
 

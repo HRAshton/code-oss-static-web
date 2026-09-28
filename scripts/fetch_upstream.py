@@ -4,11 +4,12 @@ from __future__ import annotations
 import argparse
 import shutil
 import subprocess
+from pathlib import Path
 
 from common import ROOT, WORK, BuildError, load_json, require, run
 
 
-def head(path):
+def head(path: Path) -> str:
     return subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=path, text=True).strip()
 
 

@@ -8,7 +8,7 @@ import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
-from typing import Any
+from typing import Any, cast
 from urllib.parse import quote
 
 from common import ROOT, WORK, BuildError, load_json, require, sha256_file
@@ -86,18 +86,21 @@ def load_license_policy(path: Path) -> dict[str, Any]:
     data = load_json(path)
     require(isinstance(data, dict), 'extension license policy must be a JSON object')
     require(data.get('schemaVersion') == 1, 'unsupported extension license policy schemaVersion')
-    allowed = data.get('allowed')
-    denied = data.get('denied', [])
-    overrides = data.get('overrides', {})
+    allowed_value = data.get('allowed')
+    denied_value = data.get('denied', [])
+    overrides_value = data.get('overrides', {})
     require(
-        isinstance(allowed, list) and all(isinstance(item, str) for item in allowed),
+        isinstance(allowed_value, list) and all(isinstance(item, str) for item in allowed_value),
         'license policy allowed must be a string array',
     )
     require(
-        isinstance(denied, list) and all(isinstance(item, str) for item in denied),
+        isinstance(denied_value, list) and all(isinstance(item, str) for item in denied_value),
         'license policy denied must be a string array',
     )
-    require(isinstance(overrides, dict), 'license policy overrides must be an object')
+    require(isinstance(overrides_value, dict), 'license policy overrides must be an object')
+    allowed = cast(list[str], allowed_value)
+    denied = cast(list[str], denied_value)
+    overrides = cast(dict[str, list[str]], overrides_value)
     for extension_id, licenses in overrides.items():
         require(isinstance(extension_id, str), 'license policy override id must be a string')
         require(
@@ -248,10 +251,8 @@ def validate_vsix(entry: dict[str, Any], source_path: Path) -> dict[str, Any]:
     )
     require(manifest.get('version') == entry['version'], f'VSIX version mismatch for {entry["id"]}')
     browser = manifest.get('browser')
-    require(
-        isinstance(browser, str) and browser.strip() != '',
-        f'extension is not browser-compatible: {entry["id"]}',
-    )
+    if not isinstance(browser, str) or browser.strip() == '':
+        raise BuildError(f'extension is not browser-compatible: {entry["id"]}')
 
     browser_path = PurePosixPath('extension') / PurePosixPath(browser.lstrip('./'))
     with zipfile.ZipFile(source_path) as archive:

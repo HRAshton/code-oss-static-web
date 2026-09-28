@@ -4,7 +4,9 @@ import hashlib
 import json
 import os
 import subprocess
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / '.work'
@@ -16,11 +18,14 @@ class BuildError(RuntimeError):
     pass
 
 
-def load_json(path: Path):
-    return json.loads(path.read_text(encoding='utf-8'))
+def load_json(path: Path) -> dict[str, Any]:
+    value: Any = json.loads(path.read_text(encoding='utf-8'))
+    if not isinstance(value, dict):
+        raise BuildError(f'JSON root must be an object: {path}')
+    return value
 
 
-def write_json(path: Path, value):
+def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True) + '\n', encoding='utf-8')
 
@@ -33,7 +38,12 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def run(args, *, cwd=None, env=None):
+def run(
+    args: Sequence[object],
+    *,
+    cwd: str | Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> None:
     print('+', ' '.join(map(str, args)), flush=True)
     merged = os.environ.copy()
     if env:
@@ -43,6 +53,6 @@ def run(args, *, cwd=None, env=None):
         raise BuildError(f'command failed ({p.returncode}): {args}')
 
 
-def require(condition: bool, message: str):
+def require(condition: bool, message: str) -> None:
     if not condition:
         raise BuildError(message)
