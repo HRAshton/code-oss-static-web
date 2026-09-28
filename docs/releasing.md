@@ -26,6 +26,16 @@ The release workflow performs branch-lineage authorization, independent reproduc
 browser qualification, deterministic packaging, provenance/SBOM attestation, and publication to
 GitHub Releases, GitHub Pages, and GHCR.
 
+## Release notes
+
+Every user-facing release must include human-readable release notes that summarize the important
+changes and upgrade impact. GitHub-generated notes may be used as a starting point, but they must be
+reviewed and supplemented when the generated text does not explain material behavior changes.
+
+Any project vulnerability fixed by the release that already has a CVE or equivalent public
+identifier must be called out explicitly with the affected and fixed versions. Dependency-only
+vulnerabilities are documented when they materially affect the generated distribution.
+
 ## Verify
 
 After publication:
