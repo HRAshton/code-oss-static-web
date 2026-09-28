@@ -46,7 +46,11 @@ class ToolingTests(unittest.TestCase):
         )
         self.assertEqual(manager['datasourceTemplate'], 'github-tags')
         replacement = manager['autoReplaceStringTemplate']
-        self.assertIn('\\"commit\\": \\"{{{newDigest}}}\\"', replacement)
+        self.assertEqual(
+            replacement,
+            '"tag": "{{{newValue}}}",\n  "commit": "{{{newDigest}}}"',
+        )
+        self.assertNotIn('\\\"', replacement)
         self.assertNotIn('qualified', replacement)
 
         workflow = (ROOT / '.github/workflows/renovate-auto-approve.yml').read_text()

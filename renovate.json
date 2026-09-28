@@ -33,12 +33,12 @@
         "/^upstream\\.lock\\.json$/"
       ],
       "matchStrings": [
-        "\\\"tag\\\":\\s*\\\"(?<currentValue>[^\\\"]+)\\\",\\s*\\n\\s*\\\"commit\\\":\\s*\\\"(?<currentDigest>[0-9a-f]{40})\\\""
+        "\"tag\":\\s*\"(?<currentValue>[^\"]+)\",\\s*\\n\\s*\"commit\":\\s*\"(?<currentDigest>[0-9a-f]{40})\""
       ],
       "depNameTemplate": "microsoft/vscode",
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver",
-      "autoReplaceStringTemplate": "\\\"tag\\\": \\\"{{{newValue}}}\\\",\\n  \\\"commit\\\": \\\"{{{newDigest}}}\\\""
+      "autoReplaceStringTemplate": "\"tag\": \"{{{newValue}}}\",\n  \"commit\": \"{{{newDigest}}}\""
     }
   ],
   "commitMessageLowerCase": "never",
