@@ -512,9 +512,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('index("update")', workflow)
         self.assertIn('index("deletion")', workflow)
         self.assertIn('tag_sha_after', workflow)
-        ruleset = json.loads(
-            (ROOT / '.github/rulesets/immutable-release-tags.json').read_text()
-        )
+        ruleset = json.loads((ROOT / '.github/rulesets/immutable-release-tags.json').read_text())
         self.assertEqual(ruleset['target'], 'tag')
         self.assertEqual(ruleset['enforcement'], 'active')
         self.assertEqual(ruleset['bypass_actors'], [])
