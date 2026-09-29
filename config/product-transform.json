@@ -3,6 +3,12 @@
   "set": {
     "builtInExtensions": [],
     "builtInExtensionsEnabledWithAutoUpdates": [],
+    "extensionEnabledApiProposals": {
+      "hrashton.remotish": [
+        "scmHistoryProvider",
+        "timeline"
+      ]
+    },
     "defaultChatAgent": {
       "extensionId": "code-oss-static-web.disabled-completions",
       "chatExtensionId": "code-oss-static-web.disabled-chat",
