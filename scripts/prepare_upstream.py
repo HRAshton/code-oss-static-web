@@ -17,9 +17,7 @@ def validate_enabled_api_proposals(src: Path, value: object) -> None:
         if not isinstance(extension_id, str) or not extension_id:
             raise BuildError('extensionEnabledApiProposals keys must be non-empty extension IDs')
         if not isinstance(raw_proposals, list):
-            raise BuildError(
-                f"extensionEnabledApiProposals['{extension_id}'] must be an array"
-            )
+            raise BuildError(f"extensionEnabledApiProposals['{extension_id}'] must be an array")
 
         for proposal in cast(list[object], raw_proposals):
             if not isinstance(proposal, str) or not proposal:
