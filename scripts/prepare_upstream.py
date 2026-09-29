@@ -38,16 +38,17 @@ def main():
     product_path = src / 'product.json'
     product = load_json(product_path)
     transform = load_json(ROOT / 'config/product-transform.json')
-    set_values = transform.get('set', {})
+    raw_set_values = transform.get('set', {})
+    if not isinstance(raw_set_values, dict):
+        raise BuildError('product transform set must be an object')
+    set_values = cast(dict[str, object], raw_set_values)
     validate_enabled_api_proposals(
         src,
-        set_values.get('extensionEnabledApiProposals', {})
-        if isinstance(set_values, dict)
-        else set_values,
+        set_values.get('extensionEnabledApiProposals', {}),
     )
 
     previous = {}
-    for key, value in transform.get('set', {}).items():
+    for key, value in set_values.items():
         previous[key] = product.get(key, '<absent>')
         product[key] = value
     for key in transform.get('remove', []):
@@ -59,7 +60,7 @@ def main():
     write_json(
         WORK / 'product-transform-report.json',
         {
-            'set': transform.get('set', {}),
+            'set': set_values,
             'removed': transform.get('remove', []),
             'previousValues': previous,
         },
