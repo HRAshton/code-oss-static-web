@@ -353,6 +353,7 @@ jobs:
           path: artifacts
 
       - name: Attest release provenance
+        id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: artifacts/SHA256SUMS
@@ -365,6 +366,14 @@ jobs:
             artifacts/code-oss-static-web-*.zip
           sbom-path: artifacts/sbom.cdx.json
 
+      - name: Upload release provenance bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-attestation
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 14
+
   github-release:
     needs: attest
     runs-on: ubuntu-latest
@@ -376,6 +385,127 @@ jobs:
         with:
           name: release-candidate
           path: artifacts
+
+      - name: Download release provenance bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-attestation
+          path: .work/release-attestation
+
+      - name: Export signed provenance formats
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64
+          import copy
+          import json
+          import shutil
+          import ssl
+          from pathlib import Path
+
+          bundle_files = [
+              path
+              for path in Path('.work/release-attestation').iterdir()
+              if path.is_file()
+          ]
+          if len(bundle_files) != 1:
+              raise SystemExit(
+                  f'expected exactly one provenance bundle, found {len(bundle_files)}'
+              )
+
+          bundle_path = bundle_files[0]
+          bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
+          media_type = bundle.get('mediaType', '')
+          if not media_type.startswith('application/vnd.dev.sigstore.bundle.'):
+              raise SystemExit(f'unexpected Sigstore bundle media type: {media_type!r}')
+
+          envelope = bundle.get('dsseEnvelope')
+          if not isinstance(envelope, dict):
+              raise SystemExit('provenance bundle is missing a DSSE envelope')
+          if envelope.get('payloadType') != 'application/vnd.in-toto+json':
+              raise SystemExit('provenance bundle has an unexpected DSSE payload type')
+
+          signatures = envelope.get('signatures')
+          if not isinstance(signatures, list) or len(signatures) != 1:
+              raise SystemExit('provenance bundle must contain exactly one DSSE signature')
+
+          try:
+              statement = json.loads(base64.b64decode(envelope['payload'], validate=True))
+          except (KeyError, ValueError, json.JSONDecodeError) as exc:
+              raise SystemExit(f'invalid in-toto statement payload: {exc}') from exc
+
+          if statement.get('_type') != 'https://in-toto.io/Statement/v1':
+              raise SystemExit('provenance payload is not an in-toto Statement v1')
+          if statement.get('predicateType') != 'https://slsa.dev/provenance/v1':
+              raise SystemExit('provenance payload is not SLSA provenance v1')
+
+          expected = {}
+          for line in Path('artifacts/SHA256SUMS').read_text(encoding='utf-8').splitlines():
+              if not line.strip():
+                  continue
+              digest, name = line.split(None, 1)
+              expected[name.strip().lstrip('*')] = digest
+
+          subjects = statement.get('subject')
+          if not isinstance(subjects, list):
+              raise SystemExit('provenance payload is missing subjects')
+          actual = {}
+          for subject in subjects:
+              if not isinstance(subject, dict):
+                  raise SystemExit('invalid provenance subject')
+              name = subject.get('name')
+              digest = subject.get('digest')
+              if not isinstance(name, str) or not isinstance(digest, dict):
+                  raise SystemExit('invalid provenance subject')
+              sha256 = digest.get('sha256')
+              if not isinstance(sha256, str):
+                  raise SystemExit(f'provenance subject has no SHA-256 digest: {name}')
+              actual[name] = sha256
+
+          if actual != expected:
+              raise SystemExit('provenance subjects do not exactly match SHA256SUMS')
+
+          verification = bundle.get('verificationMaterial')
+          if not isinstance(verification, dict):
+              raise SystemExit('provenance bundle is missing verification material')
+          certificate = verification.get('certificate')
+          if not isinstance(certificate, dict):
+              raise SystemExit('provenance bundle is missing its signing certificate')
+          raw_certificate = certificate.get('rawBytes')
+          if not isinstance(raw_certificate, str):
+              raise SystemExit('provenance bundle has an invalid signing certificate')
+
+          try:
+              pem_certificate = ssl.DER_cert_to_PEM_cert(
+                  base64.b64decode(raw_certificate, validate=True)
+              )
+          except (ValueError, ssl.SSLError) as exc:
+              raise SystemExit(f'invalid signing certificate: {exc}') from exc
+
+          shutil.copyfile(bundle_path, 'artifacts/release-provenance.sigstore.json')
+
+          legacy_envelope = copy.deepcopy(envelope)
+          legacy_envelope['signatures'][0]['cert'] = pem_certificate
+          Path('artifacts/release-provenance.intoto.jsonl').write_text(
+              json.dumps(legacy_envelope, separators=(',', ':')) + '\n',
+              encoding='utf-8',
+          )
+          PY
+
+      - name: Verify release provenance bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while read -r _ asset; do
+            asset="${asset#\*}"
+            gh attestation verify "artifacts/$asset" \
+              --repo "$GITHUB_REPOSITORY" \
+              --bundle artifacts/release-provenance.sigstore.json \
+              --source-ref "$GITHUB_REF" >/dev/null
+          done < artifacts/SHA256SUMS
 
       - name: Verify immutable release ref
         env:
@@ -432,6 +562,22 @@ jobs:
           --verify-tag
           --generate-notes
           --title "$GITHUB_REF_NAME"
+
+  scorecard-refresh:
+    needs: github-release
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Refresh OpenSSF Scorecard after publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          gh workflow run scorecard.yml --repo "$GITHUB_REPOSITORY" --ref "$default_branch"
 
   pages:
     needs: attest
