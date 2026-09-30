@@ -440,6 +440,7 @@ jobs:
       inputs.browser == 'all' &&
       inputs.release_mode != 'none'
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       actions: write
       contents: write
