@@ -45,11 +45,12 @@ turning an arbitrary off-branch commit into a release merely by creating a match
 
 All publication paths cross the protected `release` environment boundary after attestation.
 The `release` environment is the shared publication authorization boundary and carries the
-repository's deployment protection rules. GitHub Release and OCI publication jobs use that
-environment directly. Pages first passes through a `pages-release-gate` job on the `release`
-environment with no token permissions, then deploys through the separate `github-pages`
-environment. The Pages deployment environment does not replace the shared `release` authorization
-boundary.
+repository's deployment protection rules. The qualification release job crosses that boundary
+before creating the immutable release tag and dispatching publication. GitHub Release and OCI
+publication jobs use the environment directly. Pages first passes through a `pages-release-gate`
+job on the `release` environment with no token permissions, then deploys through the separate
+`github-pages` environment. The Pages deployment environment does not replace the shared
+`release` authorization boundary.
 
 Every GitHub Release, Pages, and OCI publication path additionally checks that the release-tag
 ruleset is active and that `GITHUB_REF_NAME` still resolves to the workflow's immutable

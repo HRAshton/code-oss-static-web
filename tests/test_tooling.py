@@ -533,6 +533,29 @@ class ToolingTests(unittest.TestCase):
                 bad,
             )
 
+    def test_repository_publication_scan_rejects_environment_bypass(self):
+        bypass = """jobs:
+  publish:
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            workflows.mkdir(parents=True)
+            (workflows / 'bypass.yml').write_text(bypass)
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_publication_job_permissions()
+            finally:
+                check_policy.ROOT = original_root
+
     def test_release_publication_paths_use_protected_environment(self):
         workflow_path = ROOT / '.github/workflows/release.yml'
         check_policy.check_release_publication_boundaries(

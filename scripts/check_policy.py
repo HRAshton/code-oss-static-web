@@ -206,15 +206,20 @@ def check_attestation_job_permissions() -> None:
             check_attestation_job_block(workflow, job_name, block)
 
 
+def publication_write_permissions(block: str) -> set[str]:
+    return set(re.findall(r'^      ([A-Za-z0-9-]+):\s*write\s*$', block, re.MULTILINE))
+
+
 def check_publication_job_block(workflow: Path, job_name: str, block: str) -> None:
-    write_permissions = set(re.findall(r'^      ([A-Za-z0-9-]+):\s*write\s*$', block, re.MULTILINE))
-    if not write_permissions.intersection({'contents', 'packages', 'pages'}):
+    write_permissions = publication_write_permissions(block)
+    publication_permissions = write_permissions.intersection({'contents', 'packages', 'pages'})
+    if not publication_permissions:
         return
 
     display = f'{workflow.relative_to(ROOT)}:{job_name}'
-    needs = re.search(r'^    needs:\s*(.+)$', block, re.MULTILINE)
+    needs = workflow_job_needs(block)
     require(
-        needs is not None and 'attest' in needs.group(1),
+        'attest' in needs,
         f'{display}: publication job must depend on attestation',
     )
     require(
@@ -226,30 +231,28 @@ def check_publication_job_block(workflow: Path, job_name: str, block: str) -> No
             f'{display}: publication checkout must disable persisted credentials',
         )
 
-
-def check_publication_job_permissions() -> None:
-    for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
-        text = workflow.read_text(encoding='utf-8')
-        for job_name, block in workflow_job_blocks(text):
-            check_publication_job_block(workflow, job_name, block)
-
-
-def check_release_publication_boundaries(workflow: Path, text: str) -> None:
-    jobs = dict(workflow_job_blocks(text))
-
-    for job_name in ('github-release', 'oci'):
-        block = jobs.get(job_name)
-        require(block is not None, f'{workflow.relative_to(ROOT)}: missing {job_name} job')
-        assert block is not None
+    environment = workflow_job_environment(block)
+    if 'pages' in publication_permissions:
         require(
-            workflow_job_environment(block) == 'release',
-            f'{workflow.relative_to(ROOT)}:{job_name}: publication must use release environment',
+            publication_permissions.isdisjoint({'contents', 'packages'}),
+            f'{display}: Pages publication must not receive contents/packages write permissions',
         )
         require(
-            'attest' in workflow_job_needs(block),
-            f'{workflow.relative_to(ROOT)}:{job_name}: publication must depend on attestation',
+            environment == 'github-pages',
+            f'{display}: Pages publication must use github-pages deployment environment',
+        )
+        require(
+            'pages-release-gate' in needs,
+            f'{display}: Pages publication must depend on release environment gate',
+        )
+    else:
+        require(
+            environment == 'release',
+            f'{display}: publication must use release environment',
         )
 
+
+def check_pages_release_gate(workflow: Path, jobs: dict[str, str]) -> None:
     gate = jobs.get('pages-release-gate')
     require(gate is not None, f'{workflow.relative_to(ROOT)}: missing pages-release-gate job')
     assert gate is not None
@@ -277,6 +280,41 @@ def check_release_publication_boundaries(workflow: Path, text: str) -> None:
         './build.sh' not in gate,
         f'{workflow.relative_to(ROOT)}:pages-release-gate: must not execute upstream builds',
     )
+
+
+def check_publication_job_permissions() -> None:
+    for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
+        text = workflow.read_text(encoding='utf-8')
+        jobs = dict(workflow_job_blocks(text))
+        has_pages_publication = False
+        for job_name, block in jobs.items():
+            publication_permissions = publication_write_permissions(block).intersection(
+                {'contents', 'packages', 'pages'}
+            )
+            if 'pages' in publication_permissions:
+                has_pages_publication = True
+            check_publication_job_block(workflow, job_name, block)
+        if has_pages_publication:
+            check_pages_release_gate(workflow, jobs)
+
+
+def check_release_publication_boundaries(workflow: Path, text: str) -> None:
+    jobs = dict(workflow_job_blocks(text))
+
+    for job_name in ('github-release', 'oci'):
+        block = jobs.get(job_name)
+        require(block is not None, f'{workflow.relative_to(ROOT)}: missing {job_name} job')
+        assert block is not None
+        require(
+            workflow_job_environment(block) == 'release',
+            f'{workflow.relative_to(ROOT)}:{job_name}: publication must use release environment',
+        )
+        require(
+            'attest' in workflow_job_needs(block),
+            f'{workflow.relative_to(ROOT)}:{job_name}: publication must depend on attestation',
+        )
+
+    check_pages_release_gate(workflow, jobs)
 
     pages = jobs.get('pages')
     require(pages is not None, f'{workflow.relative_to(ROOT)}: missing pages publication job')
