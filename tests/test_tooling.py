@@ -517,7 +517,7 @@ class ToolingTests(unittest.TestCase):
                 bad,
             )
 
-    def test_publication_jobs_use_protected_environment(self):
+    def test_publication_jobs_depend_on_attestation(self):
         check_policy.check_publication_job_permissions()
         bad = """jobs:
   publish:
@@ -531,6 +531,39 @@ class ToolingTests(unittest.TestCase):
                 ROOT / '.github/workflows/example.yml',
                 'publish',
                 bad,
+            )
+
+    def test_release_publication_paths_use_protected_environment(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        check_policy.check_release_publication_boundaries(
+            workflow_path,
+            workflow_path.read_text(),
+        )
+        bypass = """jobs:
+  github-release:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+  pages:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    permissions:
+      pages: write
+  oci:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      packages: write
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_release_publication_boundaries(
+                ROOT / '.github/workflows/example.yml',
+                bypass,
             )
 
     def test_ci_validates_pr_titles_and_skips_default_branch_merge_messages(self):
@@ -637,12 +670,14 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn('./build.sh', workflow)
 
     def test_release_workflow_uses_clean_qualified_artifact(self):
-        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        workflow = workflow_path.read_text()
+        check_policy.check_release_publication_boundaries(workflow_path, workflow)
         self.assertIn('./build.sh --clean-upstream', workflow)
         self.assertIn('needs: [build, reproducibility]', workflow)
         self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
         self.assertNotIn('actions/cache@', workflow)
-        self.assertNotIn('environment: release', workflow)
+        self.assertEqual(workflow.count('environment: release'), 3)
         self.assertRegex(
             workflow,
             r'actions/deploy-pages@[0-9a-f]{40}\s+# v[0-9]+',
@@ -657,8 +692,9 @@ class ToolingTests(unittest.TestCase):
             workflow,
         )
         self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
-        self.assertNotIn('pages-release-gate:', workflow)
-        self.assertIn('needs: attest', workflow)
+        self.assertIn('pages-release-gate:', workflow)
+        self.assertIn('needs: [attest, pages-release-gate]', workflow)
+        self.assertIn('permissions: {}', workflow)
         self.assertIn('gh release create', workflow)
         self.assertIn('needs: authorize', workflow)
         self.assertIn('qualification_run_id:', workflow)
