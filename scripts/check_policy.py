@@ -108,11 +108,7 @@ def workflow_job_needs(block: str) -> set[str]:
     value = match.group(1).strip()
     if value.startswith('[') and value.endswith(']'):
         value = value[1:-1]
-    return {
-        item.strip().strip('"\'')
-        for item in value.split(',')
-        if item.strip()
-    }
+    return {item.strip().strip('"').strip("'") for item in value.split(',') if item.strip()}
 
 
 def workflow_job_environment(block: str) -> str | None:
@@ -124,11 +120,11 @@ def workflow_job_environment(block: str) -> str | None:
 
         value = line[len(prefix) :].strip()
         if value:
-            return value.strip('"\'')
+            return value.strip('"').strip("'")
 
         for nested in lines[index + 1 :]:
             if nested.startswith('      name:'):
-                return nested.split(':', 1)[1].strip().strip('"\'')
+                return nested.split(':', 1)[1].strip().strip('"').strip("'")
             if nested.startswith('    ') and not nested.startswith('      '):
                 break
         return None
@@ -334,12 +330,7 @@ def check_release_integrity_policy() -> None:
     require(pages is not None, 'release workflow must have a Pages publication job')
     assert pages is not None
     require(
-        re.search(
-            r'^    needs:\s*attest\s*$',
-            pages,
-            re.MULTILINE,
-        )
-        is not None,
+        'attest' in workflow_job_needs(pages),
         'Pages publication must depend on attestation',
     )
 
