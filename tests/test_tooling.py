@@ -480,6 +480,56 @@ class ToolingTests(unittest.TestCase):
         )
         self.assertIsNone(check_policy.DOCKER_DIGEST.fullmatch('sha256:not-a-digest'))
 
+    def test_toolchain_versions_are_canonical(self):
+        manifest = json.loads((ROOT / '.github/toolchain-versions.json').read_text())
+        self.assertEqual(manifest['schemaVersion'], 1)
+        self.assertRegex(manifest['node'], r'^\d+(?:\.\d+){1,2}$')
+        self.assertRegex(manifest['python'], r'^\d+(?:\.\d+){1,2}$')
+        check_policy.check_toolchain_versions()
+
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('steps.toolchain.outputs.node-version', qualification)
+        self.assertIn('steps.toolchain.outputs.python-version', qualification)
+        self.assertIn('toolchain: $toolchain', qualification)
+        self.assertIn('.toolchain == $toolchain', release)
+        self.assertIn("'toolchainVersions': input_digest", package_source)
+        self.assertIn("'toolchain': {", package_source)
+
+    def test_toolchain_policy_rejects_hard_coded_workflow_versions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            action_dir = root / '.github/actions/setup-toolchain'
+            workflows.mkdir(parents=True)
+            action_dir.mkdir(parents=True)
+            (root / '.github/toolchain-versions.json').write_text(
+                json.dumps({'schemaVersion': 1, 'node': '20.1.0', 'python': '3.12'})
+            )
+            (action_dir / 'action.yml').write_text(
+                """manifest="$GITHUB_ACTION_PATH/../../toolchain-versions.json"
+node="$(jq -er '.node' "$manifest")"
+python="$(jq -er '.python' "$manifest")"
+node-version: ${{ steps.versions.outputs.node }}
+python-version: ${{ steps.versions.outputs.python }}
+"""
+            )
+            (workflows / 'bad.yml').write_text(
+                "jobs:\n  test:\n    steps:\n"
+                "      - uses: ./.github/actions/setup-toolchain\n"
+                "      - name: Restore cache\n"
+                "        env:\n          CACHE_KEY: node-20.2.0\n"
+                "        run: echo \"$CACHE_KEY\"\n"
+            )
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_toolchain_versions()
+            finally:
+                check_policy.ROOT = original_root
+
     def test_build_jobs_are_unprivileged(self):
         check_policy.check_build_job_permissions()
         bad = """jobs:
@@ -612,7 +662,9 @@ class ToolingTests(unittest.TestCase):
     def test_workflow_actions_are_commit_pinned(self):
         import re
 
-        for workflow in (ROOT / '.github/workflows').glob('*.yml'):
+        definitions = list((ROOT / '.github/workflows').glob('*.yml'))
+        definitions.extend((ROOT / '.github/actions').rglob('action.yml'))
+        for workflow in definitions:
             for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
                 match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
                 if match:

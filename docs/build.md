@@ -1,7 +1,8 @@
 # Build
 
-Prerequisites: Git, Python 3.11+, and a Node/npm version compatible with the pinned Code - OSS
-revision. The first full qualification workflow uses Node 24.
+Prerequisites: Git and Python 3.11+. CI, qualification, and release jobs install the canonical
+Node and Python versions from `.github/toolchain-versions.json`; use those same versions when
+reproducing CI or release behavior locally.
 
 ```bash
 ./build.sh

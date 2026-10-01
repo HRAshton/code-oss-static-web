@@ -171,6 +171,16 @@ def build_artifact_manifest(
     runtime_metadata: Path,
 ) -> dict[str, Any]:
     tree_digest, file_count = distribution_tree_digest(distribution)
+    toolchain = load_json(ROOT / '.github/toolchain-versions.json')
+    node_version = toolchain.get('node')
+    python_version = toolchain.get('python')
+    require(isinstance(node_version, str) and bool(node_version), 'toolchain Node version missing')
+    require(
+        isinstance(python_version, str) and bool(python_version),
+        'toolchain Python version missing',
+    )
+    assert isinstance(node_version, str)
+    assert isinstance(python_version, str)
     return {
         'schemaVersion': 1,
         'project': {
@@ -184,11 +194,16 @@ def build_artifact_manifest(
             'commit': upstream['commit'],
             'sourceDateEpoch': int(upstream['sourceDateEpoch']),
         },
+        'toolchain': {
+            'node': node_version,
+            'python': python_version,
+        },
         'distribution': {
             'treeSha256': tree_digest,
             'fileCount': file_count,
         },
         'inputs': {
+            'toolchainVersions': input_digest(ROOT / '.github/toolchain-versions.json'),
             'upstreamLock': input_digest(ROOT / 'upstream.lock.json'),
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
             'extensionLock': input_digest(ROOT / 'extensions/extensions.lock.json'),
