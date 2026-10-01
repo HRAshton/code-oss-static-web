@@ -598,6 +598,10 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('name: Pull request commit message policy', workflow)
         self.assertIn('pulls/$PR_NUMBER/commits', workflow)
         self.assertIn('@base64', workflow)
+        self.assertIn('encoded_messages="$(', workflow)
+        self.assertIn('No pull request commits returned by GitHub API', workflow)
+        self.assertIn('done <<< "$encoded_messages"', workflow)
+        self.assertNotIn('done < <(', workflow)
         self.assertIn("github.event_name == 'push' &&", workflow)
         self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
         self.assertIn(
