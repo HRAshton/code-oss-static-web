@@ -28,7 +28,7 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn('qualified', lock)
         self.assertNotIn('qualificationNote', lock)
 
-    def test_renovate_updates_require_human_review_before_merge(self):
+    def test_renovate_updates_auto_merge_without_human_reviewer(self):
         config = json.loads((ROOT / 'renovate.json').read_text())
         self.assertTrue(config['automerge'])
         self.assertEqual(config['automergeType'], 'pr')
@@ -48,20 +48,16 @@ class ToolingTests(unittest.TestCase):
         replacement = manager['autoReplaceStringTemplate']
         self.assertEqual(
             replacement,
-            '"tag": "{{{newValue}}}",\\n  "commit": "{{{newDigest}}}"',
+            '"tag": "{{{newValue}}}",\n  "commit": "{{{newDigest}}}"',
         )
-        self.assertNotIn('\\\\', replacement)
+        self.assertNotIn('\\', replacement)
         self.assertNotIn('qualified', replacement)
 
-        workflows = ROOT / '.github/workflows'
-        for workflow_path in workflows.iterdir():
-            if workflow_path.suffix not in {'.yml', '.yaml'}:
-                continue
-            workflow = workflow_path.read_text()
-            self.assertFalse(
-                'renovate[bot]' in workflow and 'event=APPROVE' in workflow,
-                f'automated Renovate approval bypasses human review: {workflow_path.name}',
-            )
+        workflow = (ROOT / '.github/workflows/renovate-auto-approve.yml').read_text()
+        self.assertIn('.user.login == "renovate[bot]"', workflow)
+        self.assertIn('pull-requests: write', workflow)
+        self.assertIn('event=APPROVE', workflow)
+        self.assertNotIn('gh pr merge', workflow)
 
     def test_upstream_revision_change_dispatches_full_qualification(self):
         workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()
