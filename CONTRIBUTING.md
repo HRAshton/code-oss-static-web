@@ -36,8 +36,10 @@ other than its author.
 
 ## Commit messages
 
-Commits use Conventional Commits, must be a single line, and the description after `:` must begin
-with an uppercase letter.
+Every commit, including commits created by bots and automation, must use a
+single-line Conventional Commit subject. Keep the type and optional scope lowercase, and begin the
+description after `: ` with an uppercase letter, for example
+`fix(ci): Decouple release tag test from upstream lock`.
 
 Examples:
 

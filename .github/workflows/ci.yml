@@ -24,6 +24,27 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.pull_request.title }}
         run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
 
+      - name: Pull request commit message policy
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          encoded_messages="$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+              --jq '.[].commit.message | @base64'
+          )"
+          if [[ -z "$encoded_messages" ]]; then
+            echo "No pull request commits returned by GitHub API" >&2
+            exit 1
+          fi
+          while IFS= read -r encoded; do
+            message="$(printf '%s' "$encoded" | base64 --decode)"
+            python3 scripts/check_commit_message.py "$message"
+          done <<< "$encoded_messages"
+
       - name: Commit message policy
         if: >-
           github.event_name == 'push' &&
