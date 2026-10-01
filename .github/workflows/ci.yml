@@ -24,6 +24,22 @@ jobs:
           COMMIT_MESSAGE: ${{ github.event.pull_request.title }}
         run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
 
+      - name: Pull request commit message policy
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r encoded; do
+            message="$(printf '%s' "$encoded" | base64 --decode)"
+            python3 scripts/check_commit_message.py "$message"
+          done < <(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+              --jq '.[].commit.message | @base64'
+          )
+
       - name: Commit message policy
         if: >-
           github.event_name == 'push' &&

@@ -118,7 +118,7 @@ class ToolingTests(unittest.TestCase):
     def test_release_tag_contract_supports_patch_revisions(self):
         import check_release_tag
 
-        lock = json.loads((ROOT / 'upstream.lock.json').read_text())
+        lock = {'tag': '1.139.1'}
         self.assertEqual(check_release_tag.expected_release_tag(lock), 'v1.139.1-web.0')
         self.assertEqual(check_release_tag.expected_release_tag(lock, 3), 'v1.139.1-web.3')
         self.assertEqual(check_release_tag.release_revision(lock, 'v1.139.1-web.0'), 0)
@@ -595,6 +595,9 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn('github.event.pull_request.title', workflow)
+        self.assertIn('name: Pull request commit message policy', workflow)
+        self.assertIn('pulls/$PR_NUMBER/commits', workflow)
+        self.assertIn("@base64", workflow)
         self.assertIn("github.event_name == 'push' &&", workflow)
         self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
         self.assertIn(
