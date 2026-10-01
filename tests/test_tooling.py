@@ -597,7 +597,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('github.event.pull_request.title', workflow)
         self.assertIn('name: Pull request commit message policy', workflow)
         self.assertIn('pulls/$PR_NUMBER/commits', workflow)
-        self.assertIn("@base64", workflow)
+        self.assertIn('@base64', workflow)
         self.assertIn("github.event_name == 'push' &&", workflow)
         self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
         self.assertIn(
