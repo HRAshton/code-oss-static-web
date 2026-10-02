@@ -1,0 +1,12 @@
+diff --git a/src/vs/workbench/contrib/chat/common/plugins/agentPluginServiceImpl.ts b/src/vs/workbench/contrib/chat/common/plugins/agentPluginServiceImpl.ts
+--- a/src/vs/workbench/contrib/chat/common/plugins/agentPluginServiceImpl.ts
++++ b/src/vs/workbench/contrib/chat/common/plugins/agentPluginServiceImpl.ts
+@@ -939,7 +939,7 @@ class CopilotCliInstalledPluginsStore extends Disposable {
+ 	private async _readInstalledPlugins(): Promise<readonly ICopilotCliInstalledPlugin[] | undefined> {
+ 		const configFile = await getCopilotCliConfigFile(this._pathService);
+-		if (!(await this._fileService.exists(configFile))) {
++		if (!(await this._pathExists(configFile))) {
+ 			return [];
+ 		}
+ 
+ 		let content: string;
