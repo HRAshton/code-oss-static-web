@@ -17,7 +17,9 @@ WORKFLOW_TOOLCHAIN_LITERAL = re.compile(
     r'^\s+(?:node|python)-version:\s*[\'\"]?\d',
     re.MULTILINE,
 )
-WORKFLOW_NODE_CACHE_LITERAL = re.compile(r'node-\d+(?:\.\d+){1,2}')
+WORKFLOW_TOOLCHAIN_CACHE_LITERAL = re.compile(
+    r'(?:node|python)-\d+(?:\.\d+){1,2}'
+)
 FORBIDDEN_PATTERNS = {
     'curl-pipe-shell': re.compile(r'\bcurl\b[^\n|]*\|\s*(?:ba)?sh\b'),
     'wget-pipe-shell': re.compile(r'\bwget\b[^\n|]*\|\s*(?:ba)?sh\b'),
@@ -102,8 +104,8 @@ def check_toolchain_versions() -> None:
             f'{display}: hard-coded Node/Python setup version is forbidden',
         )
         require(
-            WORKFLOW_NODE_CACHE_LITERAL.search(text) is None,
-            f'{display}: hard-coded Node cache version is forbidden',
+            WORKFLOW_TOOLCHAIN_CACHE_LITERAL.search(text) is None,
+            f'{display}: hard-coded Node/Python cache version is forbidden',
         )
 
 

@@ -13,7 +13,7 @@ MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repos
 - exact upstream tag + 40-character commit lock;
 - disposable source fetch by commit, not a maintained fork;
 - deterministic `product.json` transform;
-- explicit patch manifest (currently empty);
+- explicit patch manifest for narrowly scoped upstream compatibility fixes;
 - upstream `vscode-web-min` build orchestration;
 - static `index.html` + runtime bootstrap generation through the upstream web embedder API;
 - browser-compatible built-in extension indexing;

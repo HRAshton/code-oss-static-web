@@ -71,8 +71,8 @@ already points to current `master`.
 The successful all-browser workflow run on the exact release commit is the qualification evidence.
 Qualification is not stored as a mutable boolean in source control.
 
-The qualification workflow records the exact commit, selected release tag, release mode and workflow
-run ID in a `release-qualification` artifact. The Release workflow downloads that artifact and
+The qualification workflow records the exact commit, selected release tag, release mode, workflow
+run ID, and canonical Node/Python toolchain versions in a `release-qualification` artifact. The Release workflow downloads that artifact and
 verifies all of those bindings before doing any publication work.
 
 The Release workflow then performs an independent clean rebuild, reproducibility comparison,

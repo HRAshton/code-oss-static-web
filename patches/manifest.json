@@ -1,4 +1,9 @@
 {
   "schemaVersion": 1,
-  "patches": []
+  "patches": [
+    {
+      "id": "copilot-cli-file-provider",
+      "file": "copilot-cli-file-provider.patch"
+    }
+  ]
 }

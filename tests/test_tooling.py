@@ -519,7 +519,7 @@ python-version: ${{ steps.versions.outputs.python }}
                 "jobs:\n  test:\n    steps:\n"
                 "      - uses: ./.github/actions/setup-toolchain\n"
                 "      - name: Restore cache\n"
-                "        env:\n          CACHE_KEY: node-20.2.0\n"
+                "        env:\n          CACHE_KEY: python-3.13\n"
                 "        run: echo \"$CACHE_KEY\"\n"
             )
             original_root = check_policy.ROOT
