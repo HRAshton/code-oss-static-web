@@ -154,7 +154,7 @@ jobs:
           path: |
             .work/vscode-web
             .work/playwright-runtime
-          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/product-transform.json', 'patches/**') }}
+          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/**', 'extensions/**', 'patches/**') }}
 
       - name: Install Code-OSS web build prerequisites
         if: steps.upstream-cache.outputs.cache-hit != 'true'

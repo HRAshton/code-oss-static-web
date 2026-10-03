@@ -10,6 +10,7 @@ required = [
     'index.html',
     'static-bootstrap.mjs',
     'runtime.json',
+    'deployment-profile.json',
     'extensions.json',
     'additional-extensions.json',
     'out/nls.messages.js',
@@ -31,6 +32,15 @@ if additional.get('schemaVersion') != 1 or not isinstance(additional.get('extens
 runtime = json.loads((root / 'runtime.json').read_text(encoding='utf-8'))
 if runtime.get('telemetry') is not False:
     raise SystemExit('telemetry must be false in base runtime')
+
+profile = json.loads((root / 'deployment-profile.json').read_text(encoding='utf-8'))
+if profile.get('schemaVersion') != 1 or not isinstance(profile.get('id'), str):
+    raise SystemExit('invalid deployment profile metadata')
+digest = profile.get('configSha256')
+if not isinstance(digest, str) or len(digest) != 64:
+    raise SystemExit('invalid deployment profile digest')
+if not isinstance(profile.get('bindings'), dict):
+    raise SystemExit('deployment profile bindings missing')
 
 bootstrap = (root / 'static-bootstrap.mjs').read_text(encoding='utf-8')
 if 'invalid.invalid' not in bootstrap:

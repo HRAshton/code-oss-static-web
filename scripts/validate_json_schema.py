@@ -10,13 +10,22 @@ from common import ROOT, BuildError
 
 SCHEMA_TARGETS = (
     ('upstream.lock.json', 'schemas/upstream.lock.schema.json'),
-    ('config/runtime.json', 'schemas/runtime.schema.json'),
-    ('config/network-policy.json', 'schemas/network-policy.schema.json'),
-    ('config/product-transform.json', 'schemas/product-transform.schema.json'),
+    ('config/deployment.json', 'schemas/deployment-selector.schema.json'),
     ('patches/manifest.json', 'schemas/patch-manifest.schema.json'),
     ('extensions/extensions.lock.json', 'extensions/extensions.lock.schema.json'),
     ('extensions/license-policy.json', 'schemas/license-policy.schema.json'),
     ('extensions/source-policy.json', 'schemas/source-policy.schema.json'),
+)
+
+SCHEMA_GLOBS = (
+    ('config/profiles/*.json', 'schemas/deployment-profile.schema.json'),
+    ('config/policies/runtime/*.json', 'schemas/runtime.schema.json'),
+    ('config/policies/network/*.json', 'schemas/network-policy.schema.json'),
+    ('config/policies/product/*.json', 'schemas/product-transform.schema.json'),
+    ('config/policies/proposed-api/*.json', 'schemas/proposed-api-policy.schema.json'),
+    ('config/policies/webview/*.json', 'schemas/webview-policy.schema.json'),
+    ('config/policies/branding/*.json', 'schemas/branding-policy.schema.json'),
+    ('config/policies/support/*.json', 'schemas/support-policy.schema.json'),
 )
 
 
@@ -107,19 +116,31 @@ def _validate(value: Any, schema: dict[str, Any], path: str) -> None:
                 _validate(object_value[key], child_schema, f'{path}.{key}')
 
 
+def _validate_target(target_path: Path, schema_path: Path) -> None:
+    if not target_path.is_file():
+        raise BuildError(f'missing schema target: {target_path.relative_to(ROOT)}')
+    if not schema_path.is_file():
+        raise BuildError(f'missing schema: {schema_path.relative_to(ROOT)}')
+    target = _load(target_path)
+    schema_value = _load(schema_path)
+    if not isinstance(schema_value, dict):
+        raise BuildError(f'schema root must be object: {schema_path.relative_to(ROOT)}')
+    _validate(
+        target,
+        cast(dict[str, Any], schema_value),
+        target_path.relative_to(ROOT).as_posix(),
+    )
+
+
 def validate_all() -> None:
     for target_name, schema_name in SCHEMA_TARGETS:
-        target_path = ROOT / target_name
-        schema_path = ROOT / schema_name
-        if not target_path.is_file():
-            raise BuildError(f'missing schema target: {target_name}')
-        if not schema_path.is_file():
-            raise BuildError(f'missing schema: {schema_name}')
-        target = _load(target_path)
-        schema_value = _load(schema_path)
-        if not isinstance(schema_value, dict):
-            raise BuildError(f'schema root must be object: {schema_name}')
-        _validate(target, cast(dict[str, Any], schema_value), target_name)
+        _validate_target(ROOT / target_name, ROOT / schema_name)
+    for pattern, schema_name in SCHEMA_GLOBS:
+        targets = sorted(ROOT.glob(pattern))
+        if not targets:
+            raise BuildError(f'no schema targets matched: {pattern}')
+        for target_path in targets:
+            _validate_target(target_path, ROOT / schema_name)
 
 
 def main() -> None:

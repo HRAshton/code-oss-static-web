@@ -1367,7 +1367,7 @@ python-version: ${{ steps.versions.outputs.python }}
             )
 
     def test_product_transform_keeps_chat_contract_fail_closed(self):
-        transform = json.loads((ROOT / 'config/product-transform.json').read_text())
+        transform = json.loads((ROOT / 'config/policies/product/static.json').read_text())
         default_chat = transform['set']['defaultChatAgent']
         self.assertEqual(default_chat['providerScopes'], [])
         self.assertTrue(default_chat['extensionId'].startswith('code-oss-static-web.disabled'))

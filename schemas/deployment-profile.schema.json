@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "bindings"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "id": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"},
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime","network","productTransform","proposedApi","webview","branding","support","extensionLock","extensionLicensePolicy","extensionSourcePolicy"],
+      "properties": {
+        "runtime": {"type": "string", "pattern": "^config/policies/runtime/[^/]+\\.json$"},
+        "network": {"type": "string", "pattern": "^config/policies/network/[^/]+\\.json$"},
+        "productTransform": {"type": "string", "pattern": "^config/policies/product/[^/]+\\.json$"},
+        "proposedApi": {"type": "string", "pattern": "^config/policies/proposed-api/[^/]+\\.json$"},
+        "webview": {"type": "string", "pattern": "^config/policies/webview/[^/]+\\.json$"},
+        "branding": {"type": "string", "pattern": "^config/policies/branding/[^/]+\\.json$"},
+        "support": {"type": "string", "pattern": "^config/policies/support/[^/]+\\.json$"},
+        "extensionLock": {"type": "string", "pattern": "^extensions/[^/]+\\.json$"},
+        "extensionLicensePolicy": {"type": "string", "pattern": "^extensions/[^/]+\\.json$"},
+        "extensionSourcePolicy": {"type": "string", "pattern": "^extensions/[^/]+\\.json$"}
+      }
+    }
+  }
+}

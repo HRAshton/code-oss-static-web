@@ -171,6 +171,16 @@ def build_artifact_manifest(
     runtime_metadata: Path,
 ) -> dict[str, Any]:
     tree_digest, file_count = distribution_tree_digest(distribution)
+    deployment_profile_path = distribution / 'deployment-profile.json'
+    require(
+        deployment_profile_path.is_file(), 'deployment profile metadata missing from distribution'
+    )
+    deployment_profile = load_json(deployment_profile_path)
+    require(
+        isinstance(deployment_profile.get('id'), str)
+        and isinstance(deployment_profile.get('configSha256'), str),
+        'invalid deployment profile metadata',
+    )
     toolchain = load_json(ROOT / '.github/toolchain-versions.json')
     node_version = toolchain.get('node')
     python_version = toolchain.get('python')
@@ -202,15 +212,12 @@ def build_artifact_manifest(
             'treeSha256': tree_digest,
             'fileCount': file_count,
         },
+        'deploymentProfile': deployment_profile,
         'inputs': {
             'toolchainVersions': input_digest(ROOT / '.github/toolchain-versions.json'),
             'upstreamLock': input_digest(ROOT / 'upstream.lock.json'),
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
-            'extensionLock': input_digest(ROOT / 'extensions/extensions.lock.json'),
-            'extensionLicensePolicy': input_digest(ROOT / 'extensions/license-policy.json'),
-            'runtimeConfig': input_digest(ROOT / 'config/runtime.json'),
-            'productTransform': input_digest(ROOT / 'config/product-transform.json'),
-            'networkPolicy': input_digest(ROOT / 'config/network-policy.json'),
+            'deploymentProfileMetadata': input_digest(deployment_profile_path),
             'runtimeComponents': input_digest(runtime_metadata),
         },
         'patches': patch_inventory(),

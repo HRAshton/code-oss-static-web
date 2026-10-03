@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "issuesUrl", "securityPolicyPath"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "issuesUrl": {"type": "string", "pattern": "^https://github\\.com/HRAshton/code-oss-static-web/issues$"},
+    "securityPolicyPath": {"const": "SECURITY.md"}
+  }
+}
