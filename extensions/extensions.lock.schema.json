@@ -37,7 +37,7 @@
                   "type": { "const": "open-vsx" },
                   "registry": {
                     "type": "string",
-                    "pattern": "^https://",
+                    "pattern": "^https://[^/?#@]+(?::[0-9]+)?/?$",
                     "default": "https://open-vsx.org"
                   }
                 }
