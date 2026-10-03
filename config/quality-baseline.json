@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "commit": "63afddee4633456de01bb30a2cea5f3479d636bc",
+    "qualificationRunId": 37136030149,
+    "note": "Initial browser and static-size baselines were captured from this successful full qualification run. Console errors count unique error fingerprints; all occurrences remain in the diagnostics artifact."
+  },
+  "sampling": {
+    "samples": 3,
+    "settleMs": 500,
+    "statistic": "median"
+  },
+  "metrics": {
+    "coldBootMs": {
+      "baseline": 2096,
+      "relativeTolerance": 0.5,
+      "absoluteTolerance": 1500
+    },
+    "warmBootMs": {
+      "baseline": 2034,
+      "relativeTolerance": 0.5,
+      "absoluteTolerance": 1000
+    },
+    "editorReadyMs": {
+      "baseline": 2188,
+      "relativeTolerance": 0.5,
+      "absoluteTolerance": 1500
+    },
+    "staticTransferBytes": {
+      "baseline": 25438689,
+      "relativeTolerance": 0.05,
+      "absoluteTolerance": 262144
+    },
+    "distributionBytes": {
+      "baseline": 190626870,
+      "relativeTolerance": 0.03,
+      "absoluteTolerance": 1048576
+    },
+    "javascriptBytes": {
+      "baseline": 131365205,
+      "relativeTolerance": 0.03,
+      "absoluteTolerance": 1048576
+    },
+    "failedRequests": {
+      "baseline": 0,
+      "relativeTolerance": 0,
+      "absoluteTolerance": 0
+    },
+    "pageErrors": {
+      "baseline": 0,
+      "relativeTolerance": 0,
+      "absoluteTolerance": 0
+    },
+    "consoleErrors": {
+      "baseline": 10,
+      "relativeTolerance": 0,
+      "absoluteTolerance": 0
+    }
+  }
+}
