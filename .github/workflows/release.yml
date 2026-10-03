@@ -99,6 +99,7 @@ jobs:
             --argjson toolchain "$toolchain" \
             '
               .commit == $commit and
+              .expectedSourceSha == $commit and
               .tag == $tag and
               .workflowRunId == $workflowRunId and
               .toolchain == $toolchain and

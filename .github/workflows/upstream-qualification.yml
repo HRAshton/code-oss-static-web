@@ -38,14 +38,18 @@ jobs:
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           fi
+          echo "source_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
+          echo "Inspected source SHA: `$AFTER_SHA`" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Start full browser qualification
         if: steps.upstream.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.upstream.outputs.source_sha }}
         run: >-
           gh workflow run qualify.yml
           --repo "$GITHUB_REPOSITORY"
           --ref master
           -f browser=all
           -f release_mode=upstream
+          -f expected_source_sha="$SOURCE_SHA"
