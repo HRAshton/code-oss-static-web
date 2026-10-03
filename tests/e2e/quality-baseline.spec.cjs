@@ -69,7 +69,13 @@ function observePage(page, expectedOrigin) {
   });
   page.on('response', response => {
     const url = response.url();
-    if (/^https?:/.test(url) && new URL(url).origin === expectedOrigin) responses.push(response);
+    if (!/^https?:/.test(url)) return;
+    if (response.status() >= 400) {
+      failedRequests.push(
+        response.request().method() + ' ' + url + ' HTTP ' + response.status()
+      );
+    }
+    if (new URL(url).origin === expectedOrigin) responses.push(response);
   });
 
   return { pageErrors, consoleErrors, failedRequests, responses };
@@ -145,6 +151,17 @@ async function focusSmoke(page) {
   expect(result.disabled, 'focused element must not be disabled').toBe(false);
   expect(result.name, 'focused ' + result.tagName + ' should have an accessible name').not.toBe('');
 }
+
+test('@quality failed-request metric counts HTTP error responses', async ({ page, baseURL }) => {
+  test.skip(!baseURL, 'quality baseline requires the configured static server');
+  const observation = observePage(page, new URL(baseURL).origin);
+  const missingUrl = new URL('__quality-missing-asset__.js', baseURL).href;
+  const response = await page.goto(missingUrl, { waitUntil: 'domcontentloaded' });
+
+  expect(response, 'missing same-origin asset should return an HTTP response').not.toBeNull();
+  expect(response.status()).toBe(404);
+  expect(observation.failedRequests).toEqual(['GET ' + missingUrl + ' HTTP 404']);
+});
 
 test('@quality performance and accessibility baseline', async ({ browser, baseURL }) => {
   test.skip(!baseURL, 'quality baseline requires the configured static server');

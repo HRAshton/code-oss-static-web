@@ -1145,6 +1145,8 @@ python-version: ${{ steps.versions.outputs.python }}
 
         quality_test = (ROOT / 'tests/e2e/quality-baseline.spec.cjs').read_text()
         self.assertIn('@quality performance and accessibility baseline', quality_test)
+        self.assertIn('@quality failed-request metric counts HTTP error responses', quality_test)
+        self.assertIn('response.status() >= 400', quality_test)
         self.assertIn("page.keyboard.press('F6')", quality_test)
         self.assertIn('staticTransferBytes', quality_test)
         quality_baseline = json.loads((ROOT / 'config/quality-baseline.json').read_text())

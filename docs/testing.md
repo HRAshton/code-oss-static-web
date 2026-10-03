@@ -58,8 +58,10 @@ The measured timing points are navigation start to visible workbench for cold an
 navigation start to a visible untitled editor for editor readiness. Static transfer size is the sum
 of same-origin `Content-Length` response headers observed by the time the workbench becomes visible.
 The suite also records the complete distribution size, JavaScript size, request failures, page
-errors, and unique console-error fingerprints. All console-error occurrences remain in the
-diagnostics artifact. An F6 focus-cycle smoke check requires focus to move to a non-hidden, enabled
+errors, and unique console-error fingerprints. Request failures include Playwright transport
+failures plus HTTP responses with status 400 or higher, so a missing or server-error static asset
+cannot pass as a successful startup. All console-error occurrences remain in the diagnostics
+artifact. An F6 focus-cycle smoke check requires focus to move to a non-hidden, enabled
 element with an accessible name; this adds accessibility coverage without duplicating the existing
 editor, settings, command-palette, and workspace-trust functional tests.
 
