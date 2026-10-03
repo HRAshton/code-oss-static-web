@@ -38,8 +38,10 @@ Paths are resolved relative to the repository root.
 The default registry is `https://open-vsx.org`. A custom HTTPS Open VSX-compatible registry can
 be supplied with `source.registry` only when its origin is explicitly listed in
 `extensions/source-policy.json`. Registry values must be HTTPS origins without credentials,
-paths, queries, or fragments, and redirects may not leave the approved origin set. The exact
-versioned VSIX is downloaded into `.work/extensions-cache/`, then its SHA-256 is checked before
+paths, queries, or fragments. Download redirects are separately restricted to
+`allowedOpenVsxDownloadOrigins`; the production policy allows the Open VSX registry plus its
+`openvsx.eclipsecontent.org` file-delivery origin. The exact versioned VSIX is downloaded into
+`.work/extensions-cache/` with a hard 272 MiB raw-archive cap, then its SHA-256 is checked before
 the archive is inspected or copied. Release builds never request an extension alias such as
 `latest`.
 
@@ -53,6 +55,7 @@ For every locked extension the build fails unless all of the following hold:
 - the declared license satisfies `extensions/license-policy.json`;
 - the extension ID is not already present in the upstream distribution;
 - the archive contains no absolute paths, parent traversal, Windows-style paths, or symlink entries;
+- the raw VSIX archive does not exceed 272 MiB, including while a remote response is streaming;
 - the archive contains at most 4,096 entries;
 - no expanded file exceeds 64 MiB and total expanded content does not exceed 256 MiB;
 - files of at least 1 MiB do not exceed a 200:1 uncompressed-to-compressed size ratio.
@@ -73,6 +76,7 @@ second fail-closed boundary if archive metadata is inconsistent. Digest verifica
 outer trust boundary: locked local and downloaded VSIX bytes must match their SHA-256 before ZIP
 metadata or contents are inspected.
 
-Production Open VSX sources are default-deny. `extensions/source-policy.json` is the reviewed
-allowlist for registry origins; adding a mirror or alternate registry is therefore an explicit
-repository policy change.
+Production Open VSX sources are default-deny. `extensions/source-policy.json` separately lists
+registry origins and file-download origins. A registry must be explicitly approved, while its
+reviewed CDN/file host may be approved only for redirects and final responses. Adding a mirror,
+registry, or delivery origin is therefore an explicit repository policy change.

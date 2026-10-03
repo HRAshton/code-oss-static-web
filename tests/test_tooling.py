@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import subprocess
 import sys
@@ -662,6 +663,10 @@ class ToolingTests(unittest.TestCase):
         policy = {
             'schemaVersion': 1,
             'allowedOpenVsxRegistries': ['https://open-vsx.org'],
+            'allowedOpenVsxDownloadOrigins': [
+                'https://open-vsx.org',
+                'https://openvsx.eclipsecontent.org',
+            ],
         }
         allowed = {
             'id': 'demo.fixture',
@@ -677,10 +682,27 @@ class ToolingTests(unittest.TestCase):
         with self.assertRaisesRegex(extension_lock.BuildError, 'not allowed'):
             extension_lock.enforce_source_policy(denied, policy)
 
-        handler = extension_lock._SourcePolicyRedirectHandler({'https://open-vsx.org'})
+        handler = extension_lock._SourcePolicyRedirectHandler(
+            {'https://open-vsx.org', 'https://openvsx.eclipsecontent.org'}
+        )
         request = extension_lock.urllib.request.Request(
             'https://open-vsx.org/api/demo/fixture/1.2.3/file/demo.fixture-1.2.3.vsix'
         )
+        redirected = handler.redirect_request(
+            request,
+            None,
+            302,
+            'Found',
+            {},
+            'https://openvsx.eclipsecontent.org/file/demo.fixture-1.2.3.vsix',
+        )
+        self.assertIsNotNone(redirected)
+        assert redirected is not None
+        self.assertEqual(
+            extension_lock._url_origin(redirected.full_url, 'test redirect'),
+            'https://openvsx.eclipsecontent.org',
+        )
+
         with self.assertRaisesRegex(extension_lock.BuildError, 'redirect target is not allowed'):
             handler.redirect_request(
                 request,
@@ -690,6 +712,17 @@ class ToolingTests(unittest.TestCase):
                 {},
                 'https://registry.example.com/redirected.vsix',
             )
+
+    def test_open_vsx_download_stream_is_bounded_before_writes(self):
+        source = io.BytesIO(b'0123456789')
+        destination = io.BytesIO()
+        with (
+            mock.patch.object(extension_lock, 'MAX_VSIX_ARCHIVE_SIZE', 8),
+            mock.patch.object(extension_lock, 'DOWNLOAD_CHUNK_SIZE', 4),
+        ):
+            with self.assertRaisesRegex(extension_lock.BuildError, 'download exceeds limit'):
+                extension_lock._copy_download_bounded(source, destination)
+        self.assertEqual(destination.getvalue(), b'01234567')
 
     def test_open_vsx_registry_rejects_non_origin_urls(self):
         with tempfile.TemporaryDirectory() as td:

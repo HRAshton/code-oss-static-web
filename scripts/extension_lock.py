@@ -23,6 +23,8 @@ MAX_ARCHIVE_FILE_SIZE = 64 * 1024 * 1024
 MAX_ARCHIVE_TOTAL_SIZE = 256 * 1024 * 1024
 MAX_ARCHIVE_COMPRESSION_RATIO = 200
 COMPRESSION_RATIO_MIN_FILE_SIZE = 1024 * 1024
+MAX_VSIX_ARCHIVE_SIZE = MAX_ARCHIVE_TOTAL_SIZE + 16 * 1024 * 1024
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 EXTRACTION_CHUNK_SIZE = 1024 * 1024
 
 
@@ -71,27 +73,54 @@ def load_source_policy(path: Path) -> dict[str, Any]:
         'unsupported extension source policy schemaVersion',
     )
     require(
-        set(data) == {'schemaVersion', 'allowedOpenVsxRegistries'},
+        set(data) == {'schemaVersion', 'allowedOpenVsxRegistries', 'allowedOpenVsxDownloadOrigins'},
         'extension source policy keys mismatch',
     )
-    allowed_value = data.get('allowedOpenVsxRegistries')
-    require(isinstance(allowed_value, list), 'extension source policy registries must be an array')
-    allowed_raw = cast(list[object], allowed_value)
+    registries_value = data.get('allowedOpenVsxRegistries')
     require(
-        len(allowed_raw) > 0 and all(isinstance(item, str) for item in allowed_raw),
+        isinstance(registries_value, list), 'extension source policy registries must be an array'
+    )
+    registries_raw = cast(list[object], registries_value)
+    require(
+        len(registries_raw) > 0 and all(isinstance(item, str) for item in registries_raw),
         'extension source policy allowedOpenVsxRegistries must be a non-empty string array',
     )
-    allowed = [
+    registries = [
         _normalize_open_vsx_registry(item, 'extension source policy registry')
-        for item in allowed_raw
+        for item in registries_raw
     ]
     require(
-        len(set(allowed)) == len(allowed),
+        len(set(registries)) == len(registries),
         'extension source policy allowedOpenVsxRegistries must be unique',
+    )
+
+    download_origins_value = data.get('allowedOpenVsxDownloadOrigins')
+    require(
+        isinstance(download_origins_value, list),
+        'extension source policy download origins must be an array',
+    )
+    download_origins_raw = cast(list[object], download_origins_value)
+    require(
+        len(download_origins_raw) > 0
+        and all(isinstance(item, str) for item in download_origins_raw),
+        'extension source policy allowedOpenVsxDownloadOrigins must be a non-empty string array',
+    )
+    download_origins = [
+        _normalize_open_vsx_registry(item, 'extension source policy download origin')
+        for item in download_origins_raw
+    ]
+    require(
+        len(set(download_origins)) == len(download_origins),
+        'extension source policy allowedOpenVsxDownloadOrigins must be unique',
+    )
+    require(
+        set(registries).issubset(download_origins),
+        'extension source policy download origins must include all registry origins',
     )
     return {
         'schemaVersion': SOURCE_POLICY_SCHEMA_VERSION,
-        'allowedOpenVsxRegistries': allowed,
+        'allowedOpenVsxRegistries': registries,
+        'allowedOpenVsxDownloadOrigins': download_origins,
     }
 
 
@@ -103,6 +132,20 @@ def enforce_source_policy(entry: dict[str, Any], policy: dict[str, Any]) -> None
         registry in policy['allowedOpenVsxRegistries'],
         f'Open VSX registry is not allowed by production source policy: {registry}',
     )
+
+
+def _copy_download_bounded(source: Any, destination: Any) -> int:
+    total = 0
+    while True:
+        chunk = source.read(DOWNLOAD_CHUNK_SIZE)
+        if not chunk:
+            return total
+        total += len(chunk)
+        require(
+            total <= MAX_VSIX_ARCHIVE_SIZE,
+            f'VSIX archive download exceeds limit: {total} > {MAX_VSIX_ARCHIVE_SIZE}',
+        )
+        destination.write(chunk)
 
 
 class _SourcePolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -376,13 +419,17 @@ def download_open_vsx(
     if source_policy is None:
         source_policy = load_source_policy(ROOT / 'extensions/source-policy.json')
     enforce_source_policy(entry, source_policy)
-    allowed_origins = set(cast(list[str], source_policy['allowedOpenVsxRegistries']))
+    allowed_download_origins = set(cast(list[str], source_policy['allowedOpenVsxDownloadOrigins']))
 
     cache_root.mkdir(parents=True, exist_ok=True)
     target = cache_root / f'{entry["id"]}-{entry["version"]}.vsix'
-    if target.is_file() and sha256_file(target) == entry['sha256']:
-        return target
-    target.unlink(missing_ok=True)
+    if target.is_file():
+        if target.stat().st_size > MAX_VSIX_ARCHIVE_SIZE:
+            target.unlink()
+            raise BuildError(f'cached VSIX archive exceeds size limit: {entry["id"]}')
+        if sha256_file(target) == entry['sha256']:
+            return target
+        target.unlink()
 
     request = urllib.request.Request(
         open_vsx_download_url(entry),
@@ -391,7 +438,7 @@ def download_open_vsx(
             'User-Agent': OPEN_VSX_USER_AGENT,
         },
     )
-    opener = urllib.request.build_opener(_SourcePolicyRedirectHandler(allowed_origins))
+    opener = urllib.request.build_opener(_SourcePolicyRedirectHandler(allowed_download_origins))
     with tempfile.NamedTemporaryFile(
         prefix='open-vsx-',
         suffix='.vsix',
@@ -403,11 +450,11 @@ def download_open_vsx(
             with opener.open(request, timeout=60) as response:
                 response_origin = _url_origin(response.geturl(), 'Open VSX response URL')
                 require(
-                    response_origin in allowed_origins,
+                    response_origin in allowed_download_origins,
                     f'Open VSX response URL is not allowed by production source policy: '
                     f'{response_origin}',
                 )
-                shutil.copyfileobj(response, temporary)
+                _copy_download_bounded(response, temporary)
         except Exception:
             temporary_path.unlink(missing_ok=True)
             raise
@@ -436,6 +483,10 @@ def materialize_vsix(
         require(
             source_path.suffix.lower() == '.vsix',
             f'local-vsix source must end in .vsix: {source_path}',
+        )
+        require(
+            source_path.stat().st_size <= MAX_VSIX_ARCHIVE_SIZE,
+            f'VSIX archive exceeds size limit: {entry["id"]}',
         )
         require(
             sha256_file(source_path) == entry['sha256'], f'VSIX SHA-256 mismatch: {entry["id"]}'

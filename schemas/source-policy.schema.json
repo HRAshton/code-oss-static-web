@@ -4,10 +4,23 @@
   "title": "Code OSS Static Web extension source policy",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "allowedOpenVsxRegistries"],
+  "required": [
+    "schemaVersion",
+    "allowedOpenVsxRegistries",
+    "allowedOpenVsxDownloadOrigins"
+  ],
   "properties": {
     "schemaVersion": { "const": 1 },
     "allowedOpenVsxRegistries": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^https://[^/?#@]+(?::[0-9]+)?/?$"
+      }
+    },
+    "allowedOpenVsxDownloadOrigins": {
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
