@@ -228,69 +228,26 @@ jobs:
 
   browser:
     needs: [build, reproducibility]
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium]
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up canonical toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-toolchain
-
-      - name: Download canonical static distribution
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Qualify release browser
+        uses: ./.github/actions/browser-qualification
         with:
-          name: release-static-dist
-          path: .work/release-static-dist
-
-      - name: Extract canonical static distribution
-        run: |
-          rm -rf dist
-          mkdir -p dist
-          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
-
-      - name: Download locked Playwright runtime
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: release-playwright-runtime
-          path: .work/playwright-runtime
-
-      - name: Install locked Chromium
-        run: python3 scripts/install_playwright_browser.py --with-deps chromium
-
-      - name: Browser boot gate
-        run: >-
-          python3 scripts/run_e2e.py
-          --project chromium
-          --dist dist
-          --grep "packaged workbench boots from static hosting"
-          --grep-invert @extension
-          --retries=0
-
-      - name: Browser qualification
-        run: >-
-          python3 scripts/run_e2e.py
-          --project chromium
-          --dist dist
-          --grep-invert @extension
-
-      - name: Prepare extension-host qualification copy
-        run: |
-          rm -rf .work/qualification-dist
-          cp -a dist .work/qualification-dist
-          python3 scripts/add_test_extension.py --dist .work/qualification-dist
-
-      - name: Browser extension-host qualification
-        run: >-
-          python3 scripts/run_e2e.py
-          --project chromium
-          --dist .work/qualification-dist
-          --grep @extension
+          browser: ${{ matrix.browser }}
+          distribution-artifact: release-static-dist
+          playwright-runtime-artifact: release-playwright-runtime
+          scope: full
+          diagnostics-artifact: release-qualification-diagnostics-${{ matrix.browser }}
 
   package:
     needs: browser

@@ -714,7 +714,7 @@ python-version: ${{ steps.versions.outputs.python }}
     def test_canonical_distribution_artifacts_preserve_metadata(self):
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
         release = (ROOT / '.github/workflows/release.yml').read_text()
-        browser_matrix = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+        browser_action = (ROOT / '.github/actions/browser-qualification/action.yml').read_text()
 
         self.assertIn('tar -C dist -cf .work/static-dist.tar .', qualification)
         self.assertIn('path: .work/static-dist.tar', qualification)
@@ -724,39 +724,40 @@ python-version: ${{ steps.versions.outputs.python }}
             'tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar',
             release,
         )
-        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', qualification)
-        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', browser_matrix)
+        self.assertIn(
+            'tar -C dist -xf ".work/browser-dist/${{ inputs.distribution-artifact }}.tar"',
+            browser_action,
+        )
 
-    def test_qualification_workflow_runs_browser_and_extension_suites(self):
+    def test_qualification_workflow_reuses_browser_action(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        action = (ROOT / '.github/actions/browser-qualification/action.yml').read_text()
         self.assertRegex(
             workflow,
             r'actions/cache@[0-9a-f]{40}\s+# v[0-9]+',
         )
         self.assertIn('name: static-dist', workflow)
         self.assertIn('name: playwright-runtime', workflow)
-        self.assertIn('name: qualification-harness', workflow)
+        self.assertNotIn('name: qualification-harness', workflow)
         self.assertIn('name: playwright-browser-chromium', workflow)
-        self.assertIn('PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers', workflow)
-        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
-        self.assertIn('needs: build', workflow)
-        self.assertIn('secondary-browsers', workflow)
-        self.assertIn('browser: [firefox, webkit]', workflow)
-        self.assertIn('needs: [browser, secondary-browsers]', workflow)
+        self.assertIn('browser-plan:', workflow)
+        self.assertIn('browsers=\'["chromium"]\'', workflow)
+        self.assertIn('browsers=\'["chromium","firefox","webkit"]\'', workflow)
+        self.assertIn('scope=smoke', workflow)
+        self.assertIn('matrix.browser', workflow)
+        self.assertIn('uses: ./.github/actions/browser-qualification', workflow)
+        self.assertNotIn('secondary-browsers:', workflow)
+        self.assertIn("if: github.event_name != 'pull_request'", workflow)
+        self.assertIn('needs: [build, browser, package, attest]', workflow)
         self.assertIn('needs: package', workflow)
         self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
         self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
         self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
-        package_source = (ROOT / 'scripts/package_release.py').read_text()
-        self.assertIn('license-inventory.json', package_source)
-        self.assertIn('extensionLicensePolicy', package_source)
-        self.assertIn(
-            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow
-        )
-        self.assertIn('scripts/run_e2e.py', workflow)
-        self.assertIn('--grep-invert @extension', workflow)
-        self.assertIn('--grep @extension', workflow)
-        self.assertIn('scripts/add_test_extension.py', workflow)
+        self.assertIn('scripts/run_e2e.py', action)
+        self.assertIn('--grep-invert @extension', action)
+        self.assertIn('--grep @extension', action)
+        self.assertIn('scripts/add_test_extension.py', action)
+        self.assertIn("if: inputs.scope == 'full'", action)
         self.assertIn('--reuse-upstream-build', workflow)
 
         extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
@@ -773,19 +774,29 @@ python-version: ${{ steps.versions.outputs.python }}
         exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
         self.assertIn("Path('@playwright/test')", exporter)
 
-    def test_browser_matrix_reuses_qualified_artifacts(self):
-        workflow = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
-        self.assertIn("workflows: ['Full build qualification']", workflow)
-        self.assertIn('browser: [firefox, webkit]', workflow)
-        self.assertIn('run-id: ${{ env.SOURCE_RUN_ID }}', workflow)
-        self.assertNotIn('./build.sh', workflow)
+    def test_browser_qualification_topology_is_centralized(self):
+        check_policy.check_browser_qualification_topology()
+        self.assertFalse((ROOT / '.github/workflows/browser-matrix.yml').exists())
 
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertEqual(
+            qualification.count('uses: ./.github/actions/browser-qualification'),
+            1,
+        )
+        self.assertEqual(release.count('uses: ./.github/actions/browser-qualification'), 1)
+        self.assertIn('browser: [chromium]', release)
+        for workflow in (qualification, release):
+            self.assertNotIn('scripts/install_playwright_browser.py', workflow)
+            self.assertNotIn('scripts/run_e2e.py', workflow)
+            self.assertNotIn('scripts/add_test_extension.py', workflow)
     def test_release_workflow_uses_clean_qualified_artifact(self):
         workflow_path = ROOT / '.github/workflows/release.yml'
         workflow = workflow_path.read_text()
         check_policy.check_release_publication_boundaries(workflow_path, workflow)
         self.assertIn('./build.sh --clean-upstream', workflow)
         self.assertIn('needs: [build, reproducibility]', workflow)
+        self.assertIn('uses: ./.github/actions/browser-qualification', workflow)
         self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
         self.assertNotIn('actions/cache@', workflow)
         self.assertEqual(workflow.count('environment: release'), 3)
