@@ -46,6 +46,42 @@ identity before archiving, packaging, attesting, or publishing it. The existing 
 still compares normalized distributions independently, so qualification binding and reproducibility
 remain separate release gates.
 
+## Performance and accessibility baseline
+
+Chromium qualification runs a dedicated `@quality` pass after the zero-retry boot gate. It uses
+three independent browser contexts and reports the median so a single noisy runner sample does not
+become a regression gate. Each context performs one cold load and then a second load in the same
+context. The second load preserves browser storage but not HTTP response caching: the qualification
+server deliberately sends `Cache-Control: no-store`.
+
+The measured timing points are navigation start to visible workbench for cold and warm boot, and
+navigation start to a visible untitled editor for editor readiness. Static transfer size is the sum
+of same-origin `Content-Length` response headers observed by the time the workbench becomes visible.
+The suite also records the complete distribution size, JavaScript size, request failures, page
+errors, and unique console-error fingerprints. Request failures include Playwright transport
+failures plus HTTP responses with status 400 or higher, so a missing or server-error static asset
+cannot pass as a successful startup. All console-error occurrences remain in the diagnostics
+artifact. An F6 focus-cycle smoke check requires focus to move to a non-hidden, enabled
+element with an accessible name; this adds accessibility coverage without duplicating the existing
+editor, settings, command-palette, and workspace-trust functional tests.
+
+Baselines and tolerances live in `config/quality-baseline.json`. For a lower-is-better metric, the
+failure limit is `baseline * (1 + relativeTolerance) + absoluteTolerance`. Timing metrics use a
+50% relative tolerance plus a small absolute allowance, transfer size uses 5% plus 256 KiB, and
+deterministic distribution/JavaScript sizes use 3% plus 1 MiB. Zero-error metrics allow no increase.
+Every failure includes the metric name, observed value, baseline, tolerance, and computed limit.
+The Chromium diagnostics artifact includes `.work/quality-metrics.json` with every sample and the
+raw error lists.
+
+The initial baseline was captured by successful full qualification run 37136030149 at measurement
+commit `63afddee4633456de01bb30a2cea5f3479d636bc`. The three timing samples ranged from 2.09–2.15 s
+for cold boot, 2.03–2.16 s for warm boot, and 2.17–2.35 s for editor readiness; startup transfer
+varied by less than 1%. The recorded medians are 2,096 ms, 2,034 ms, 2,188 ms, and 25,438,689 bytes
+respectively. Distribution size is 190,626,870 bytes and JavaScript size is 131,365,205 bytes.
+Failed requests and page errors baseline at zero. Ten unique file-watcher console-error fingerprints
+are present in the current zero-backend static mode (60 total occurrences across the six sampled
+loads), so the console gate permits those existing fingerprints but fails on any increase.
+
 ## Current Playwright coverage
 
 - static workbench boot;

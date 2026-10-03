@@ -1116,7 +1116,12 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
         self.assertIn('scripts/run_e2e.py', action)
         self.assertIn('--grep-invert @extension', action)
+        self.assertIn('--grep-invert "@extension|@quality"', action)
+        self.assertIn('--grep @quality', action)
         self.assertIn('--grep @extension', action)
+        self.assertIn('name: Quality baseline', action)
+        self.assertIn('CODE_OSS_STATIC_WEB_QUALITY_REPORT', action)
+        self.assertIn('.work/quality-metrics.json', action)
         self.assertIn('scripts/add_test_extension.py', action)
         boot_gate = action[
             action.index('    - name: Browser boot gate') : action.index(
@@ -1137,6 +1142,27 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
         self.assertIn('browser filesystem persists across workbench reload', extension_test)
         self.assertIn('JavaScript language service returns completions', extension_test)
+
+        quality_test = (ROOT / 'tests/e2e/quality-baseline.spec.cjs').read_text()
+        self.assertIn('@quality performance and accessibility baseline', quality_test)
+        self.assertIn('@quality failed-request metric counts HTTP error responses', quality_test)
+        self.assertIn('response.status() >= 400', quality_test)
+        self.assertIn("page.keyboard.press('F6')", quality_test)
+        self.assertIn('staticTransferBytes', quality_test)
+        quality_baseline = json.loads((ROOT / 'config/quality-baseline.json').read_text())
+        self.assertEqual(quality_baseline['sampling']['samples'], 3)
+        self.assertEqual(quality_baseline['source']['qualificationRunId'], 37136030149)
+        baselines = [metric['baseline'] for metric in quality_baseline['metrics'].values()]
+        self.assertNotIn(None, baselines)
+        self.assertEqual(quality_baseline['metrics']['consoleErrors']['baseline'], 10)
+        self.assertEqual(
+            quality_baseline['metrics']['distributionBytes']['baseline'],
+            190626870,
+        )
+        self.assertEqual(
+            quality_baseline['metrics']['javascriptBytes']['baseline'],
+            131365205,
+        )
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn('playwright-runtime', runner)

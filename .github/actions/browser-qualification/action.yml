@@ -81,6 +81,21 @@ runs:
         --grep-invert @extension
         --retries=0
 
+    - name: Quality baseline
+      if: inputs.browser == 'chromium'
+      env:
+        PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/quality
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/quality
+        CODE_OSS_STATIC_WEB_QUALITY_REPORT: .work/quality-metrics.json
+      shell: bash
+      run: >-
+        python3 scripts/run_e2e.py
+        --project chromium
+        --dist dist
+        --grep @quality
+        --retries=0
+
     - name: Browser qualification
       if: inputs.scope == 'full'
       env:
@@ -92,7 +107,7 @@ runs:
         python3 scripts/run_e2e.py
         --project "${{ inputs.browser }}"
         --dist dist
-        --grep-invert @extension
+        --grep-invert "@extension|@quality"
 
     - name: Prepare extension-host qualification copy
       if: inputs.scope == 'full'
@@ -123,5 +138,6 @@ runs:
         path: |
           playwright-report/
           test-results/
+          .work/quality-metrics.json
         if-no-files-found: ignore
         retention-days: 7
