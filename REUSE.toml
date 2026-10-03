@@ -9,6 +9,7 @@ path = [
   "CONTRIBUTING.md",
   "LICENSE",
   "Makefile",
+  "OPERATIONS.md",
   "README.md",
   "REUSE.toml",
   "SECURITY.md",

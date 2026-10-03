@@ -55,3 +55,19 @@ job on the `release` environment with no token permissions, then deploys through
 Every GitHub Release, Pages, and OCI publication path additionally checks that the release-tag
 ruleset is active and that `GITHUB_REF_NAME` still resolves to the workflow's immutable
 `GITHUB_SHA` immediately before publication. Publication fails closed if either invariant is false.
+
+Publication is retry-safe per channel. The normal Release workflow and the recovery workflow share
+the same channel implementations and the same `release-${ref}` concurrency group. GitHub Release
+publication reconciles assets monotonically: matching published assets are verification-only, and
+only an interrupted draft may add missing expected assets before publication. Conflicting,
+unexpected, or incomplete published asset sets fail closed. Pages treats a successful deployment
+for the immutable release commit as complete before creating another deployment. GHCR verifies the
+existing release tag, release labels, multi-platform manifest, and every canonical static file; it
+publishes only after the registry explicitly reports that the tag is absent, while indeterminate
+registry failures abort without pushing.
+
+`Recover release publication` accepts the completed source Release workflow-run ID, verifies that
+all pre-publication preparation jobs succeeded, and downloads retained `release-static-dist`,
+`release-candidate`, and/or `release-attestation` artifacts as required by the selected channel. It
+contains no upstream build, package, or attestation step. GitHub Release existence is therefore not
+used as a proxy for Pages or GHCR completion; each channel is verified independently.

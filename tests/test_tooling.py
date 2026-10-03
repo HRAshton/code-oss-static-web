@@ -20,6 +20,7 @@ import generate_runtime_metadata
 import generate_sbom
 import make_static
 import package_release
+import publish_github_release
 import validate_config
 import verify_dist_identity
 
@@ -749,6 +750,7 @@ python-version: ${{ steps.versions.outputs.python }}
                 ROOT / '.github/workflows/example.yml',
                 'publish',
                 bad,
+                'attest',
             )
 
     def test_repository_publication_scan_rejects_environment_bypass(self):
@@ -947,6 +949,10 @@ python-version: ${{ steps.versions.outputs.python }}
     def test_release_workflow_uses_clean_qualified_artifact(self):
         workflow_path = ROOT / '.github/workflows/release.yml'
         workflow = workflow_path.read_text()
+        pages_action = (ROOT / '.github/actions/publish-pages/action.yml').read_text()
+        oci_action = (ROOT / '.github/actions/publish-oci/action.yml').read_text()
+        release_action = (ROOT / '.github/actions/publish-github-release/action.yml').read_text()
+        release_script = (ROOT / 'scripts/publish_github_release.py').read_text()
         check_policy.check_release_publication_boundaries(workflow_path, workflow)
         self.assertIn('./build.sh --clean-upstream', workflow)
         self.assertIn('needs: [build, reproducibility]', workflow)
@@ -955,23 +961,48 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertNotIn('actions/cache@', workflow)
         self.assertEqual(workflow.count('environment: release'), 3)
         self.assertRegex(
-            workflow,
+            pages_action,
             r'actions/deploy-pages@[0-9a-f]{40}\s+# v[0-9]+',
         )
         self.assertRegex(
-            workflow,
+            oci_action,
             r'docker/build-push-action@[0-9a-f]{40}\s+# v[0-9]+',
         )
-        self.assertNotIn('docker/setup-qemu-action@', workflow)
+        self.assertNotIn('docker/setup-qemu-action@', oci_action)
         self.assertIn(
             'image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8',
-            workflow,
+            oci_action,
         )
-        self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
+        self.assertIn('platforms: linux/amd64,linux/arm64', oci_action)
         self.assertIn('pages-release-gate:', workflow)
         self.assertIn('needs: [attest, pages-release-gate]', workflow)
         self.assertIn('permissions: {}', workflow)
-        self.assertIn('gh release create', workflow)
+        self.assertIn('uses: ./.github/actions/publish-github-release', workflow)
+        self.assertIn('uses: ./.github/actions/publish-pages', workflow)
+        self.assertIn('uses: ./.github/actions/publish-oci', workflow)
+        self.assertRegex(release_script, r"'release',\s*'create'")
+        self.assertRegex(release_script, r"'release',\s*'upload'")
+        self.assertNotIn('--clobber', release_script)
+        self.assertIn(
+            'published GitHub Release is incomplete; refusing to mutate it',
+            release_script,
+        )
+        self.assertIn("'draft=false'", release_script)
+        self.assertIn('scripts/export_release_provenance.py', release_action)
+        self.assertIn('/pages/deployments/', pages_action)
+        self.assertIn("steps.state.outputs.complete != 'true'", pages_action)
+        self.assertIn('Verify existing GHCR publication', oci_action)
+        self.assertIn('inspect_status=$?', oci_action)
+        self.assertIn('manifest unknown', oci_action)
+        self.assertIn('unable to determine GHCR publication state', oci_action)
+        self.assertIn("steps.state.outputs.exists == 'false'", oci_action)
+        oci_verifier = (ROOT / 'scripts/verify_oci_image.sh').read_text()
+        self.assertIn('from package_release import iter_files', oci_verifier)
+        self.assertIn('sha256_file(source) != sha256_file(target)', oci_verifier)
+        self.assertIn('OCI image is missing static file', oci_verifier)
+        self.assertNotIn('scripts/compare_dist.py "$dist"', oci_verifier)
+        self.assertIn('publication-status:', workflow)
+        self.assertIn('needs: publication-status', workflow)
         self.assertIn('needs: authorize', workflow)
         self.assertIn('qualification_run_id:', workflow)
         self.assertIn('name: Verify release qualification evidence', workflow)
@@ -980,6 +1011,10 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('release-qualification', workflow)
         self.assertIn('name: Download release qualification evidence', workflow)
         self.assertIn('name: Verify release qualification binding', workflow)
+        self.assertIn('Verify qualification provenance', workflow)
+        self.assertIn('qualification-provenance.sigstore.json', workflow)
+        self.assertIn('qualified-tree-sha256', workflow)
+        self.assertIn('scripts/verify_dist_identity.py', workflow)
         self.assertIn('.tag == $tag', workflow)
         self.assertIn('CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}', workflow)
         self.assertIn('name: Verify release commit is on protected default branch', workflow)
@@ -993,6 +1028,7 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('index("update")', workflow)
         self.assertIn('index("deletion")', workflow)
         self.assertIn('tag_sha_after', workflow)
+        self.assertIn('retention-days: 30', workflow)
         ruleset = json.loads((ROOT / '.github/rulesets/immutable-release-tags.json').read_text())
         self.assertEqual(ruleset['target'], 'tag')
         self.assertEqual(ruleset['enforcement'], 'active')
@@ -1011,6 +1047,60 @@ python-version: ${{ steps.versions.outputs.python }}
             r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
         )
         self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
+
+    def test_release_publication_recovery_is_artifact_only(self):
+        workflow_path = ROOT / '.github/workflows/recover-release-publication.yml'
+        workflow = workflow_path.read_text()
+        check_policy.check_recovery_publication_boundaries()
+        self.assertIn('release_run_id:', workflow)
+        self.assertIn('channel:', workflow)
+        self.assertIn('run-id: ${{ inputs.release_run_id }}', workflow)
+        self.assertIn('group: release-${{ github.ref }}', workflow)
+        self.assertIn('uses: ./.github/actions/publish-github-release', workflow)
+        self.assertIn('uses: ./.github/actions/publish-pages', workflow)
+        self.assertIn('uses: ./.github/actions/publish-oci', workflow)
+        self.assertNotIn('./build.sh', workflow)
+        self.assertNotIn('package.sh', workflow)
+        self.assertNotIn('actions/attest@', workflow)
+        self.assertEqual(workflow.count('name: Verify immutable release ref'), 3)
+        self.assertIn('publication-status:', workflow)
+        self.assertIn('required preparation job did not succeed exactly once', workflow)
+
+    def test_github_release_asset_reconciliation_is_monotonic(self):
+        local = {'a.tar.gz': 'a' * 64, 'SHA256SUMS': 'b' * 64}
+        self.assertEqual(
+            publish_github_release.pending_asset_uploads(
+                local,
+                {'a.tar.gz': 'a' * 64},
+                draft=True,
+            ),
+            ['SHA256SUMS'],
+        )
+        self.assertEqual(
+            publish_github_release.pending_asset_uploads(local, local, draft=False),
+            [],
+        )
+        with self.assertRaisesRegex(
+            publish_github_release.BuildError,
+            'published GitHub Release is incomplete',
+        ):
+            publish_github_release.pending_asset_uploads(
+                local,
+                {'a.tar.gz': 'a' * 64},
+                draft=False,
+            )
+        with self.assertRaises(publish_github_release.BuildError):
+            publish_github_release.pending_asset_uploads(
+                local,
+                {'a.tar.gz': 'c' * 64},
+                draft=True,
+            )
+        with self.assertRaises(publish_github_release.BuildError):
+            publish_github_release.pending_asset_uploads(
+                local,
+                {'unexpected.txt': 'd' * 64},
+                draft=True,
+            )
 
     def test_product_transform_keeps_chat_contract_fail_closed(self):
         transform = json.loads((ROOT / 'config/product-transform.json').read_text())

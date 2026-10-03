@@ -1,0 +1,363 @@
+name: Recover release publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_run_id:
+        description: Completed Release workflow run that produced the immutable publication artifacts
+        required: true
+        type: string
+      channel:
+        description: Publication channel to verify or recover
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - github-release
+          - pages
+          - ghcr
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions: read-all
+
+jobs:
+  authorize-recovery:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      github-release: ${{ steps.selection.outputs.github-release }}
+      pages: ${{ steps.selection.outputs.pages }}
+      ghcr: ${{ steps.selection.outputs.ghcr }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical Python
+        uses: ./.github/actions/setup-toolchain
+        with:
+          node: 'false'
+
+      - name: Verify recovery source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_RUN_ID: ${{ inputs.release_run_id }}
+          CHANNEL: ${{ inputs.channel }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
+            echo 'publication recovery must run on the immutable release tag' >&2
+            exit 1
+          fi
+          python3 scripts/check_release_tag.py "$GITHUB_REF_NAME"
+
+          source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID")"
+          jq -e \
+            --arg sha "$GITHUB_SHA" \
+            '
+              .status == "completed" and
+              .event == "workflow_dispatch" and
+              .name == "Release" and
+              .path == ".github/workflows/release.yml" and
+              .head_sha == $sha
+            ' <<<"$source_run" >/dev/null
+
+          jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID/jobs?per_page=100")"
+          for job in authorize build reproducibility package attest; do
+            count="$(jq --arg name "$job" '[.jobs[] | select(.name == $name and .conclusion == "success")] | length' <<<"$jobs")"
+            if [[ "$count" != 1 ]]; then
+              echo "required preparation job did not succeed exactly once: $job" >&2
+              exit 1
+            fi
+          done
+          browser_count="$(jq '[.jobs[] | select(.name == "browser (chromium)" and .conclusion == "success")] | length' <<<"$jobs")"
+          if [[ "$browser_count" != 1 ]]; then
+            echo 'release-grade Chromium qualification did not succeed exactly once' >&2
+            exit 1
+          fi
+
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID/artifacts?per_page=100")"
+          require_artifact() {
+            local name="$1"
+            local count
+            count="$(jq --arg name "$name" '[.artifacts[] | select(.name == $name and .expired == false)] | length' <<<"$artifacts")"
+            if [[ "$count" != 1 ]]; then
+              echo "required immutable release artifact is unavailable: $name" >&2
+              exit 1
+            fi
+          }
+
+          case "$CHANNEL" in
+            all)
+              require_artifact release-static-dist
+              require_artifact release-candidate
+              require_artifact release-attestation
+              ;;
+            github-release)
+              require_artifact release-candidate
+              require_artifact release-attestation
+              ;;
+            pages|ghcr)
+              require_artifact release-static-dist
+              ;;
+            *)
+              echo "unsupported recovery channel: $CHANNEL" >&2
+              exit 2
+              ;;
+          esac
+
+      - name: Select publication channels
+        id: selection
+        env:
+          CHANNEL: ${{ inputs.channel }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          github_release=false
+          pages=false
+          ghcr=false
+          case "$CHANNEL" in
+            all)
+              github_release=true
+              pages=true
+              ghcr=true
+              ;;
+            github-release) github_release=true ;;
+            pages) pages=true ;;
+            ghcr) ghcr=true ;;
+          esac
+          {
+            echo "github-release=$github_release"
+            echo "pages=$pages"
+            echo "ghcr=$ghcr"
+          } >> "$GITHUB_OUTPUT"
+
+  github-release:
+    if: needs.authorize-recovery.outputs.github-release == 'true'
+    needs: authorize-recovery
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download verified candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-candidate
+          path: artifacts
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Download release provenance bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-attestation
+          path: .work/release-attestation
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Verify immutable release ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_pattern='refs/tags/v*-web.*'
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
+          [[ "$tag_sha" == "$GITHUB_SHA" ]]
+          protected=0
+          while IFS= read -r ruleset_id; do
+            [[ -n "$ruleset_id" ]] || continue
+            ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id")"
+            if jq -e --arg pattern "$expected_pattern" '(.target == "tag") and (.enforcement == "active") and (((.conditions.ref_name.include // []) | index($pattern)) != null) and ((([.rules[].type] | index("update")) != null)) and ((([.rules[].type] | index("deletion")) != null)) and (((.bypass_actors // []) | length) == 0)' <<<"$ruleset" >/dev/null; then
+              protected=1
+              break
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')
+          [[ "$protected" == 1 ]]
+          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
+          [[ "$tag_sha_after" == "$GITHUB_SHA" ]]
+
+      - name: Publish or verify GitHub Release
+        uses: ./.github/actions/publish-github-release
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          tag: ${{ github.ref_name }}
+
+  pages-release-gate:
+    if: needs.authorize-recovery.outputs.pages == 'true'
+    needs: authorize-recovery
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - name: Authorize Pages publication recovery
+        run: ':'
+
+  pages:
+    if: needs.authorize-recovery.outputs.pages == 'true'
+    needs: [authorize-recovery, pages-release-gate]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publication.outputs.page-url }}
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download qualified static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-static-dist
+          path: .work/release-static-dist
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
+
+      - name: Verify immutable release ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_pattern='refs/tags/v*-web.*'
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
+          [[ "$tag_sha" == "$GITHUB_SHA" ]]
+          protected=0
+          while IFS= read -r ruleset_id; do
+            [[ -n "$ruleset_id" ]] || continue
+            ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id")"
+            if jq -e --arg pattern "$expected_pattern" '(.target == "tag") and (.enforcement == "active") and (((.conditions.ref_name.include // []) | index($pattern)) != null) and ((([.rules[].type] | index("update")) != null)) and ((([.rules[].type] | index("deletion")) != null)) and (((.bypass_actors // []) | length) == 0)' <<<"$ruleset" >/dev/null; then
+              protected=1
+              break
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')
+          [[ "$protected" == 1 ]]
+          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
+          [[ "$tag_sha_after" == "$GITHUB_SHA" ]]
+
+      - name: Publish or verify GitHub Pages
+        id: publication
+        uses: ./.github/actions/publish-pages
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          commit: ${{ github.sha }}
+          dist-path: dist
+
+  oci:
+    if: needs.authorize-recovery.outputs.ghcr == 'true'
+    needs: authorize-recovery
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download qualified static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-static-dist
+          path: .work/release-static-dist
+          run-id: ${{ inputs.release_run_id }}
+          github-token: ${{ github.token }}
+
+      - name: Extract canonical static distribution
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
+
+      - name: Verify immutable release ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_pattern='refs/tags/v*-web.*'
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
+          [[ "$tag_sha" == "$GITHUB_SHA" ]]
+          protected=0
+          while IFS= read -r ruleset_id; do
+            [[ -n "$ruleset_id" ]] || continue
+            ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id")"
+            if jq -e --arg pattern "$expected_pattern" '(.target == "tag") and (.enforcement == "active") and (((.conditions.ref_name.include // []) | index($pattern)) != null) and ((([.rules[].type] | index("update")) != null)) and ((([.rules[].type] | index("deletion")) != null)) and (((.bypass_actors // []) | length) == 0)' <<<"$ruleset" >/dev/null; then
+              protected=1
+              break
+            fi
+          done < <(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')
+          [[ "$protected" == 1 ]]
+          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
+          [[ "$tag_sha_after" == "$GITHUB_SHA" ]]
+
+      - name: Publish or verify GHCR
+        uses: ./.github/actions/publish-oci
+        with:
+          github-token: ${{ github.token }}
+          image: ghcr.io/hrashton/code-oss-static-web:${{ github.ref_name }}
+          commit: ${{ github.sha }}
+          tag: ${{ github.ref_name }}
+          dist-path: dist
+
+  publication-status:
+    if: always()
+    needs: [authorize-recovery, github-release, pages-release-gate, pages, oci]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify selected publication channels
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          AUTHORIZE_RESULT: ${{ needs.authorize-recovery.result }}
+          GITHUB_RELEASE_RESULT: ${{ needs.github-release.result }}
+          PAGES_GATE_RESULT: ${{ needs.pages-release-gate.result }}
+          PAGES_RESULT: ${{ needs.pages.result }}
+          OCI_RESULT: ${{ needs.oci.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AUTHORIZE_RESULT" == success ]]
+          case "$CHANNEL" in
+            all)
+              [[ "$GITHUB_RELEASE_RESULT" == success ]]
+              [[ "$PAGES_GATE_RESULT" == success ]]
+              [[ "$PAGES_RESULT" == success ]]
+              [[ "$OCI_RESULT" == success ]]
+              ;;
+            github-release) [[ "$GITHUB_RELEASE_RESULT" == success ]] ;;
+            pages)
+              [[ "$PAGES_GATE_RESULT" == success ]]
+              [[ "$PAGES_RESULT" == success ]]
+              ;;
+            ghcr) [[ "$OCI_RESULT" == success ]] ;;
+          esac
+          echo "Publication recovery complete: channel=$CHANNEL tag=$GITHUB_REF_NAME"
