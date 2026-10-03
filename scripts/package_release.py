@@ -208,6 +208,7 @@ def build_artifact_manifest(
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
             'extensionLock': input_digest(ROOT / 'extensions/extensions.lock.json'),
             'extensionLicensePolicy': input_digest(ROOT / 'extensions/license-policy.json'),
+            'extensionSourcePolicy': input_digest(ROOT / 'extensions/source-policy.json'),
             'runtimeConfig': input_digest(ROOT / 'config/runtime.json'),
             'productTransform': input_digest(ROOT / 'config/product-transform.json'),
             'networkPolicy': input_digest(ROOT / 'config/network-policy.json'),

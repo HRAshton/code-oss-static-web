@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, cast
 
 from common import ROOT, BuildError, load_json, require
-from extension_lock import load_extension_lock, load_license_policy
+from extension_lock import (
+    enforce_source_policy,
+    load_extension_lock,
+    load_license_policy,
+    load_source_policy,
+)
 
 COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 DIGEST_RE = re.compile(r'^[0-9a-f]{64}$')
@@ -151,8 +156,11 @@ def validate_all() -> None:
     validate_network_policy(ROOT / 'config/network-policy.json')
     validate_product_transform(ROOT / 'config/product-transform.json')
     validate_patch_manifest(ROOT / 'patches/manifest.json')
-    load_extension_lock(ROOT / 'extensions/extensions.lock.json')
+    extension_lock = load_extension_lock(ROOT / 'extensions/extensions.lock.json')
     load_license_policy(ROOT / 'extensions/license-policy.json')
+    source_policy = load_source_policy(ROOT / 'extensions/source-policy.json')
+    for entry in extension_lock['extensions']:
+        enforce_source_policy(entry, source_policy)
 
 
 def main() -> None:
