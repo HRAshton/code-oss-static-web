@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -534,6 +535,183 @@ class ToolingTests(unittest.TestCase):
             }
             with self.assertRaises(extension_lock.BuildError):
                 extension_lock.validate_local_vsix(entry, root=root)
+
+    def test_local_vsix_rejects_absolute_paths_symlinks_and_windows_paths(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            absolute = root / 'absolute.vsix'
+            with zipfile.ZipFile(absolute, 'w') as archive:
+                archive.writestr('/escape.txt', 'bad')
+            entry = {
+                'id': 'fixture.absolute',
+                'version': '1.0.0',
+                'sha256': hashlib.sha256(absolute.read_bytes()).hexdigest(),
+                'source': {'type': 'local-vsix', 'path': 'absolute.vsix'},
+                'license': None,
+            }
+            with self.assertRaisesRegex(extension_lock.BuildError, 'absolute path'):
+                extension_lock.validate_local_vsix(entry, root=root)
+
+            symlink = root / 'symlink.vsix'
+            link = zipfile.ZipInfo('extension/link')
+            link.create_system = 3
+            link.external_attr = 0o120777 << 16
+            with zipfile.ZipFile(symlink, 'w') as archive:
+                archive.writestr(link, 'extension.js')
+            entry['id'] = 'fixture.symlink'
+            entry['sha256'] = hashlib.sha256(symlink.read_bytes()).hexdigest()
+            entry['source'] = {'type': 'local-vsix', 'path': 'symlink.vsix'}
+            with self.assertRaisesRegex(extension_lock.BuildError, 'symlink'):
+                extension_lock.validate_local_vsix(entry, root=root)
+
+            backslash = root / 'backslash.vsix'
+            with zipfile.ZipFile(backslash, 'w') as archive:
+                archive.writestr('extension\\..\\escape.txt', 'bad')
+            entry['id'] = 'fixture.backslash'
+            entry['sha256'] = hashlib.sha256(backslash.read_bytes()).hexdigest()
+            entry['source'] = {'type': 'local-vsix', 'path': backslash.name}
+            with self.assertRaisesRegex(extension_lock.BuildError, 'backslash path'):
+                extension_lock.validate_local_vsix(entry, root=root)
+
+            drive = root / 'drive.vsix'
+            with zipfile.ZipFile(drive, 'w') as archive:
+                archive.writestr('C:/escape.txt', 'bad')
+            entry['id'] = 'fixture.drive'
+            entry['sha256'] = hashlib.sha256(drive.read_bytes()).hexdigest()
+            entry['source'] = {'type': 'local-vsix', 'path': drive.name}
+            with self.assertRaisesRegex(extension_lock.BuildError, 'drive path'):
+                extension_lock.validate_local_vsix(entry, root=root)
+
+    def test_local_vsix_archive_limits_fail_closed(self):
+        manifest = {
+            'publisher': 'fixture',
+            'name': 'bounded',
+            'version': '1.0.0',
+            'browser': './extension.js',
+        }
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+
+            entry_count = root / 'entry-count.vsix'
+            with zipfile.ZipFile(entry_count, 'w') as archive:
+                archive.writestr('extension/package.json', json.dumps(manifest))
+                archive.writestr('extension/extension.js', 'ok')
+            entry = {
+                'id': 'fixture.bounded',
+                'version': '1.0.0',
+                'sha256': hashlib.sha256(entry_count.read_bytes()).hexdigest(),
+                'source': {'type': 'local-vsix', 'path': entry_count.name},
+                'license': None,
+            }
+            with mock.patch.object(extension_lock, 'MAX_ARCHIVE_ENTRIES', 1):
+                with self.assertRaisesRegex(extension_lock.BuildError, 'too many entries'):
+                    extension_lock.validate_local_vsix(entry, root=root)
+
+            large_file = root / 'large-file.vsix'
+            with zipfile.ZipFile(large_file, 'w') as archive:
+                archive.writestr('extension/package.json', json.dumps(manifest))
+                archive.writestr('extension/extension.js', 'x' * 1024)
+            entry['sha256'] = hashlib.sha256(large_file.read_bytes()).hexdigest()
+            entry['source'] = {'type': 'local-vsix', 'path': large_file.name}
+            with mock.patch.object(extension_lock, 'MAX_ARCHIVE_FILE_SIZE', 512):
+                with self.assertRaisesRegex(extension_lock.BuildError, 'entry is too large'):
+                    extension_lock.validate_local_vsix(entry, root=root)
+
+            large_total = root / 'large-total.vsix'
+            with zipfile.ZipFile(large_total, 'w') as archive:
+                archive.writestr('extension/package.json', json.dumps(manifest))
+                archive.writestr('extension/extension.js', 'x' * 256)
+            entry['sha256'] = hashlib.sha256(large_total.read_bytes()).hexdigest()
+            entry['source'] = {'type': 'local-vsix', 'path': large_total.name}
+            with mock.patch.object(extension_lock, 'MAX_ARCHIVE_TOTAL_SIZE', 256):
+                with self.assertRaisesRegex(extension_lock.BuildError, 'expanded size exceeds limit'):
+                    extension_lock.validate_local_vsix(entry, root=root)
+
+            bomb = root / 'bomb.vsix'
+            with zipfile.ZipFile(bomb, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr('extension/package.json', json.dumps(manifest))
+                archive.writestr('extension/extension.js', 'A' * 4096)
+            entry['sha256'] = hashlib.sha256(bomb.read_bytes()).hexdigest()
+            entry['source'] = {'type': 'local-vsix', 'path': bomb.name}
+            with (
+                mock.patch.object(extension_lock, 'COMPRESSION_RATIO_MIN_FILE_SIZE', 1024),
+                mock.patch.object(extension_lock, 'MAX_ARCHIVE_COMPRESSION_RATIO', 2),
+            ):
+                with self.assertRaisesRegex(extension_lock.BuildError, 'compression ratio'):
+                    extension_lock.validate_local_vsix(entry, root=root)
+
+    def test_vsix_digest_is_verified_before_archive_inspection(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vsix = root / 'not-a-zip.vsix'
+            vsix.write_bytes(b'not a zip archive')
+            entry = {
+                'id': 'fixture.invalid',
+                'version': '1.0.0',
+                'sha256': '0' * 64,
+                'source': {'type': 'local-vsix', 'path': vsix.name},
+                'license': None,
+            }
+            with self.assertRaisesRegex(extension_lock.BuildError, 'SHA-256 mismatch'):
+                extension_lock.validate_local_vsix(entry, root=root)
+
+    def test_open_vsx_source_policy_is_explicit_and_redirects_fail_closed(self):
+        policy = {
+            'schemaVersion': 1,
+            'allowedOpenVsxRegistries': ['https://open-vsx.org'],
+        }
+        allowed = {
+            'id': 'demo.fixture',
+            'version': '1.2.3',
+            'sha256': '0' * 64,
+            'license': 'MIT',
+            'source': {'type': 'open-vsx', 'registry': 'https://open-vsx.org'},
+        }
+        extension_lock.enforce_source_policy(allowed, policy)
+
+        denied = dict(allowed)
+        denied['source'] = {'type': 'open-vsx', 'registry': 'https://registry.example.com'}
+        with self.assertRaisesRegex(extension_lock.BuildError, 'not allowed'):
+            extension_lock.enforce_source_policy(denied, policy)
+
+        handler = extension_lock._SourcePolicyRedirectHandler({'https://open-vsx.org'})
+        request = extension_lock.urllib.request.Request(
+            'https://open-vsx.org/api/demo/fixture/1.2.3/file/demo.fixture-1.2.3.vsix'
+        )
+        with self.assertRaisesRegex(extension_lock.BuildError, 'redirect target is not allowed'):
+            handler.redirect_request(
+                request,
+                None,
+                302,
+                'Found',
+                {},
+                'https://registry.example.com/redirected.vsix',
+            )
+
+    def test_open_vsx_registry_rejects_non_origin_urls(self):
+        with tempfile.TemporaryDirectory() as td:
+            lock_path = Path(td) / 'extensions.lock.json'
+            lock_path.write_text(
+                json.dumps(
+                    {
+                        'schemaVersion': 1,
+                        'extensions': [
+                            {
+                                'id': 'demo.fixture',
+                                'version': '1.2.3',
+                                'sha256': '0' * 64,
+                                'source': {
+                                    'type': 'open-vsx',
+                                    'registry': 'https://user@open-vsx.org/base?x=1',
+                                },
+                            }
+                        ],
+                    }
+                )
+            )
+            with self.assertRaises(extension_lock.BuildError):
+                extension_lock.load_extension_lock(lock_path)
 
     def test_open_vsx_source_is_exact_and_license_gated(self):
         entry = {
