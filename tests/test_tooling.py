@@ -483,7 +483,1149 @@ class ToolingTests(unittest.TestCase):
     def test_toolchain_versions_are_canonical(self):
         manifest = json.loads((ROOT / '.github/toolchain-versions.json').read_text())
         self.assertEqual(manifest['schemaVersion'], 1)
-        self.assertRegex(manifest['node'], r'^\d+(?:\.\d+){1,2}$')
+        self.assertRegex(manifest['node'], r'^\d+\.\d+\.\d+
+        self.assertRegex(manifest['python'], r'^\d+\.\d+\.\d+
+        check_policy.check_toolchain_versions()
+
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('steps.toolchain.outputs.node-version', qualification)
+        self.assertIn('steps.toolchain.outputs.python-version', qualification)
+        self.assertIn('toolchain: $toolchain', qualification)
+        self.assertIn('.toolchain == $toolchain', release)
+        self.assertIn("'toolchainVersions': input_digest", package_source)
+        self.assertIn("'toolchain': {", package_source)
+
+    def test_toolchain_policy_rejects_hard_coded_workflow_versions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            action_dir = root / '.github/actions/setup-toolchain'
+            workflows.mkdir(parents=True)
+            action_dir.mkdir(parents=True)
+            (root / '.github/toolchain-versions.json').write_text(
+                json.dumps({'schemaVersion': 1, 'node': '20.1.0', 'python': '3.12.1'})
+            )
+            (action_dir / 'action.yml').write_text(
+                """manifest="$GITHUB_ACTION_PATH/../../toolchain-versions.json"
+node="$(jq -er '.node' "$manifest")"
+python="$(jq -er '.python' "$manifest")"
+node-version: ${{ steps.versions.outputs.node }}
+python-version: ${{ steps.versions.outputs.python }}
+"""
+            )
+            (workflows / 'bad.yaml').write_text(
+                'jobs:\n  test:\n    steps:\n'
+                '      - uses: ./.github/actions/setup-toolchain\n'
+                '      - name: Restore cache\n'
+                '        env:\n          CACHE_KEY: python-3.13\n'
+                '        run: echo "$CACHE_KEY"\n'
+            )
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_toolchain_versions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_yaml_policy_scans_workflows_and_actions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            action_dir = root / '.github/actions/example'
+            workflows.mkdir(parents=True)
+            action_dir.mkdir(parents=True)
+            (root / 'build.sh').write_text('')
+            (root / 'package.sh').write_text('')
+
+            workflow = workflows / 'example.yaml'
+            action = action_dir / 'action.yaml'
+            workflow.write_text('jobs:\n  test:\n    steps:\n      - run: npx unsafe-tool\n')
+            action.write_text('runs:\n  using: composite\n  steps: []\n')
+
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_forbidden_execution_patterns()
+
+                workflow.write_text('jobs:\n  test:\n    steps: []\n')
+                action.write_text(
+                    'runs:\n  using: composite\n  steps:\n'
+                    '    - uses: example/action@main\n'
+                )
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_actions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_build_jobs_are_unprivileged(self):
+        check_policy.check_build_job_permissions()
+        bad = """jobs:
+  build:
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+        with:
+          persist-credentials: true
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_build_job_block(ROOT / '.github/workflows/example.yml', 'build', bad)
+
+    def test_attestation_jobs_are_isolated(self):
+        check_policy.check_attestation_job_permissions()
+        bad = """jobs:
+  attest:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - uses: actions/attest@0000000000000000000000000000000000000000
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_attestation_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'attest',
+                bad,
+            )
+
+    def test_publication_jobs_depend_on_attestation(self):
+        check_policy.check_publication_job_permissions()
+        bad = """jobs:
+  publish:
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_publication_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'publish',
+                bad,
+            )
+
+    def test_repository_publication_scan_rejects_environment_bypass(self):
+        bypass = """jobs:
+  publish:
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            workflows.mkdir(parents=True)
+            (workflows / 'bypass.yml').write_text(bypass)
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_publication_job_permissions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_release_publication_paths_use_protected_environment(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        check_policy.check_release_publication_boundaries(
+            workflow_path,
+            workflow_path.read_text(),
+        )
+        bypass = """jobs:
+  github-release:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+  pages:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    permissions:
+      pages: write
+  oci:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      packages: write
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_release_publication_boundaries(
+                ROOT / '.github/workflows/example.yml',
+                bypass,
+            )
+
+    def test_ci_validates_pr_titles_and_skips_default_branch_merge_messages(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn('name: Pull request title policy', workflow)
+        self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
+        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertIn('github.event.pull_request.title', workflow)
+        self.assertIn('name: Pull request commit message policy', workflow)
+        self.assertIn('pulls/$PR_NUMBER/commits', workflow)
+        self.assertIn('@base64', workflow)
+        self.assertIn('encoded_messages="$(', workflow)
+        self.assertIn('No pull request commits returned by GitHub API', workflow)
+        self.assertIn('done <<< "$encoded_messages"', workflow)
+        self.assertNotIn('done < <(', workflow)
+        self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
+        self.assertIn(
+            'github.ref_name != github.event.repository.default_branch',
+            workflow,
+        )
+
+    def test_workflow_actions_are_commit_pinned(self):
+        import re
+
+        definitions = check_policy.action_definition_paths()
+        for workflow in definitions:
+            for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
+                match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
+                if match:
+                    reference = match.group(1)
+                    if 'uses: docker://' in line:
+                        self.assertRegex(
+                            reference,
+                            r'^sha256:[0-9a-f]{64}$',
+                            f'{workflow}:{line_number} must pin an immutable container digest',
+                        )
+                    else:
+                        self.assertRegex(
+                            reference,
+                            r'^[0-9a-f]{40}$',
+                            f'{workflow}:{line_number} must pin an immutable action commit',
+                        )
+
+    def test_canonical_distribution_artifacts_preserve_metadata(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        browser_matrix = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+
+        self.assertIn('tar -C dist -cf .work/static-dist.tar .', qualification)
+        self.assertIn('path: .work/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -cf .work/release-static-dist.tar .', release)
+        self.assertIn('path: .work/release-static-dist.tar', release)
+        self.assertIn(
+            'tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar',
+            release,
+        )
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', browser_matrix)
+
+    def test_qualification_workflow_runs_browser_and_extension_suites(self):
+        workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        self.assertRegex(
+            workflow,
+            r'actions/cache@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertIn('name: static-dist', workflow)
+        self.assertIn('name: playwright-runtime', workflow)
+        self.assertIn('name: qualification-harness', workflow)
+        self.assertIn('name: playwright-browser-chromium', workflow)
+        self.assertIn('PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers', workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn('needs: build', workflow)
+        self.assertIn('secondary-browsers', workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('needs: [browser, secondary-browsers]', workflow)
+        self.assertIn('needs: package', workflow)
+        self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
+        self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
+        self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('license-inventory.json', package_source)
+        self.assertIn('extensionLicensePolicy', package_source)
+        self.assertIn(
+            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow
+        )
+        self.assertIn('scripts/run_e2e.py', workflow)
+        self.assertIn('--grep-invert @extension', workflow)
+        self.assertIn('--grep @extension', workflow)
+        self.assertIn('scripts/add_test_extension.py', workflow)
+        self.assertIn('--reuse-upstream-build', workflow)
+
+        extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
+        self.assertIn('codeOssStaticWebTest.markReady', extension_test)
+        self.assertIn('codeOssStaticWebTest.readMarker', extension_test)
+        self.assertIn('global state persists across workbench reload', extension_test)
+        self.assertIn("toBe('ready')", extension_test)
+        self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
+        self.assertIn('browser filesystem persists across workbench reload', extension_test)
+        self.assertIn('JavaScript language service returns completions', extension_test)
+
+        runner = (ROOT / 'scripts/run_e2e.py').read_text()
+        self.assertIn('playwright-runtime', runner)
+        exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
+        self.assertIn("Path('@playwright/test')", exporter)
+
+    def test_browser_matrix_reuses_qualified_artifacts(self):
+        workflow = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+        self.assertIn("workflows: ['Full build qualification']", workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('run-id: ${{ env.SOURCE_RUN_ID }}', workflow)
+        self.assertNotIn('./build.sh', workflow)
+
+    def test_release_workflow_uses_clean_qualified_artifact(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        workflow = workflow_path.read_text()
+        check_policy.check_release_publication_boundaries(workflow_path, workflow)
+        self.assertIn('./build.sh --clean-upstream', workflow)
+        self.assertIn('needs: [build, reproducibility]', workflow)
+        self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
+        self.assertNotIn('actions/cache@', workflow)
+        self.assertEqual(workflow.count('environment: release'), 3)
+        self.assertRegex(
+            workflow,
+            r'actions/deploy-pages@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertRegex(
+            workflow,
+            r'docker/build-push-action@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertNotIn('docker/setup-qemu-action@', workflow)
+        self.assertIn(
+            'image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8',
+            workflow,
+        )
+        self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
+        self.assertIn('pages-release-gate:', workflow)
+        self.assertIn('needs: [attest, pages-release-gate]', workflow)
+        self.assertIn('permissions: {}', workflow)
+        self.assertIn('gh release create', workflow)
+        self.assertIn('needs: authorize', workflow)
+        self.assertIn('qualification_run_id:', workflow)
+        self.assertIn('name: Verify release qualification evidence', workflow)
+        self.assertIn('name: Verify GitHub Pages is enabled', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/pages', workflow)
+        self.assertIn('release-qualification', workflow)
+        self.assertIn('name: Download release qualification evidence', workflow)
+        self.assertIn('name: Verify release qualification binding', workflow)
+        self.assertIn('.tag == $tag', workflow)
+        self.assertIn('CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}', workflow)
+        self.assertIn('name: Verify release commit is on protected default branch', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch', workflow)
+        self.assertIn('"$compare_status" != \'ahead\'', workflow)
+        self.assertIn('"$compare_status" != \'identical\'', workflow)
+        self.assertEqual(workflow.count('name: Verify immutable release ref'), 3)
+        self.assertIn('repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME', workflow)
+        self.assertIn("expected_pattern='refs/tags/v*-web.*'", workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/rulesets', workflow)
+        self.assertIn('index("update")', workflow)
+        self.assertIn('index("deletion")', workflow)
+        self.assertIn('tag_sha_after', workflow)
+        ruleset = json.loads((ROOT / '.github/rulesets/immutable-release-tags.json').read_text())
+        self.assertEqual(ruleset['target'], 'tag')
+        self.assertEqual(ruleset['enforcement'], 'active')
+        self.assertEqual(ruleset['bypass_actors'], [])
+        self.assertEqual(
+            ruleset['conditions']['ref_name']['include'],
+            ['refs/tags/v*-web.*'],
+        )
+        self.assertEqual(
+            {rule['type'] for rule in ruleset['rules']},
+            {'update', 'deletion'},
+        )
+        dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
+        self.assertRegex(
+            dockerfile,
+            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
+        )
+        self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
+
+    def test_product_transform_keeps_chat_contract_fail_closed(self):
+        transform = json.loads((ROOT / 'config/product-transform.json').read_text())
+        default_chat = transform['set']['defaultChatAgent']
+        self.assertEqual(default_chat['providerScopes'], [])
+        self.assertTrue(default_chat['extensionId'].startswith('code-oss-static-web.disabled'))
+        self.assertTrue(default_chat['chatExtensionId'].startswith('code-oss-static-web.disabled'))
+        for key in (
+            'documentationUrl',
+            'termsStatementUrl',
+            'privacyStatementUrl',
+            'entitlementUrl',
+            'tokenEntitlementUrl',
+            'mcpRegistryDataUrl',
+            'managedSettingsUrl',
+        ):
+            self.assertIn('disabled.invalid.invalid', default_chat[key])
+        self.assertNotIn('defaultChatAgent', transform.get('remove', []))
+
+    def test_standalone_static_bootstrap_uses_web_embedder_api(self):
+        self.assertIn('workbench.web.main.internal.css', make_static.INDEX)
+        self.assertIn('workbench.web.main.internal.js', make_static.BOOTSTRAP)
+        self.assertIn('create(document.body, config)', make_static.BOOTSTRAP)
+        self.assertNotIn('vs/code/browser/workbench/workbench.js', make_static.BOOTSTRAP)
+
+    def test_static_bootstrap_registers_only_additional_extensions(self):
+        self.assertIn('additional-extensions.json', make_static.BOOTSTRAP)
+        self.assertNotIn("fetch(new URL('extensions.json'", make_static.BOOTSTRAP)
+
+    def test_default_static_policy_is_fail_closed(self):
+        self.assertIn("connect-src 'self'", make_static.INDEX)
+        self.assertNotIn('unsafe-eval', make_static.INDEX)
+        self.assertIn('invalid.invalid', make_static.BOOTSTRAP)
+
+
+if __name__ == '__main__':
+    unittest.main()
+)
+        self.assertRegex(manifest['python'], r'^\d+(?:\.\d+){1,2}$')
+        check_policy.check_toolchain_versions()
+
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('steps.toolchain.outputs.node-version', qualification)
+        self.assertIn('steps.toolchain.outputs.python-version', qualification)
+        self.assertIn('toolchain: $toolchain', qualification)
+        self.assertIn('.toolchain == $toolchain', release)
+        self.assertIn("'toolchainVersions': input_digest", package_source)
+        self.assertIn("'toolchain': {", package_source)
+
+    def test_toolchain_policy_rejects_hard_coded_workflow_versions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            action_dir = root / '.github/actions/setup-toolchain'
+            workflows.mkdir(parents=True)
+            action_dir.mkdir(parents=True)
+            (root / '.github/toolchain-versions.json').write_text(
+                json.dumps({'schemaVersion': 1, 'node': '20.1.0', 'python': '3.12'})
+            )
+            (action_dir / 'action.yml').write_text(
+                """manifest="$GITHUB_ACTION_PATH/../../toolchain-versions.json"
+node="$(jq -er '.node' "$manifest")"
+python="$(jq -er '.python' "$manifest")"
+node-version: ${{ steps.versions.outputs.node }}
+python-version: ${{ steps.versions.outputs.python }}
+"""
+            )
+            (workflows / 'bad.yml').write_text(
+                'jobs:\n  test:\n    steps:\n'
+                '      - uses: ./.github/actions/setup-toolchain\n'
+                '      - name: Restore cache\n'
+                '        env:\n          CACHE_KEY: python-3.13\n'
+                '        run: echo "$CACHE_KEY"\n'
+            )
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_toolchain_versions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_build_jobs_are_unprivileged(self):
+        check_policy.check_build_job_permissions()
+        bad = """jobs:
+  build:
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+        with:
+          persist-credentials: true
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_build_job_block(ROOT / '.github/workflows/example.yml', 'build', bad)
+
+    def test_attestation_jobs_are_isolated(self):
+        check_policy.check_attestation_job_permissions()
+        bad = """jobs:
+  attest:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - uses: actions/attest@0000000000000000000000000000000000000000
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_attestation_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'attest',
+                bad,
+            )
+
+    def test_publication_jobs_depend_on_attestation(self):
+        check_policy.check_publication_job_permissions()
+        bad = """jobs:
+  publish:
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_publication_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'publish',
+                bad,
+            )
+
+    def test_repository_publication_scan_rejects_environment_bypass(self):
+        bypass = """jobs:
+  publish:
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            workflows.mkdir(parents=True)
+            (workflows / 'bypass.yml').write_text(bypass)
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_publication_job_permissions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_release_publication_paths_use_protected_environment(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        check_policy.check_release_publication_boundaries(
+            workflow_path,
+            workflow_path.read_text(),
+        )
+        bypass = """jobs:
+  github-release:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+  pages:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    permissions:
+      pages: write
+  oci:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      packages: write
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_release_publication_boundaries(
+                ROOT / '.github/workflows/example.yml',
+                bypass,
+            )
+
+    def test_ci_validates_pr_titles_and_skips_default_branch_merge_messages(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn('name: Pull request title policy', workflow)
+        self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
+        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertIn('github.event.pull_request.title', workflow)
+        self.assertIn('name: Pull request commit message policy', workflow)
+        self.assertIn('pulls/$PR_NUMBER/commits', workflow)
+        self.assertIn('@base64', workflow)
+        self.assertIn('encoded_messages="$(', workflow)
+        self.assertIn('No pull request commits returned by GitHub API', workflow)
+        self.assertIn('done <<< "$encoded_messages"', workflow)
+        self.assertNotIn('done < <(', workflow)
+        self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
+        self.assertIn(
+            'github.ref_name != github.event.repository.default_branch',
+            workflow,
+        )
+
+    def test_workflow_actions_are_commit_pinned(self):
+        import re
+
+        definitions = list((ROOT / '.github/workflows').glob('*.yml'))
+        definitions.extend((ROOT / '.github/actions').rglob('action.yml'))
+        for workflow in definitions:
+            for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
+                match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
+                if match:
+                    reference = match.group(1)
+                    if 'uses: docker://' in line:
+                        self.assertRegex(
+                            reference,
+                            r'^sha256:[0-9a-f]{64}$',
+                            f'{workflow}:{line_number} must pin an immutable container digest',
+                        )
+                    else:
+                        self.assertRegex(
+                            reference,
+                            r'^[0-9a-f]{40}$',
+                            f'{workflow}:{line_number} must pin an immutable action commit',
+                        )
+
+    def test_canonical_distribution_artifacts_preserve_metadata(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        browser_matrix = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+
+        self.assertIn('tar -C dist -cf .work/static-dist.tar .', qualification)
+        self.assertIn('path: .work/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -cf .work/release-static-dist.tar .', release)
+        self.assertIn('path: .work/release-static-dist.tar', release)
+        self.assertIn(
+            'tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar',
+            release,
+        )
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', browser_matrix)
+
+    def test_qualification_workflow_runs_browser_and_extension_suites(self):
+        workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        self.assertRegex(
+            workflow,
+            r'actions/cache@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertIn('name: static-dist', workflow)
+        self.assertIn('name: playwright-runtime', workflow)
+        self.assertIn('name: qualification-harness', workflow)
+        self.assertIn('name: playwright-browser-chromium', workflow)
+        self.assertIn('PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers', workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn('needs: build', workflow)
+        self.assertIn('secondary-browsers', workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('needs: [browser, secondary-browsers]', workflow)
+        self.assertIn('needs: package', workflow)
+        self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
+        self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
+        self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('license-inventory.json', package_source)
+        self.assertIn('extensionLicensePolicy', package_source)
+        self.assertIn(
+            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow
+        )
+        self.assertIn('scripts/run_e2e.py', workflow)
+        self.assertIn('--grep-invert @extension', workflow)
+        self.assertIn('--grep @extension', workflow)
+        self.assertIn('scripts/add_test_extension.py', workflow)
+        self.assertIn('--reuse-upstream-build', workflow)
+
+        extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
+        self.assertIn('codeOssStaticWebTest.markReady', extension_test)
+        self.assertIn('codeOssStaticWebTest.readMarker', extension_test)
+        self.assertIn('global state persists across workbench reload', extension_test)
+        self.assertIn("toBe('ready')", extension_test)
+        self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
+        self.assertIn('browser filesystem persists across workbench reload', extension_test)
+        self.assertIn('JavaScript language service returns completions', extension_test)
+
+        runner = (ROOT / 'scripts/run_e2e.py').read_text()
+        self.assertIn('playwright-runtime', runner)
+        exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
+        self.assertIn("Path('@playwright/test')", exporter)
+
+    def test_browser_matrix_reuses_qualified_artifacts(self):
+        workflow = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+        self.assertIn("workflows: ['Full build qualification']", workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('run-id: ${{ env.SOURCE_RUN_ID }}', workflow)
+        self.assertNotIn('./build.sh', workflow)
+
+    def test_release_workflow_uses_clean_qualified_artifact(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        workflow = workflow_path.read_text()
+        check_policy.check_release_publication_boundaries(workflow_path, workflow)
+        self.assertIn('./build.sh --clean-upstream', workflow)
+        self.assertIn('needs: [build, reproducibility]', workflow)
+        self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
+        self.assertNotIn('actions/cache@', workflow)
+        self.assertEqual(workflow.count('environment: release'), 3)
+        self.assertRegex(
+            workflow,
+            r'actions/deploy-pages@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertRegex(
+            workflow,
+            r'docker/build-push-action@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertNotIn('docker/setup-qemu-action@', workflow)
+        self.assertIn(
+            'image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8',
+            workflow,
+        )
+        self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
+        self.assertIn('pages-release-gate:', workflow)
+        self.assertIn('needs: [attest, pages-release-gate]', workflow)
+        self.assertIn('permissions: {}', workflow)
+        self.assertIn('gh release create', workflow)
+        self.assertIn('needs: authorize', workflow)
+        self.assertIn('qualification_run_id:', workflow)
+        self.assertIn('name: Verify release qualification evidence', workflow)
+        self.assertIn('name: Verify GitHub Pages is enabled', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/pages', workflow)
+        self.assertIn('release-qualification', workflow)
+        self.assertIn('name: Download release qualification evidence', workflow)
+        self.assertIn('name: Verify release qualification binding', workflow)
+        self.assertIn('.tag == $tag', workflow)
+        self.assertIn('CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}', workflow)
+        self.assertIn('name: Verify release commit is on protected default branch', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch', workflow)
+        self.assertIn('"$compare_status" != \'ahead\'', workflow)
+        self.assertIn('"$compare_status" != \'identical\'', workflow)
+        self.assertEqual(workflow.count('name: Verify immutable release ref'), 3)
+        self.assertIn('repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME', workflow)
+        self.assertIn("expected_pattern='refs/tags/v*-web.*'", workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/rulesets', workflow)
+        self.assertIn('index("update")', workflow)
+        self.assertIn('index("deletion")', workflow)
+        self.assertIn('tag_sha_after', workflow)
+        ruleset = json.loads((ROOT / '.github/rulesets/immutable-release-tags.json').read_text())
+        self.assertEqual(ruleset['target'], 'tag')
+        self.assertEqual(ruleset['enforcement'], 'active')
+        self.assertEqual(ruleset['bypass_actors'], [])
+        self.assertEqual(
+            ruleset['conditions']['ref_name']['include'],
+            ['refs/tags/v*-web.*'],
+        )
+        self.assertEqual(
+            {rule['type'] for rule in ruleset['rules']},
+            {'update', 'deletion'},
+        )
+        dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
+        self.assertRegex(
+            dockerfile,
+            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
+        )
+        self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
+
+    def test_product_transform_keeps_chat_contract_fail_closed(self):
+        transform = json.loads((ROOT / 'config/product-transform.json').read_text())
+        default_chat = transform['set']['defaultChatAgent']
+        self.assertEqual(default_chat['providerScopes'], [])
+        self.assertTrue(default_chat['extensionId'].startswith('code-oss-static-web.disabled'))
+        self.assertTrue(default_chat['chatExtensionId'].startswith('code-oss-static-web.disabled'))
+        for key in (
+            'documentationUrl',
+            'termsStatementUrl',
+            'privacyStatementUrl',
+            'entitlementUrl',
+            'tokenEntitlementUrl',
+            'mcpRegistryDataUrl',
+            'managedSettingsUrl',
+        ):
+            self.assertIn('disabled.invalid.invalid', default_chat[key])
+        self.assertNotIn('defaultChatAgent', transform.get('remove', []))
+
+    def test_standalone_static_bootstrap_uses_web_embedder_api(self):
+        self.assertIn('workbench.web.main.internal.css', make_static.INDEX)
+        self.assertIn('workbench.web.main.internal.js', make_static.BOOTSTRAP)
+        self.assertIn('create(document.body, config)', make_static.BOOTSTRAP)
+        self.assertNotIn('vs/code/browser/workbench/workbench.js', make_static.BOOTSTRAP)
+
+    def test_static_bootstrap_registers_only_additional_extensions(self):
+        self.assertIn('additional-extensions.json', make_static.BOOTSTRAP)
+        self.assertNotIn("fetch(new URL('extensions.json'", make_static.BOOTSTRAP)
+
+    def test_default_static_policy_is_fail_closed(self):
+        self.assertIn("connect-src 'self'", make_static.INDEX)
+        self.assertNotIn('unsafe-eval', make_static.INDEX)
+        self.assertIn('invalid.invalid', make_static.BOOTSTRAP)
+
+
+if __name__ == '__main__':
+    unittest.main()
+)
+        check_policy.check_toolchain_versions()
+
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('steps.toolchain.outputs.node-version', qualification)
+        self.assertIn('steps.toolchain.outputs.python-version', qualification)
+        self.assertIn('toolchain: $toolchain', qualification)
+        self.assertIn('.toolchain == $toolchain', release)
+        self.assertIn("'toolchainVersions': input_digest", package_source)
+        self.assertIn("'toolchain': {", package_source)
+
+    def test_toolchain_policy_rejects_hard_coded_workflow_versions(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            action_dir = root / '.github/actions/setup-toolchain'
+            workflows.mkdir(parents=True)
+            action_dir.mkdir(parents=True)
+            (root / '.github/toolchain-versions.json').write_text(
+                json.dumps({'schemaVersion': 1, 'node': '20.1.0', 'python': '3.12'})
+            )
+            (action_dir / 'action.yml').write_text(
+                """manifest="$GITHUB_ACTION_PATH/../../toolchain-versions.json"
+node="$(jq -er '.node' "$manifest")"
+python="$(jq -er '.python' "$manifest")"
+node-version: ${{ steps.versions.outputs.node }}
+python-version: ${{ steps.versions.outputs.python }}
+"""
+            )
+            (workflows / 'bad.yml').write_text(
+                'jobs:\n  test:\n    steps:\n'
+                '      - uses: ./.github/actions/setup-toolchain\n'
+                '      - name: Restore cache\n'
+                '        env:\n          CACHE_KEY: python-3.13\n'
+                '        run: echo "$CACHE_KEY"\n'
+            )
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_toolchain_versions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_build_jobs_are_unprivileged(self):
+        check_policy.check_build_job_permissions()
+        bad = """jobs:
+  build:
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+        with:
+          persist-credentials: true
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_build_job_block(ROOT / '.github/workflows/example.yml', 'build', bad)
+
+    def test_attestation_jobs_are_isolated(self):
+        check_policy.check_attestation_job_permissions()
+        bad = """jobs:
+  attest:
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - uses: actions/checkout@0000000000000000000000000000000000000000
+      - uses: actions/attest@0000000000000000000000000000000000000000
+      - run: ./build.sh
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_attestation_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'attest',
+                bad,
+            )
+
+    def test_publication_jobs_depend_on_attestation(self):
+        check_policy.check_publication_job_permissions()
+        bad = """jobs:
+  publish:
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_publication_job_block(
+                ROOT / '.github/workflows/example.yml',
+                'publish',
+                bad,
+            )
+
+    def test_repository_publication_scan_rejects_environment_bypass(self):
+        bypass = """jobs:
+  publish:
+    needs: attest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - run: echo publish
+"""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            workflows = root / '.github/workflows'
+            workflows.mkdir(parents=True)
+            (workflows / 'bypass.yml').write_text(bypass)
+            original_root = check_policy.ROOT
+            try:
+                check_policy.ROOT = root
+                with self.assertRaises(check_policy.BuildError):
+                    check_policy.check_publication_job_permissions()
+            finally:
+                check_policy.ROOT = original_root
+
+    def test_release_publication_paths_use_protected_environment(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        check_policy.check_release_publication_boundaries(
+            workflow_path,
+            workflow_path.read_text(),
+        )
+        bypass = """jobs:
+  github-release:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: write
+  pages:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+    permissions:
+      pages: write
+  oci:
+    needs: attest
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      packages: write
+"""
+        with self.assertRaises(check_policy.BuildError):
+            check_policy.check_release_publication_boundaries(
+                ROOT / '.github/workflows/example.yml',
+                bypass,
+            )
+
+    def test_ci_validates_pr_titles_and_skips_default_branch_merge_messages(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn('name: Pull request title policy', workflow)
+        self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
+        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertIn('github.event.pull_request.title', workflow)
+        self.assertIn('name: Pull request commit message policy', workflow)
+        self.assertIn('pulls/$PR_NUMBER/commits', workflow)
+        self.assertIn('@base64', workflow)
+        self.assertIn('encoded_messages="$(', workflow)
+        self.assertIn('No pull request commits returned by GitHub API', workflow)
+        self.assertIn('done <<< "$encoded_messages"', workflow)
+        self.assertNotIn('done < <(', workflow)
+        self.assertIn("github.event_name == 'push' &&", workflow)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
+        self.assertIn(
+            'github.ref_name != github.event.repository.default_branch',
+            workflow,
+        )
+
+    def test_workflow_actions_are_commit_pinned(self):
+        import re
+
+        definitions = list((ROOT / '.github/workflows').glob('*.yml'))
+        definitions.extend((ROOT / '.github/actions').rglob('action.yml'))
+        for workflow in definitions:
+            for line_number, line in enumerate(workflow.read_text().splitlines(), 1):
+                match = re.search(r'uses:\s*[^@\s]+@([^\s#]+)', line)
+                if match:
+                    reference = match.group(1)
+                    if 'uses: docker://' in line:
+                        self.assertRegex(
+                            reference,
+                            r'^sha256:[0-9a-f]{64}$',
+                            f'{workflow}:{line_number} must pin an immutable container digest',
+                        )
+                    else:
+                        self.assertRegex(
+                            reference,
+                            r'^[0-9a-f]{40}$',
+                            f'{workflow}:{line_number} must pin an immutable action commit',
+                        )
+
+    def test_canonical_distribution_artifacts_preserve_metadata(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        browser_matrix = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+
+        self.assertIn('tar -C dist -cf .work/static-dist.tar .', qualification)
+        self.assertIn('path: .work/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -cf .work/release-static-dist.tar .', release)
+        self.assertIn('path: .work/release-static-dist.tar', release)
+        self.assertIn(
+            'tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar',
+            release,
+        )
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', qualification)
+        self.assertIn('tar -C dist -xf .work/static-dist/static-dist.tar', browser_matrix)
+
+    def test_qualification_workflow_runs_browser_and_extension_suites(self):
+        workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        self.assertRegex(
+            workflow,
+            r'actions/cache@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertIn('name: static-dist', workflow)
+        self.assertIn('name: playwright-runtime', workflow)
+        self.assertIn('name: qualification-harness', workflow)
+        self.assertIn('name: playwright-browser-chromium', workflow)
+        self.assertIn('PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers', workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn('needs: build', workflow)
+        self.assertIn('secondary-browsers', workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('needs: [browser, secondary-browsers]', workflow)
+        self.assertIn('needs: package', workflow)
+        self.assertIn('actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6', workflow)
+        self.assertIn('subject-checksums: artifacts/SHA256SUMS', workflow)
+        self.assertIn('sbom-path: artifacts/sbom.cdx.json', workflow)
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('license-inventory.json', package_source)
+        self.assertIn('extensionLicensePolicy', package_source)
+        self.assertIn(
+            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c', workflow
+        )
+        self.assertIn('scripts/run_e2e.py', workflow)
+        self.assertIn('--grep-invert @extension', workflow)
+        self.assertIn('--grep @extension', workflow)
+        self.assertIn('scripts/add_test_extension.py', workflow)
+        self.assertIn('--reuse-upstream-build', workflow)
+
+        extension_test = (ROOT / 'tests/e2e/extension-host.spec.cjs').read_text()
+        self.assertIn('codeOssStaticWebTest.markReady', extension_test)
+        self.assertIn('codeOssStaticWebTest.readMarker', extension_test)
+        self.assertIn('global state persists across workbench reload', extension_test)
+        self.assertIn("toBe('ready')", extension_test)
+        self.assertIn("commands.executeCommand('workbench.action.reloadWindow')", extension_test)
+        self.assertIn('browser filesystem persists across workbench reload', extension_test)
+        self.assertIn('JavaScript language service returns completions', extension_test)
+
+        runner = (ROOT / 'scripts/run_e2e.py').read_text()
+        self.assertIn('playwright-runtime', runner)
+        exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
+        self.assertIn("Path('@playwright/test')", exporter)
+
+    def test_browser_matrix_reuses_qualified_artifacts(self):
+        workflow = (ROOT / '.github/workflows/browser-matrix.yml').read_text()
+        self.assertIn("workflows: ['Full build qualification']", workflow)
+        self.assertIn('browser: [firefox, webkit]', workflow)
+        self.assertIn('run-id: ${{ env.SOURCE_RUN_ID }}', workflow)
+        self.assertNotIn('./build.sh', workflow)
+
+    def test_release_workflow_uses_clean_qualified_artifact(self):
+        workflow_path = ROOT / '.github/workflows/release.yml'
+        workflow = workflow_path.read_text()
+        check_policy.check_release_publication_boundaries(workflow_path, workflow)
+        self.assertIn('./build.sh --clean-upstream', workflow)
+        self.assertIn('needs: [build, reproducibility]', workflow)
+        self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
+        self.assertNotIn('actions/cache@', workflow)
+        self.assertEqual(workflow.count('environment: release'), 3)
+        self.assertRegex(
+            workflow,
+            r'actions/deploy-pages@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertRegex(
+            workflow,
+            r'docker/build-push-action@[0-9a-f]{40}\s+# v[0-9]+',
+        )
+        self.assertNotIn('docker/setup-qemu-action@', workflow)
+        self.assertIn(
+            'image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8',
+            workflow,
+        )
+        self.assertIn('platforms: linux/amd64,linux/arm64', workflow)
+        self.assertIn('pages-release-gate:', workflow)
+        self.assertIn('needs: [attest, pages-release-gate]', workflow)
+        self.assertIn('permissions: {}', workflow)
+        self.assertIn('gh release create', workflow)
+        self.assertIn('needs: authorize', workflow)
+        self.assertIn('qualification_run_id:', workflow)
+        self.assertIn('name: Verify release qualification evidence', workflow)
+        self.assertIn('name: Verify GitHub Pages is enabled', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/pages', workflow)
+        self.assertIn('release-qualification', workflow)
+        self.assertIn('name: Download release qualification evidence', workflow)
+        self.assertIn('name: Verify release qualification binding', workflow)
+        self.assertIn('.tag == $tag', workflow)
+        self.assertIn('CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}', workflow)
+        self.assertIn('name: Verify release commit is on protected default branch', workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$default_branch', workflow)
+        self.assertIn('"$compare_status" != \'ahead\'', workflow)
+        self.assertIn('"$compare_status" != \'identical\'', workflow)
+        self.assertEqual(workflow.count('name: Verify immutable release ref'), 3)
+        self.assertIn('repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME', workflow)
+        self.assertIn("expected_pattern='refs/tags/v*-web.*'", workflow)
+        self.assertIn('repos/$GITHUB_REPOSITORY/rulesets', workflow)
+        self.assertIn('index("update")', workflow)
+        self.assertIn('index("deletion")', workflow)
+        self.assertIn('tag_sha_after', workflow)
+        ruleset = json.loads((ROOT / '.github/rulesets/immutable-release-tags.json').read_text())
+        self.assertEqual(ruleset['target'], 'tag')
+        self.assertEqual(ruleset['enforcement'], 'active')
+        self.assertEqual(ruleset['bypass_actors'], [])
+        self.assertEqual(
+            ruleset['conditions']['ref_name']['include'],
+            ['refs/tags/v*-web.*'],
+        )
+        self.assertEqual(
+            {rule['type'] for rule in ruleset['rules']},
+            {'update', 'deletion'},
+        )
+        dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
+        self.assertRegex(
+            dockerfile,
+            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
+        )
+        self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
+
+    def test_product_transform_keeps_chat_contract_fail_closed(self):
+        transform = json.loads((ROOT / 'config/product-transform.json').read_text())
+        default_chat = transform['set']['defaultChatAgent']
+        self.assertEqual(default_chat['providerScopes'], [])
+        self.assertTrue(default_chat['extensionId'].startswith('code-oss-static-web.disabled'))
+        self.assertTrue(default_chat['chatExtensionId'].startswith('code-oss-static-web.disabled'))
+        for key in (
+            'documentationUrl',
+            'termsStatementUrl',
+            'privacyStatementUrl',
+            'entitlementUrl',
+            'tokenEntitlementUrl',
+            'mcpRegistryDataUrl',
+            'managedSettingsUrl',
+        ):
+            self.assertIn('disabled.invalid.invalid', default_chat[key])
+        self.assertNotIn('defaultChatAgent', transform.get('remove', []))
+
+    def test_standalone_static_bootstrap_uses_web_embedder_api(self):
+        self.assertIn('workbench.web.main.internal.css', make_static.INDEX)
+        self.assertIn('workbench.web.main.internal.js', make_static.BOOTSTRAP)
+        self.assertIn('create(document.body, config)', make_static.BOOTSTRAP)
+        self.assertNotIn('vs/code/browser/workbench/workbench.js', make_static.BOOTSTRAP)
+
+    def test_static_bootstrap_registers_only_additional_extensions(self):
+        self.assertIn('additional-extensions.json', make_static.BOOTSTRAP)
+        self.assertNotIn("fetch(new URL('extensions.json'", make_static.BOOTSTRAP)
+
+    def test_default_static_policy_is_fail_closed(self):
+        self.assertIn("connect-src 'self'", make_static.INDEX)
+        self.assertNotIn('unsafe-eval', make_static.INDEX)
+        self.assertIn('invalid.invalid', make_static.BOOTSTRAP)
+
+
+if __name__ == '__main__':
+    unittest.main()
+)
         self.assertRegex(manifest['python'], r'^\d+(?:\.\d+){1,2}$')
         check_policy.check_toolchain_versions()
 
