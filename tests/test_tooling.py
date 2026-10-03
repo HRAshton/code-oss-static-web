@@ -516,11 +516,11 @@ python-version: ${{ steps.versions.outputs.python }}
 """
             )
             (workflows / 'bad.yml').write_text(
-                "jobs:\n  test:\n    steps:\n"
-                "      - uses: ./.github/actions/setup-toolchain\n"
-                "      - name: Restore cache\n"
-                "        env:\n          CACHE_KEY: python-3.13\n"
-                "        run: echo \"$CACHE_KEY\"\n"
+                'jobs:\n  test:\n    steps:\n'
+                '      - uses: ./.github/actions/setup-toolchain\n'
+                '      - name: Restore cache\n'
+                '        env:\n          CACHE_KEY: python-3.13\n'
+                '        run: echo "$CACHE_KEY"\n'
             )
             original_root = check_policy.ROOT
             try:
