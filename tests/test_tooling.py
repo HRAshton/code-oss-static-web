@@ -764,6 +764,7 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('--grep-invert @extension', action)
         self.assertIn('--grep @extension', action)
         self.assertIn('scripts/add_test_extension.py', action)
+        self.assertIn("if: inputs.scope == 'smoke'", action)
         self.assertIn("if: inputs.scope == 'full'", action)
         self.assertIn('--reuse-upstream-build', workflow)
 

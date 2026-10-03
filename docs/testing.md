@@ -28,7 +28,8 @@ still regenerating the current static wrapper.
 Browser execution is centralized in `.github/actions/browser-qualification`. Pull requests that touch
 qualification inputs build the candidate and run the Chromium boot smoke only. Full qualification
 runs on `develop` and for manual `all` dispatches execute the complete Chromium, Firefox and WebKit
-suites once each. The release workflow independently rebuilds the tagged revision and reuses the same
+non-extension suites once each. Extension-host qualification is a distinct pass against the injected
+qualification copy so the canonical distribution remains unchanged. The release workflow independently rebuilds the tagged revision and reuses the same
 implementation for its release-grade Chromium and reproducibility gates.
 
 ## Current Playwright coverage
