@@ -25,12 +25,21 @@ still regenerating the current static wrapper.
 
 ## Current browser policy
 
-Browser execution is centralized in `.github/actions/browser-qualification`. Pull requests that touch
-qualification inputs build the candidate and run the Chromium zero-retry boot gate only. Full
-qualification runs on `develop` and for manual `all` dispatches run the same zero-retry boot gate
-before executing the complete Chromium, Firefox and WebKit non-extension suites once each. Extension-host qualification is a distinct pass against the injected
-qualification copy so the canonical distribution remains unchanged. The release workflow independently rebuilds the tagged revision and reuses the same
-implementation for its release-grade Chromium and reproducibility gates.
+Browser execution is centralized in `.github/actions/browser-qualification`. The pull-request
+workflow always runs and classifies changed paths before deciding whether artifact evidence is
+required. Documentation-only changes remain on the lightweight tooling path. Product-affecting
+changes build the canonical static distribution, run the structural artifact smoke test, and run the
+Chromium zero-retry boot gate. Upstream, runtime, qualification-infrastructure, and security-boundary
+changes escalate to the full Chromium, Firefox, and WebKit qualification, with the same zero-retry
+boot gate before the broader suites. Renames are classified using both the old and new paths, and
+unknown paths fail closed to artifact qualification.
+
+The protected default-branch ruleset must require the `Artifact qualification gate` job from
+`Full build qualification`. That job is reported for every pull request, including documentation-only
+changes where the expensive build and browser jobs are intentionally skipped. Full qualification
+also runs on `develop` and for manual `all` dispatches. The release workflow independently rebuilds
+the tagged revision and reuses the same browser implementation for its release-grade Chromium and
+reproducibility gates.
 
 ## Current Playwright coverage
 
