@@ -5,8 +5,10 @@ import json
 import re
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlsplit
 
 from common import ROOT, BuildError, load_json, require
+from deployment_profile import load_profile, load_selected_profile
 from extension_lock import (
     enforce_source_policy,
     load_extension_lock,
@@ -105,11 +107,6 @@ def validate_product_transform(path: Path) -> None:
         set_values.get('builtInExtensionsEnabledWithAutoUpdates') == [],
         'built-in auto updates must be disabled',
     )
-    webview_url = set_values.get('webviewContentExternalBaseUrlTemplate')
-    require(
-        isinstance(webview_url, str) and 'invalid.invalid' in webview_url,
-        'webview URL must fail closed',
-    )
     chat = require_object(set_values.get('defaultChatAgent'), 'defaultChatAgent')
     for key, value in chat.items():
         if key.endswith('Url') and isinstance(value, str):
@@ -149,18 +146,110 @@ def validate_json_syntax() -> None:
             raise BuildError(f'invalid JSON: {path.relative_to(ROOT)}: {exc}') from exc
 
 
+def validate_proposed_api_policy(data: dict[str, Any]) -> None:
+    require_exact_keys(data, {'schemaVersion', 'grants'}, 'proposed API policy')
+    require(data['schemaVersion'] == 1, 'proposed API policy schemaVersion must be 1')
+    grants = require_object(data['grants'], 'proposed API grants')
+    for extension_id, raw_proposals in grants.items():
+        require(bool(extension_id), 'proposed API extension id invalid')
+        require(
+            isinstance(raw_proposals, list)
+            and all(
+                isinstance(item, str) and bool(item) for item in cast(list[object], raw_proposals)
+            ),
+            f'proposed API grants must be string arrays: {extension_id}',
+        )
+
+
+def validate_webview_policy(data: dict[str, Any]) -> None:
+    require_exact_keys(
+        data,
+        {'schemaVersion', 'mode', 'externalBaseUrlTemplate'},
+        'webview policy',
+    )
+    require(data['schemaVersion'] == 1, 'webview policy schemaVersion must be 1')
+    require(data['mode'] == 'disabled', 'unsupported webview mode')
+    template_value = data['externalBaseUrlTemplate']
+    require(isinstance(template_value, str), 'disabled webview template must be a string')
+    template = cast(str, template_value)
+    try:
+        parsed = urlsplit(template)
+        port = parsed.port
+    except ValueError as exc:
+        raise BuildError('disabled webview template must be a valid URL') from exc
+    hostname = parsed.hostname
+    require(parsed.scheme.lower() == 'https', 'disabled webview template must use HTTPS')
+    require(
+        parsed.username is None and parsed.password is None,
+        'disabled webview template must not include credentials',
+    )
+    require(
+        hostname is not None
+        and (hostname == 'invalid.invalid' or hostname.endswith('.invalid.invalid')),
+        'disabled webview hostname must be invalid.invalid or a subdomain',
+    )
+    require(port in (None, 443), 'disabled webview template must use the default HTTPS port')
+
+
+def validate_profile_documents(profile: dict[str, Any], *, baseline: bool = False) -> None:
+    documents = profile['documents']
+    validate_runtime(profile['paths']['runtime'])
+    validate_network_policy(profile['paths']['network'])
+    validate_product_transform(profile['paths']['productTransform'])
+    validate_proposed_api_policy(documents['proposedApi'])
+    validate_webview_policy(documents['webview'])
+
+    branding = require_object(documents['branding'], 'branding policy')
+    require_exact_keys(branding, {'schemaVersion', 'title'}, 'branding policy')
+    require(branding['schemaVersion'] == 1, 'branding policy schemaVersion must be 1')
+    require(
+        branding['title'] == documents['runtime']['productName'],
+        'branding title must match runtime productName',
+    )
+
+    support = require_object(documents['support'], 'support policy')
+    require_exact_keys(
+        support,
+        {'schemaVersion', 'issuesUrl', 'securityPolicyPath'},
+        'support policy',
+    )
+    require(support['schemaVersion'] == 1, 'support policy schemaVersion must be 1')
+
+    extension_lock = load_extension_lock(profile['paths']['extensionLock'])
+    load_license_policy(profile['paths']['extensionLicensePolicy'])
+    source_policy = load_source_policy(profile['paths']['extensionSourcePolicy'])
+    for entry in extension_lock['extensions']:
+        enforce_source_policy(entry, source_policy)
+
+    require(documents['runtime']['telemetry'] is False, 'profile runtime telemetry must be false')
+    require(
+        documents['runtime']['gallery']['mode'] == 'disabled', 'profile gallery must be disabled'
+    )
+    require(
+        documents['runtime']['webviews']['mode'] == 'disabled',
+        'profile runtime webviews must be disabled',
+    )
+    require(documents['network']['default'] == 'deny', 'profile network must default deny')
+    require(
+        documents['network']['allowedOrigins'] == ['self'], 'profile network must allow self only'
+    )
+    require(documents['webview']['mode'] == 'disabled', 'profile webviews must fail closed')
+
+    if baseline:
+        require(
+            documents['proposedApi']['grants'] == {},
+            'baseline-static must not grant proposed APIs',
+        )
+
+
 def validate_all() -> None:
     validate_json_syntax()
     validate_upstream_lock(ROOT / 'upstream.lock.json')
-    validate_runtime(ROOT / 'config/runtime.json')
-    validate_network_policy(ROOT / 'config/network-policy.json')
-    validate_product_transform(ROOT / 'config/product-transform.json')
     validate_patch_manifest(ROOT / 'patches/manifest.json')
-    extension_lock = load_extension_lock(ROOT / 'extensions/extensions.lock.json')
-    load_license_policy(ROOT / 'extensions/license-policy.json')
-    source_policy = load_source_policy(ROOT / 'extensions/source-policy.json')
-    for entry in extension_lock['extensions']:
-        enforce_source_policy(entry, source_policy)
+    selected = load_selected_profile()
+    validate_profile_documents(selected)
+    baseline = load_profile('baseline-static')
+    validate_profile_documents(baseline, baseline=True)
 
 
 def main() -> None:

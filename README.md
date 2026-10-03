@@ -47,6 +47,24 @@ Each immutable `v*-web.*` release publishes the same qualified static distributi
 Release archives include checksums, an artifact manifest, CycloneDX SBOM, component-level license
 inventory, upstream metadata, licenses, notices, and GitHub/Sigstore attestations.
 
+## Deployment profiles
+
+Build policy is selected by the tracked `config/deployment.json` file and resolved through
+schema-validated profiles in `config/profiles/`. The selected `company-standard` profile
+preserves current product behavior, including the scoped Remotish proposed-API grant.
+`baseline-static` is the exception-free secure baseline: telemetry and the gallery are disabled,
+network access defaults to self-only, webviews fail closed, and no proposed APIs are granted.
+
+Each profile binds runtime, network, product, proposed-API, webview, branding, support, extension
+lock, extension license, and extension source policy documents. Builds write
+`dist/deployment-profile.json` containing the selected profile ID, a digest over the resolved
+configuration closure, and the SHA-256 of every bound input. Release artifact metadata records the
+same identity and digest.
+
+Only policy modes implemented and qualified by this repository are schema-valid. New deployment
+modes such as isolated webviews must add their implementation, validation, and qualification before
+they can be enabled by a profile.
+
 ## Build
 
 ```bash

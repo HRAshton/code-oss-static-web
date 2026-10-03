@@ -9,17 +9,21 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 
+import deployment_profile  # noqa: E402
 import prepare_upstream  # noqa: E402
 from common import BuildError  # noqa: E402
 
 
 class ProposedApiGrantTests(unittest.TestCase):
     def test_remotish_grant_is_scoped_and_not_bundled(self):
-        transform = json.loads((ROOT / 'config/product-transform.json').read_text())
+        profile = deployment_profile.load_selected_profile()
+        self.assertEqual(profile['id'], 'company-standard')
         self.assertEqual(
-            transform['set']['extensionEnabledApiProposals'],
+            profile['documents']['proposedApi']['grants'],
             {'hrashton.remotish': ['scmHistoryProvider', 'timeline']},
         )
+        baseline = deployment_profile.load_profile('baseline-static')
+        self.assertEqual(baseline['documents']['proposedApi']['grants'], {})
 
         extension_lock = json.loads((ROOT / 'extensions/extensions.lock.json').read_text())
         bundled_ids = {entry.get('id') for entry in extension_lock['extensions']}

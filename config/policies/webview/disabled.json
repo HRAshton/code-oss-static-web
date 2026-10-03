@@ -1,0 +1,5 @@
+{
+  "schemaVersion": 1,
+  "mode": "disabled",
+  "externalBaseUrlTemplate": "https://{{uuid}}.invalid.invalid/out/vs/workbench/contrib/webview/browser/pre/"
+}

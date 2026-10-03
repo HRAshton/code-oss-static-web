@@ -3,12 +3,6 @@
   "set": {
     "builtInExtensions": [],
     "builtInExtensionsEnabledWithAutoUpdates": [],
-    "extensionEnabledApiProposals": {
-      "hrashton.remotish": [
-        "scmHistoryProvider",
-        "timeline"
-      ]
-    },
     "defaultChatAgent": {
       "extensionId": "code-oss-static-web.disabled-completions",
       "chatExtensionId": "code-oss-static-web.disabled-chat",
@@ -64,8 +58,9 @@
       "completionsEnablementSetting": "code-oss-static-web.disabled.enable",
       "nextEditSuggestionsSetting": "code-oss-static-web.disabled.nextEditSuggestions"
     },
-    "webviewContentExternalBaseUrlTemplate": "https://{{uuid}}.invalid.invalid/out/vs/workbench/contrib/webview/browser/pre/",
     "voiceWsUrl": ""
   },
-  "remove": ["trustedExtensionAuthAccess"]
+  "remove": [
+    "trustedExtensionAuthAccess"
+  ]
 }

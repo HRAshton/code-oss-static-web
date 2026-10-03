@@ -5,7 +5,8 @@ import json
 from pathlib import Path
 from typing import cast
 
-from common import ROOT, WORK, BuildError, load_json, require, write_json
+from common import WORK, BuildError, load_json, require, write_json
+from deployment_profile import load_selected_profile
 
 
 def validate_enabled_api_proposals(src: Path, value: object) -> None:
@@ -37,15 +38,18 @@ def main():
     require((src / '.git').exists(), 'run scripts/fetch_upstream.py first')
     product_path = src / 'product.json'
     product = load_json(product_path)
-    transform = load_json(ROOT / 'config/product-transform.json')
+    profile = load_selected_profile()
+    transform = profile['documents']['productTransform']
+    proposed_api = profile['documents']['proposedApi']
+    webview = profile['documents']['webview']
     raw_set_values = transform.get('set', {})
     if not isinstance(raw_set_values, dict):
         raise BuildError('product transform set must be an object')
-    set_values = cast(dict[str, object], raw_set_values)
-    validate_enabled_api_proposals(
-        src,
-        set_values.get('extensionEnabledApiProposals', {}),
-    )
+    set_values = dict(cast(dict[str, object], raw_set_values))
+    grants = proposed_api.get('grants', {})
+    validate_enabled_api_proposals(src, grants)
+    set_values['extensionEnabledApiProposals'] = grants
+    set_values['webviewContentExternalBaseUrlTemplate'] = webview['externalBaseUrlTemplate']
 
     previous = {}
     for key, value in set_values.items():
@@ -60,6 +64,7 @@ def main():
     write_json(
         WORK / 'product-transform-report.json',
         {
+            'profile': {'id': profile['id'], 'configSha256': profile['configSha256']},
             'set': set_values,
             'removed': transform.get('remove', []),
             'previousValues': previous,

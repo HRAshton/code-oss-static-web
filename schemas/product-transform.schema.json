@@ -7,12 +7,12 @@
     "schemaVersion": {"const": 1},
     "set": {
       "type": "object",
-      "required": ["builtInExtensions", "builtInExtensionsEnabledWithAutoUpdates", "defaultChatAgent", "webviewContentExternalBaseUrlTemplate", "voiceWsUrl"],
+      "required": ["builtInExtensions", "builtInExtensionsEnabledWithAutoUpdates", "defaultChatAgent", "voiceWsUrl"],
+      "additionalProperties": false,
       "properties": {
         "builtInExtensions": {"type": "array"},
         "builtInExtensionsEnabledWithAutoUpdates": {"type": "array"},
         "defaultChatAgent": {"type": "object"},
-        "webviewContentExternalBaseUrlTemplate": {"type": "string", "pattern": "invalid\\.invalid"},
         "voiceWsUrl": {"type": "string"}
       }
     },
