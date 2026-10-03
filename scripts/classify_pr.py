@@ -54,6 +54,7 @@ FULL_FILES = {
     'scripts/apply_patches.py',
     'scripts/build.py',
     'scripts/classify_pr.py',
+    'scripts/deployment_profile.py',
     'scripts/fetch_upstream.py',
     'scripts/export_release_provenance.py',
     'scripts/publish_github_release.py',
