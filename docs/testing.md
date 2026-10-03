@@ -107,3 +107,9 @@ This uses the same unmanaged Chromium and ffmpeg revision that CI qualified, so 
 machines whose system browser is managed by restrictive enterprise policy. An explicit
 `CODE_OSS_STATIC_WEB_CHROMIUM_EXECUTABLE` override remains available for unmanaged local browsers.
 GitHub Actions remains the authoritative release qualification environment.
+
+The browser names in this document are Playwright projects and therefore engine-level evidence,
+not support claims for branded or managed enterprise deployments. Chrome Enterprise, Edge
+Enterprise, and Firefox ESR support requires the additional branded deployment qualification
+defined in [Compatibility](../COMPATIBILITY.md); Playwright WebKit does not establish Safari
+support.

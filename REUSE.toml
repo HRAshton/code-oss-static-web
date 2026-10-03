@@ -6,6 +6,7 @@ path = [
   ".editorconfig",
   ".gitattributes",
   ".gitignore",
+  "COMPATIBILITY.md",
   "CONTRIBUTING.md",
   "LICENSE",
   "Makefile",
