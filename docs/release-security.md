@@ -6,8 +6,8 @@ the completed, verified candidate and has no source checkout or shell/build step
 
 Packaging emits deterministic tar/zip archives, `SHA256SUMS`, `artifact-manifest.json`, a
 CycloneDX 1.7 `sbom.cdx.json`, and `license-inventory.json`. The artifact manifest binds the
-release to the project commit, pinned upstream commit, distribution tree digest,
-patch/configuration/extension-lock inputs, runtime component metadata, and exact release-file
+release to the project commit, pinned upstream commit, canonical Node/Python toolchain versions and toolchain-manifest digest,
+distribution tree digest, patch/configuration/extension-lock inputs, runtime component metadata, and exact release-file
 digests and sizes.
 
 The SBOM is generated from the final static distribution plus runtime metadata captured from the

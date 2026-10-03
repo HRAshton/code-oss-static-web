@@ -12,6 +12,12 @@ FULL_SHA = re.compile(r'^[0-9a-f]{40}$')
 DOCKER_DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
 JOB_HEADER = re.compile(r'^  ([A-Za-z0-9_-]+):\s*$')
 WRITE_PERMISSION = re.compile(r'^\s{6}[A-Za-z0-9-]+:\s*write\s*$', re.MULTILINE)
+TOOLCHAIN_VERSION = re.compile(r'^\d+\.\d+\.\d+$')
+WORKFLOW_TOOLCHAIN_LITERAL = re.compile(
+    r'^\s+(?:node|python)-version:\s*[\'\"]?\d',
+    re.MULTILINE,
+)
+WORKFLOW_TOOLCHAIN_CACHE_LITERAL = re.compile(r'(?:node|python)-\d+(?:\.\d+){1,2}')
 FORBIDDEN_PATTERNS = {
     'curl-pipe-shell': re.compile(r'\bcurl\b[^\n|]*\|\s*(?:ba)?sh\b'),
     'wget-pipe-shell': re.compile(r'\bwget\b[^\n|]*\|\s*(?:ba)?sh\b'),
@@ -21,8 +27,42 @@ FORBIDDEN_PATTERNS = {
 }
 
 
+def workflow_definition_paths() -> list[Path]:
+    workflows_root = ROOT / '.github/workflows'
+    if not workflows_root.is_dir():
+        return []
+    return sorted([*workflows_root.glob('*.yml'), *workflows_root.glob('*.yaml')])
+
+
+def composite_action_definition_paths() -> list[Path]:
+    actions_root = ROOT / '.github/actions'
+    if not actions_root.is_dir():
+        return []
+    return sorted([*actions_root.rglob('action.yml'), *actions_root.rglob('action.yaml')])
+
+
+def action_definition_paths() -> list[Path]:
+    return sorted([*workflow_definition_paths(), *composite_action_definition_paths()])
+
+
+def canonical_toolchain_versions() -> dict[str, str]:
+    manifest = load_json(ROOT / '.github/toolchain-versions.json')
+    require(manifest.get('schemaVersion') == 1, 'unsupported toolchain manifest schema')
+    versions: dict[str, str] = {}
+    for name in ('node', 'python'):
+        value = manifest.get(name)
+        require(isinstance(value, str) and bool(value), f'toolchain {name} version missing')
+        assert isinstance(value, str)
+        require(
+            TOOLCHAIN_VERSION.fullmatch(value) is not None,
+            f'invalid toolchain {name} version: {value}',
+        )
+        versions[name] = value
+    return versions
+
+
 def check_actions() -> None:
-    for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
+    for workflow in action_definition_paths():
         for line_number, line in enumerate(workflow.read_text(encoding='utf-8').splitlines(), 1):
             match = ACTION_REF.search(line)
             if match:
@@ -42,6 +82,41 @@ def check_actions() -> None:
                     )
 
 
+def check_toolchain_versions() -> None:
+    canonical_toolchain_versions()
+    action_path = ROOT / '.github/actions/setup-toolchain/action.yml'
+    require(action_path.is_file(), 'canonical toolchain setup action missing')
+    action = action_path.read_text(encoding='utf-8')
+    for required in (
+        'manifest="$GITHUB_ACTION_PATH/../../toolchain-versions.json"',
+        'node="$(jq -er \'.node\' "$manifest")"',
+        'python="$(jq -er \'.python\' "$manifest")"',
+        'node-version: ${{ steps.versions.outputs.node }}',
+        'python-version: ${{ steps.versions.outputs.python }}',
+    ):
+        require(required in action, f'canonical toolchain setup action missing: {required}')
+
+    for workflow in workflow_definition_paths():
+        text = workflow.read_text(encoding='utf-8')
+        display = workflow.relative_to(ROOT)
+        require(
+            'actions/setup-node@' not in text,
+            f'{display}: use the canonical toolchain setup action for Node',
+        )
+        require(
+            'actions/setup-python@' not in text,
+            f'{display}: use the canonical toolchain setup action for Python',
+        )
+        require(
+            WORKFLOW_TOOLCHAIN_LITERAL.search(text) is None,
+            f'{display}: hard-coded Node/Python setup version is forbidden',
+        )
+        require(
+            WORKFLOW_TOOLCHAIN_CACHE_LITERAL.search(text) is None,
+            f'{display}: hard-coded Node/Python cache version is forbidden',
+        )
+
+
 def check_shell_scripts() -> None:
     for script in (ROOT / 'build.sh', ROOT / 'package.sh'):
         lines = script.read_text(encoding='utf-8').splitlines()
@@ -58,7 +133,7 @@ def check_shell_scripts() -> None:
 def check_forbidden_execution_patterns() -> None:
     paths = [ROOT / 'build.sh', ROOT / 'package.sh']
     paths.extend(sorted((ROOT / 'scripts').glob('*.py')))
-    paths.extend(sorted((ROOT / '.github/workflows').glob('*.yml')))
+    paths.extend(action_definition_paths())
     for path in paths:
         text = path.read_text(encoding='utf-8')
         for name, pattern in FORBIDDEN_PATTERNS.items():
@@ -156,7 +231,7 @@ def check_build_job_block(workflow: Path, job_name: str, block: str) -> None:
 
 
 def check_build_job_permissions() -> None:
-    for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
+    for workflow in workflow_definition_paths():
         text = workflow.read_text(encoding='utf-8')
         for job_name, block in workflow_job_blocks(text):
             check_build_job_block(workflow, job_name, block)
@@ -200,7 +275,7 @@ def check_attestation_job_block(workflow: Path, job_name: str, block: str) -> No
 
 
 def check_attestation_job_permissions() -> None:
-    for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
+    for workflow in workflow_definition_paths():
         text = workflow.read_text(encoding='utf-8')
         for job_name, block in workflow_job_blocks(text):
             check_attestation_job_block(workflow, job_name, block)
@@ -283,7 +358,7 @@ def check_pages_release_gate(workflow: Path, jobs: dict[str, str]) -> None:
 
 
 def check_publication_job_permissions() -> None:
-    for workflow in sorted((ROOT / '.github/workflows').glob('*.yml')):
+    for workflow in workflow_definition_paths():
         text = workflow.read_text(encoding='utf-8')
         jobs = dict(workflow_job_blocks(text))
         has_pages_publication = False
@@ -449,6 +524,7 @@ def check_release_integrity_policy() -> None:
 
 def main() -> None:
     check_actions()
+    check_toolchain_versions()
     check_shell_scripts()
     check_forbidden_execution_patterns()
     check_extension_lock()

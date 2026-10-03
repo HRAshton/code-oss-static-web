@@ -65,16 +65,28 @@ jobs:
 
       - name: Verify release qualification binding
         env:
+          GH_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
         shell: bash
         run: |
           set -euo pipefail
-          jq -e             --arg commit "$GITHUB_SHA"             --arg tag "$GITHUB_REF_NAME"             --argjson workflowRunId "$QUALIFICATION_RUN_ID"             '
+          toolchain="$(
+            gh api "repos/$GITHUB_REPOSITORY/contents/.github/toolchain-versions.json?ref=$GITHUB_SHA" \
+              --jq '.content' | base64 --decode | jq -c '{node, python}'
+          )"
+          jq -e \
+            --arg commit "$GITHUB_SHA" \
+            --arg tag "$GITHUB_REF_NAME" \
+            --argjson workflowRunId "$QUALIFICATION_RUN_ID" \
+            --argjson toolchain "$toolchain" \
+            '
               .commit == $commit and
               .tag == $tag and
               .workflowRunId == $workflowRunId and
+              .toolchain == $toolchain and
               (.releaseMode == "upstream" or .releaseMode == "patch")
-            '             .work/release-qualification/release-qualification.json >/dev/null
+            ' \
+            .work/release-qualification/release-qualification.json >/dev/null
 
       - name: Verify release commit is on protected default branch
         env:
@@ -112,13 +124,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.21.0'
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
+      - name: Set up canonical toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Verify release tag contract
         run: python3 scripts/check_release_tag.py "$GITHUB_REF_NAME"
@@ -187,13 +195,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.21.0'
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
+      - name: Set up canonical toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Download reference distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -234,13 +238,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.21.0'
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
+      - name: Set up canonical toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Download canonical static distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -302,9 +302,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up canonical Python
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
         with:
-          python-version: '3.14'
+          node: 'false'
 
       - name: Download qualified static distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

@@ -15,6 +15,8 @@ on:
       - 'tests/fixtures/**'
       - '.github/workflows/qualify.yml'
       - '.github/workflows/browser-matrix.yml'
+      - '.github/actions/setup-toolchain/action.yml'
+      - '.github/toolchain-versions.json'
   workflow_dispatch:
     inputs:
       browser:
@@ -57,13 +59,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.21.0'
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
+      - name: Set up canonical toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Restore immutable upstream web build cache
         id: upstream-cache
@@ -72,7 +70,7 @@ jobs:
           path: |
             .work/vscode-web
             .work/playwright-runtime
-          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-24.18.0-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/product-transform.json', 'patches/**') }}
+          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/product-transform.json', 'patches/**') }}
 
       - name: Install Code-OSS web build prerequisites
         if: steps.upstream-cache.outputs.cache-hit != 'true'
@@ -173,13 +171,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.21.0'
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
+      - name: Set up canonical toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Download canonical static distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -291,13 +285,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: '24.21.0'
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.14'
+      - name: Set up canonical toolchain
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
 
       - name: Download canonical static distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -370,9 +360,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Set up canonical Python
+        id: toolchain
+        uses: ./.github/actions/setup-toolchain
         with:
-          python-version: '3.14'
+          node: 'false'
 
       - name: Download qualified static distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -506,12 +498,21 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           mkdir -p .work
-          jq -n             --arg commit "$GITHUB_SHA"             --arg tag "$tag"             --arg releaseMode "$mode"             --argjson workflowRunId "$GITHUB_RUN_ID"             '{
+          toolchain="$(jq -c '{node, python}' .github/toolchain-versions.json)"
+          jq -n \
+            --arg commit "$GITHUB_SHA" \
+            --arg tag "$tag" \
+            --arg releaseMode "$mode" \
+            --argjson workflowRunId "$GITHUB_RUN_ID" \
+            --argjson toolchain "$toolchain" \
+            '{
               commit: $commit,
               tag: $tag,
               releaseMode: $releaseMode,
-              workflowRunId: $workflowRunId
-            }'             > .work/release-qualification.json
+              workflowRunId: $workflowRunId,
+              toolchain: $toolchain
+            }' \
+            > .work/release-qualification.json
 
       - name: Upload release qualification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -18,7 +18,8 @@ qualification uses a copy of `dist/` with the repository-owned fixture extension
 canonical artifact is not modified.
 
 The expensive upstream Code-OSS web bundle is cached by immutable build inputs: upstream lock,
-Node version, product transform, patch manifest/files and the scripts that drive the upstream build.
+the canonical Node and Python versions from `.github/toolchain-versions.json`, product transform,
+patch manifest/files and the scripts that drive the upstream build.
 Changes limited to browser tests or packaging can therefore reuse the same upstream bundle while
 still regenerating the current static wrapper.
 
