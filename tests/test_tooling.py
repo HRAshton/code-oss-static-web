@@ -176,6 +176,22 @@ class ToolingTests(unittest.TestCase):
             with self.subTest(path=denied):
                 self.assertNotIn(denied, auto_approvable)
 
+    def test_sensitive_paths_require_codeowners_without_gating_upstream_updates(self):
+        codeowners = (ROOT / '.github/CODEOWNERS').read_text()
+        check_policy.check_codeowners_policy()
+
+        lines = {
+            line.split()[0]: set(line.split()[1:])
+            for line in codeowners.splitlines()
+            if line.strip() and not line.lstrip().startswith('#')
+        }
+        self.assertEqual(lines['/.github/'], {'@HRAshton', '@vodyanica'})
+        self.assertEqual(lines['/security/'], {'@HRAshton', '@vodyanica'})
+        self.assertEqual(lines['/deploy/'], {'@HRAshton', '@vodyanica'})
+        self.assertEqual(lines['/renovate.json'], {'@HRAshton', '@vodyanica'})
+        self.assertNotIn('/upstream.lock.json', lines)
+        self.assertNotIn('upstream.lock.json', lines)
+
     def test_upstream_revision_change_dispatches_full_qualification(self):
         workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()
         self.assertIn('branches: [master]', workflow)
