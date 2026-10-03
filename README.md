@@ -81,6 +81,7 @@ configured to fail closed.
 - [Releases](https://github.com/HRAshton/code-oss-static-web/releases) - immutable qualified release artifacts.
 - [Issues](https://github.com/HRAshton/code-oss-static-web/issues) - bugs and enhancement requests.
 - [Contributing](CONTRIBUTING.md) - contribution process, review requirements, and local checks.
+- [Governance](GOVERNANCE.md) - ownership, sensitive-path review, migration, and continuity plan.
 - [Security](SECURITY.md) - private vulnerability reporting and supported-version policy.
 - [Release security](docs/release-security.md) - provenance, SBOM, attestation, and publication boundaries.
 - [Compatibility](COMPATIBILITY.md) - supported browser/deployment contract and qualification boundary.
