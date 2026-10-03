@@ -483,8 +483,8 @@ class ToolingTests(unittest.TestCase):
     def test_toolchain_versions_are_canonical(self):
         manifest = json.loads((ROOT / '.github/toolchain-versions.json').read_text())
         self.assertEqual(manifest['schemaVersion'], 1)
-        self.assertRegex(manifest['node'], r'^\d+\.\d+\.\d+
-        self.assertRegex(manifest['python'], r'^\d+\.\d+\.\d+
+        self.assertRegex(manifest['node'], r'^\d+\.\d+\.\d+$')
+        self.assertRegex(manifest['python'], r'^\d+\.\d+\.\d+$')
         check_policy.check_toolchain_versions()
 
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()

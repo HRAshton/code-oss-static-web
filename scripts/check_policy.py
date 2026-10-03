@@ -12,7 +12,7 @@ FULL_SHA = re.compile(r'^[0-9a-f]{40}$')
 DOCKER_DIGEST = re.compile(r'^sha256:[0-9a-f]{64}$')
 JOB_HEADER = re.compile(r'^  ([A-Za-z0-9_-]+):\s*$')
 WRITE_PERMISSION = re.compile(r'^\s{6}[A-Za-z0-9-]+:\s*write\s*$', re.MULTILINE)
-TOOLCHAIN_VERSION = re.compile(r'^\d+\.\d+\.\d+
+TOOLCHAIN_VERSION = re.compile(r'^\d+\.\d+\.\d+$')
 WORKFLOW_TOOLCHAIN_LITERAL = re.compile(
     r'^\s+(?:node|python)-version:\s*[\'\"]?\d',
     re.MULTILINE,
