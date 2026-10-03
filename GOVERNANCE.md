@@ -62,6 +62,7 @@ affects the stated trust boundary; a generic approval is not a substitute for th
 | Path or area | Required review responsibility | Rationale |
 | --- | --- | --- |
 | `.github/**` | Platform + Security | Workflows, actions, rulesets, permissions, and automation can change repository or release trust boundaries |
+| `GOVERNANCE.md`, `CONTRIBUTING.md`, and root `CODEOWNERS` | Platform + Security | These files define repository ownership and review controls; weakening them changes the governance trust boundary |
 | `security/**`, `SECURITY.md`, `docs/release-security.md` | Security | Security model, vulnerability handling, and release-integrity policy |
 | `extensions/**` | Platform + Extension Policy; Security for trust/provenance changes; Legal/licensing when license/source policy changes | Extension code and metadata become part of the distributed product and supply chain |
 | `deploy/**` | Platform + Release | Runtime/container deployment and publication behavior |
