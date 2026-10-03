@@ -8,6 +8,7 @@ path = [
   ".gitignore",
   "COMPATIBILITY.md",
   "CONTRIBUTING.md",
+  "GOVERNANCE.md",
   "LICENSE",
   "Makefile",
   "OPERATIONS.md",
