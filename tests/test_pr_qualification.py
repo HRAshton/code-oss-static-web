@@ -48,6 +48,7 @@ class PullRequestQualificationTests(unittest.TestCase):
             'patches/runtime.patch',
             'security/network-policy.json',
             'scripts/make_static.py',
+            'scripts/deployment_profile.py',
             'scripts/run_e2e.py',
             'scripts/verify_dist_identity.py',
             '.github/workflows/qualify.yml',
@@ -92,6 +93,8 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn('name: Artifact qualification gate', workflow)
         self.assertIn('needs: [browser-plan, build, browser]', workflow)
         self.assertIn('required artifact evidence missing', workflow)
+        cache_key = workflow.split('key: code-oss-web-', 1)[1].split('\n\n      - name:', 1)[0]
+        self.assertIn("'scripts/deployment_profile.py'", cache_key)
 
     def test_ruleset_documentation_names_the_required_artifact_gate(self):
         contributing = (ROOT / 'CONTRIBUTING.md').read_text(encoding='utf-8')
