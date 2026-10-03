@@ -93,8 +93,25 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn('name: Artifact qualification gate', workflow)
         self.assertIn('needs: [browser-plan, build, browser]', workflow)
         self.assertIn('required artifact evidence missing', workflow)
+
+    def test_qualification_caches_separate_build_outputs_from_package_downloads(self):
+        workflow = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
         cache_key = workflow.split('key: code-oss-web-', 1)[1].split('\n\n      - name:', 1)[0]
-        self.assertIn("'scripts/deployment_profile.py'", cache_key)
+
+        for required in (
+            "'upstream.lock.json'",
+            "'scripts/prepare_upstream.py'",
+            "'scripts/deployment_profile.py'",
+            "'scripts/apply_patches.py'",
+            "'config/**'",
+            "'patches/**'",
+        ):
+            self.assertIn(required, cache_key)
+        self.assertNotIn("'extensions/**'", cache_key)
+        self.assertIn('name: Restore npm download cache', workflow)
+        self.assertIn('path: ~/.npm', workflow)
+        self.assertIn("hashFiles('upstream.lock.json')", workflow)
+        self.assertIn('code-oss-npm-', workflow)
 
     def test_ruleset_documentation_names_the_required_artifact_gate(self):
         contributing = (ROOT / 'CONTRIBUTING.md').read_text(encoding='utf-8')
