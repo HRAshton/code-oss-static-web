@@ -59,6 +59,8 @@ jobs:
       browsers: ${{ steps.plan.outputs.browsers }}
       scope: ${{ steps.plan.outputs.scope }}
       level: ${{ steps.plan.outputs.level }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      retry_tag: ${{ steps.plan.outputs.retry_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,6 +72,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REQUESTED_BROWSER: ${{ inputs.browser || 'all' }}
+          RELEASE_MODE: ${{ inputs.release_mode || 'none' }}
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
@@ -126,15 +129,157 @@ jobs:
               exit 2
               ;;
           esac
+          release_tag=''
+          retry_tag=''
+          if [[ "$EVENT_NAME" == workflow_dispatch &&
+                "$GITHUB_REF_NAME" == master &&
+                "$REQUESTED_BROWSER" == all &&
+                "$RELEASE_MODE" != none ]]; then
+            version="$(jq -r '.tag' upstream.lock.json)"
+            case "$RELEASE_MODE" in
+              upstream)
+                release_tag="v${version}-web.0"
+                ;;
+              patch)
+                prefix="refs/tags/v${version}-web."
+                max_revision=-1
+                found_zero=0
+                latest_tag=''
+                while IFS= read -r ref; do
+                  suffix="${ref#"$prefix"}"
+                  [[ "$suffix" =~ ^(0|[1-9][0-9]*)$ ]] || continue
+                  revision=$((10#$suffix))
+                  if [[ "$revision" == 0 ]]; then
+                    found_zero=1
+                  fi
+                  if (( revision > max_revision )); then
+                    max_revision="$revision"
+                    latest_tag="${ref#refs/tags/}"
+                  fi
+                done < <(
+                  gh api --paginate \
+                    "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v${version}-web." \
+                    --jq '.[].ref'
+                )
+
+                if [[ "$found_zero" != 1 ]]; then
+                  echo "Cannot create a patch release before v${version}-web.0 exists." >&2
+                  exit 1
+                fi
+
+                latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$latest_tag" --jq '.sha')"
+                if [[ "$latest_sha" == "$GITHUB_SHA" ]]; then
+                  release_tag="$latest_tag"
+                else
+                  release_tag="v${version}-web.$((max_revision + 1))"
+                fi
+                ;;
+              *)
+                echo "Unsupported release mode: $RELEASE_MODE" >&2
+                exit 2
+                ;;
+            esac
+
+            python3 scripts/check_release_tag.py "$release_tag"
+            if ref="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$release_tag" 2>/dev/null)"; then
+              existing_sha="$(jq -r '.object.sha' <<<"$ref")"
+              if [[ "$existing_sha" != "$GITHUB_SHA" ]]; then
+                echo "release tag $release_tag already points to $existing_sha, not $GITHUB_SHA" >&2
+                exit 1
+              fi
+              retry_tag="$release_tag"
+            fi
+          fi
+
           {
             echo "level=$level"
             echo "browsers=$browsers"
             echo "scope=$scope"
+            echo "release_tag=$release_tag"
+            echo "retry_tag=$retry_tag"
           } >> "$GITHUB_OUTPUT"
+
+  recover-publication:
+    name: Recover existing immutable publication
+    needs: browser-plan
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref_name == 'master' &&
+      needs.browser-plan.outputs.retry_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Dispatch artifact-only publication recovery
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.browser-plan.outputs.retry_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_runs="$(
+            gh api \
+              --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/release.yml/runs" \
+              -f head_sha="$GITHUB_SHA" \
+              -f event=workflow_dispatch \
+              -f status=completed \
+              -F per_page=100
+          )"
+          mapfile -t candidate_run_ids < <(
+            jq -r \
+              --arg tag "$RELEASE_TAG" \
+              --arg sha "$GITHUB_SHA" \
+              '
+                .workflow_runs[]
+                | select(
+                    .name == "Release" and
+                    .event == "workflow_dispatch" and
+                    .status == "completed" and
+                    .head_branch == $tag and
+                    .head_sha == $sha and
+                    .path == ".github/workflows/release.yml"
+                  )
+                | .id
+              ' <<<"$release_runs"
+          )
+
+          release_run_id=''
+          for candidate_run_id in "${candidate_run_ids[@]}"; do
+            artifacts="$(
+              gh api \
+                "repos/$GITHUB_REPOSITORY/actions/runs/$candidate_run_id/artifacts?per_page=100"
+            )"
+            if jq -e '
+              def available($name):
+                [.artifacts[] | select(.name == $name and .expired == false)] | length == 1;
+              available("release-static-dist") and
+              available("release-candidate") and
+              available("release-attestation")
+            ' <<<"$artifacts" >/dev/null; then
+              release_run_id="$candidate_run_id"
+              break
+            fi
+          done
+
+          if [[ -z "$release_run_id" ]]; then
+            echo "release tag $RELEASE_TAG already exists, but no completed Release run for this tag and commit retains all publication artifacts" >&2
+            echo "refusing to infer publication completion or rebuild immutable release content" >&2
+            exit 1
+          fi
+
+          gh workflow run recover-release-publication.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            -f release_run_id="$release_run_id" \
+            -f channel=all
+          echo "Existing immutable tag detected; dispatched publication verification/recovery from Release run $release_run_id"
 
   build:
     needs: browser-plan
-    if: needs.browser-plan.outputs.level != 'lightweight'
+    if: needs.browser-plan.outputs.level != 'lightweight' && needs.browser-plan.outputs.retry_tag == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -237,7 +382,7 @@ jobs:
 
   browser:
     needs: [build, browser-plan]
-    if: needs.browser-plan.outputs.level != 'lightweight'
+    if: needs.browser-plan.outputs.level != 'lightweight' && needs.browser-plan.outputs.retry_tag == ''
     strategy:
       fail-fast: false
       matrix:
@@ -310,8 +455,8 @@ jobs:
           esac
 
   package:
-    needs: browser
-    if: github.event_name != 'pull_request'
+    needs: [browser-plan, browser]
+    if: github.event_name != 'pull_request' && needs.browser-plan.outputs.retry_tag == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -393,12 +538,13 @@ jobs:
           retention-days: 7
 
   release:
-    needs: [build, browser, package, attest]
+    needs: [browser-plan, build, browser, package, attest]
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref_name == 'master' &&
       inputs.browser == 'all' &&
-      inputs.release_mode != 'none'
+      inputs.release_mode != 'none' &&
+      needs.browser-plan.outputs.retry_tag == ''
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -425,54 +571,12 @@ jobs:
         id: qualification
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.browser-plan.outputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          version="$(jq -r '.tag' upstream.lock.json)"
           mode="${{ inputs.release_mode }}"
-
-          case "$mode" in
-            upstream)
-              tag="v${version}-web.0"
-              ;;
-            patch)
-              prefix="refs/tags/v${version}-web."
-              max_revision=-1
-              found_zero=0
-              latest_tag=''
-              while IFS= read -r ref; do
-                suffix="${ref#"$prefix"}"
-                [[ "$suffix" =~ ^(0|[1-9][0-9]*)$ ]] || continue
-                revision=$((10#$suffix))
-                if [[ "$revision" == 0 ]]; then
-                  found_zero=1
-                fi
-                if (( revision > max_revision )); then
-                  max_revision="$revision"
-                  latest_tag="${ref#refs/tags/}"
-                fi
-              done < <(
-                gh api --paginate                   "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v${version}-web."                   --jq '.[].ref'
-              )
-
-              if [[ "$found_zero" != 1 ]]; then
-                echo "Cannot create a patch release before v${version}-web.0 exists." >&2
-                exit 1
-              fi
-
-              latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$latest_tag" --jq '.sha')"
-              if [[ "$latest_sha" == "$GITHUB_SHA" ]]; then
-                echo "$latest_tag already points to this qualification commit; retry that immutable release instead." >&2
-                exit 1
-              fi
-
-              tag="v${version}-web.$((max_revision + 1))"
-              ;;
-            *)
-              echo "Unsupported release mode: $mode" >&2
-              exit 2
-              ;;
-          esac
+          tag="$RELEASE_TAG"
 
           python3 scripts/check_release_tag.py "$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
@@ -552,15 +656,19 @@ jobs:
             existing_sha="$(jq -r '.object.sha' <<<"$ref")"
             if [[ "$existing_sha" != "$GITHUB_SHA" ]]; then
               echo "release tag $RELEASE_TAG already points to $existing_sha, not $GITHUB_SHA" >&2
-              exit 1
+            else
+              echo "release tag $RELEASE_TAG appeared after qualification planning; rerun to enter artifact-only recovery" >&2
             fi
-          else
-            gh api               --method POST               "repos/$GITHUB_REPOSITORY/git/refs"               -f ref="refs/tags/$RELEASE_TAG"               -f sha="$GITHUB_SHA" >/dev/null
+            exit 1
           fi
 
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release $RELEASE_TAG already exists; publication is complete"
-            exit 0
-          fi
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$RELEASE_TAG" \
+            -f sha="$GITHUB_SHA" >/dev/null
 
-          gh workflow run release.yml             --repo "$GITHUB_REPOSITORY"             --ref "$RELEASE_TAG"             -f qualification_run_id="$GITHUB_RUN_ID"
+          gh workflow run release.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$RELEASE_TAG" \
+            -f qualification_run_id="$GITHUB_RUN_ID"
