@@ -9,18 +9,165 @@ import urllib.request
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any, cast
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from common import ROOT, WORK, BuildError, load_json, require, sha256_file
 
 SUPPORTED_SCHEMA_VERSION = 1
 OPEN_VSX_DEFAULT_REGISTRY = 'https://open-vsx.org'
 OPEN_VSX_USER_AGENT = 'code-oss-static-web/1'
+SOURCE_POLICY_SCHEMA_VERSION = 1
+
+MAX_ARCHIVE_ENTRIES = 4096
+MAX_ARCHIVE_FILE_SIZE = 64 * 1024 * 1024
+MAX_ARCHIVE_TOTAL_SIZE = 256 * 1024 * 1024
+MAX_ARCHIVE_COMPRESSION_RATIO = 200
+COMPRESSION_RATIO_MIN_FILE_SIZE = 1024 * 1024
+MAX_VSIX_ARCHIVE_SIZE = MAX_ARCHIVE_TOTAL_SIZE + 16 * 1024 * 1024
+DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+EXTRACTION_CHUNK_SIZE = 1024 * 1024
 
 
 def _require_string(value: Any, field: str) -> str:
     require(isinstance(value, str) and value.strip() != '', f'{field} must be a non-empty string')
     return value
+
+
+def _url_origin(value: str, field: str) -> str:
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise BuildError(f'{field} is not a valid URL') from exc
+    require(parsed.scheme.lower() == 'https', f'{field} must use HTTPS')
+    require(
+        parsed.username is None and parsed.password is None, f'{field} must not include credentials'
+    )
+    hostname = parsed.hostname
+    require(hostname is not None, f'{field} must include a host')
+    assert hostname is not None
+    host = hostname.lower()
+    if ':' in host:
+        host = f'[{host}]'
+    if port not in (None, 443):
+        host = f'{host}:{port}'
+    return f'https://{host}'
+
+
+def _normalize_open_vsx_registry(value: Any, field: str) -> str:
+    registry = _require_string(value, field).strip()
+    try:
+        parsed = urlsplit(registry)
+    except ValueError as exc:
+        raise BuildError(f'{field} is not a valid URL') from exc
+    require(parsed.path in ('', '/'), f'{field} must not include a path')
+    require(parsed.query == '', f'{field} must not include a query')
+    require(parsed.fragment == '', f'{field} must not include a fragment')
+    return _url_origin(registry, field)
+
+
+def load_source_policy(path: Path) -> dict[str, Any]:
+    data = load_json(path)
+    require(
+        data.get('schemaVersion') == SOURCE_POLICY_SCHEMA_VERSION,
+        'unsupported extension source policy schemaVersion',
+    )
+    require(
+        set(data) == {'schemaVersion', 'allowedOpenVsxRegistries', 'allowedOpenVsxDownloadOrigins'},
+        'extension source policy keys mismatch',
+    )
+    registries_value = data.get('allowedOpenVsxRegistries')
+    require(
+        isinstance(registries_value, list), 'extension source policy registries must be an array'
+    )
+    registries_raw = cast(list[object], registries_value)
+    require(
+        len(registries_raw) > 0 and all(isinstance(item, str) for item in registries_raw),
+        'extension source policy allowedOpenVsxRegistries must be a non-empty string array',
+    )
+    registries = [
+        _normalize_open_vsx_registry(item, 'extension source policy registry')
+        for item in registries_raw
+    ]
+    require(
+        len(set(registries)) == len(registries),
+        'extension source policy allowedOpenVsxRegistries must be unique',
+    )
+
+    download_origins_value = data.get('allowedOpenVsxDownloadOrigins')
+    require(
+        isinstance(download_origins_value, list),
+        'extension source policy download origins must be an array',
+    )
+    download_origins_raw = cast(list[object], download_origins_value)
+    require(
+        len(download_origins_raw) > 0
+        and all(isinstance(item, str) for item in download_origins_raw),
+        'extension source policy allowedOpenVsxDownloadOrigins must be a non-empty string array',
+    )
+    download_origins = [
+        _normalize_open_vsx_registry(item, 'extension source policy download origin')
+        for item in download_origins_raw
+    ]
+    require(
+        len(set(download_origins)) == len(download_origins),
+        'extension source policy allowedOpenVsxDownloadOrigins must be unique',
+    )
+    require(
+        set(registries).issubset(download_origins),
+        'extension source policy download origins must include all registry origins',
+    )
+    return {
+        'schemaVersion': SOURCE_POLICY_SCHEMA_VERSION,
+        'allowedOpenVsxRegistries': registries,
+        'allowedOpenVsxDownloadOrigins': download_origins,
+    }
+
+
+def enforce_source_policy(entry: dict[str, Any], policy: dict[str, Any]) -> None:
+    if entry['source']['type'] != 'open-vsx':
+        return
+    registry = entry['source']['registry']
+    require(
+        registry in policy['allowedOpenVsxRegistries'],
+        f'Open VSX registry is not allowed by production source policy: {registry}',
+    )
+
+
+def _copy_download_bounded(source: Any, destination: Any) -> int:
+    total = 0
+    while True:
+        chunk = source.read(DOWNLOAD_CHUNK_SIZE)
+        if not chunk:
+            return total
+        total += len(chunk)
+        require(
+            total <= MAX_VSIX_ARCHIVE_SIZE,
+            f'VSIX archive download exceeds limit: {total} > {MAX_VSIX_ARCHIVE_SIZE}',
+        )
+        destination.write(chunk)
+
+
+class _SourcePolicyRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, allowed_origins: set[str]) -> None:
+        super().__init__()
+        self._allowed_origins = allowed_origins
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: Any,
+        code: int,
+        msg: str,
+        headers: Any,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        origin = _url_origin(newurl, 'Open VSX redirect target')
+        require(
+            origin in self._allowed_origins,
+            f'Open VSX redirect target is not allowed by production source policy: {origin}',
+        )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 def load_extension_lock(path: Path) -> dict[str, Any]:
@@ -60,9 +207,10 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
                 'path': _require_string(source.get('path'), f'{prefix}.source.path'),
             }
         elif source_type == 'open-vsx':
-            registry = source.get('registry', OPEN_VSX_DEFAULT_REGISTRY)
-            registry = _require_string(registry, f'{prefix}.source.registry').rstrip('/')
-            require(registry.startswith('https://'), f'{prefix}.source.registry must use HTTPS')
+            registry = _normalize_open_vsx_registry(
+                source.get('registry', OPEN_VSX_DEFAULT_REGISTRY),
+                f'{prefix}.source.registry',
+            )
             normalized_source = {'type': source_type, 'registry': registry}
         else:
             raise BuildError(f'unsupported extension source type: {source_type}')
@@ -157,25 +305,99 @@ def open_vsx_download_url(entry: dict[str, Any]) -> str:
 
 
 def _safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
-    result: list[zipfile.ZipInfo] = []
-    for info in archive.infolist():
+    result = archive.infolist()
+    require(
+        len(result) <= MAX_ARCHIVE_ENTRIES,
+        f'VSIX contains too many entries: {len(result)} > {MAX_ARCHIVE_ENTRIES}',
+    )
+
+    total_size = 0
+    for info in result:
+        require('\\' not in info.filename, f'VSIX contains backslash path: {info.filename}')
         path = PurePosixPath(info.filename)
         require(not path.is_absolute(), f'VSIX contains absolute path: {info.filename}')
         require('..' not in path.parts, f'VSIX contains parent traversal: {info.filename}')
+        first_part = path.parts[0] if path.parts else ''
+        require(
+            not (len(first_part) == 2 and first_part[0].isalpha() and first_part[1] == ':'),
+            f'VSIX contains drive path: {info.filename}',
+        )
         mode = (info.external_attr >> 16) & 0xFFFF
         require((mode & 0o170000) != 0o120000, f'VSIX contains symlink: {info.filename}')
-        result.append(info)
+        if info.is_dir():
+            continue
+
+        require(
+            info.file_size <= MAX_ARCHIVE_FILE_SIZE,
+            f'VSIX entry is too large: {info.filename}',
+        )
+        total_size += info.file_size
+        require(total_size <= MAX_ARCHIVE_TOTAL_SIZE, 'VSIX expanded size exceeds limit')
+
+        if info.file_size >= COMPRESSION_RATIO_MIN_FILE_SIZE:
+            require(
+                info.compress_size > 0
+                and info.file_size <= info.compress_size * MAX_ARCHIVE_COMPRESSION_RATIO,
+                f'VSIX entry compression ratio exceeds limit: {info.filename}',
+            )
     return result
+
+
+def _read_member_bounded(archive: zipfile.ZipFile, info: zipfile.ZipInfo) -> bytes:
+    with archive.open(info, 'r') as source:
+        data = source.read(MAX_ARCHIVE_FILE_SIZE + 1)
+    require(len(data) <= MAX_ARCHIVE_FILE_SIZE, f'VSIX entry is too large: {info.filename}')
+    require(len(data) == info.file_size, f'VSIX entry size mismatch: {info.filename}')
+    return data
+
+
+def _extract_members_bounded(
+    archive: zipfile.ZipFile,
+    destination: Path,
+    members: list[zipfile.ZipInfo],
+) -> None:
+    total_written = 0
+    for info in members:
+        path = PurePosixPath(info.filename)
+        target = destination.joinpath(*path.parts)
+        if info.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+
+        target.parent.mkdir(parents=True, exist_ok=True)
+        file_written = 0
+        with archive.open(info, 'r') as source, target.open('wb') as output:
+            while True:
+                chunk = source.read(EXTRACTION_CHUNK_SIZE)
+                if not chunk:
+                    break
+                file_written += len(chunk)
+                total_written += len(chunk)
+                require(
+                    file_written <= MAX_ARCHIVE_FILE_SIZE,
+                    f'VSIX entry is too large while extracting: {info.filename}',
+                )
+                require(
+                    total_written <= MAX_ARCHIVE_TOTAL_SIZE,
+                    'VSIX expanded size exceeds limit while extracting',
+                )
+                output.write(chunk)
+        require(file_written == info.file_size, f'VSIX entry size mismatch: {info.filename}')
 
 
 def _load_vsix_manifest(vsix: Path) -> tuple[dict[str, Any], str]:
     try:
         with zipfile.ZipFile(vsix) as archive:
-            _safe_members(archive)
+            members = _safe_members(archive)
+            members_by_name = {info.filename: info for info in members}
             manifest_name = 'extension/package.json'
-            require(manifest_name in archive.namelist(), f'VSIX is missing {manifest_name}: {vsix}')
+            manifest_info = members_by_name.get(manifest_name)
+            require(manifest_info is not None, f'VSIX is missing {manifest_name}: {vsix}')
+            assert manifest_info is not None
             try:
-                manifest_value: object = json.loads(archive.read(manifest_name).decode('utf-8'))
+                manifest_value: object = json.loads(
+                    _read_member_bounded(archive, manifest_info).decode('utf-8')
+                )
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise BuildError(f'invalid VSIX package.json: {vsix}: {exc}') from exc
     except zipfile.BadZipFile as exc:
@@ -192,12 +414,22 @@ def download_open_vsx(
     entry: dict[str, Any],
     *,
     cache_root: Path = WORK / 'extensions-cache',
+    source_policy: dict[str, Any] | None = None,
 ) -> Path:
+    if source_policy is None:
+        source_policy = load_source_policy(ROOT / 'extensions/source-policy.json')
+    enforce_source_policy(entry, source_policy)
+    allowed_download_origins = set(cast(list[str], source_policy['allowedOpenVsxDownloadOrigins']))
+
     cache_root.mkdir(parents=True, exist_ok=True)
     target = cache_root / f'{entry["id"]}-{entry["version"]}.vsix'
-    if target.is_file() and sha256_file(target) == entry['sha256']:
-        return target
-    target.unlink(missing_ok=True)
+    if target.is_file():
+        if target.stat().st_size > MAX_VSIX_ARCHIVE_SIZE:
+            target.unlink()
+            raise BuildError(f'cached VSIX archive exceeds size limit: {entry["id"]}')
+        if sha256_file(target) == entry['sha256']:
+            return target
+        target.unlink()
 
     request = urllib.request.Request(
         open_vsx_download_url(entry),
@@ -206,6 +438,7 @@ def download_open_vsx(
             'User-Agent': OPEN_VSX_USER_AGENT,
         },
     )
+    opener = urllib.request.build_opener(_SourcePolicyRedirectHandler(allowed_download_origins))
     with tempfile.NamedTemporaryFile(
         prefix='open-vsx-',
         suffix='.vsix',
@@ -214,8 +447,14 @@ def download_open_vsx(
     ) as temporary:
         temporary_path = Path(temporary.name)
         try:
-            with urllib.request.urlopen(request, timeout=60) as response:
-                shutil.copyfileobj(response, temporary)
+            with opener.open(request, timeout=60) as response:
+                response_origin = _url_origin(response.geturl(), 'Open VSX response URL')
+                require(
+                    response_origin in allowed_download_origins,
+                    f'Open VSX response URL is not allowed by production source policy: '
+                    f'{response_origin}',
+                )
+                _copy_download_bounded(response, temporary)
         except Exception:
             temporary_path.unlink(missing_ok=True)
             raise
@@ -228,7 +467,12 @@ def download_open_vsx(
     return target
 
 
-def materialize_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> Path:
+def materialize_vsix(
+    entry: dict[str, Any],
+    *,
+    root: Path = ROOT,
+    source_policy: dict[str, Any] | None = None,
+) -> Path:
     source_type = entry['source']['type']
     if source_type == 'local-vsix':
         source_path = Path(entry['source']['path'])
@@ -241,11 +485,15 @@ def materialize_vsix(entry: dict[str, Any], *, root: Path = ROOT) -> Path:
             f'local-vsix source must end in .vsix: {source_path}',
         )
         require(
+            source_path.stat().st_size <= MAX_VSIX_ARCHIVE_SIZE,
+            f'VSIX archive exceeds size limit: {entry["id"]}',
+        )
+        require(
             sha256_file(source_path) == entry['sha256'], f'VSIX SHA-256 mismatch: {entry["id"]}'
         )
         return source_path
     if source_type == 'open-vsx':
-        return download_open_vsx(entry)
+        return download_open_vsx(entry, source_policy=source_policy)
     raise BuildError(f'unsupported extension source type: {source_type}')
 
 
@@ -273,7 +521,7 @@ def validate_vsix(entry: dict[str, Any], source_path: Path) -> dict[str, Any]:
 
     browser_path = PurePosixPath('extension') / PurePosixPath(browser.lstrip('./'))
     with zipfile.ZipFile(source_path) as archive:
-        names = set(archive.namelist())
+        names = {info.filename for info in _safe_members(archive)}
         require(
             browser_path.as_posix() in names,
             f'VSIX browser entrypoint missing for {entry["id"]}: {browser}',
@@ -287,9 +535,11 @@ def install_locked_extensions(
     *,
     root: Path = ROOT,
     license_policy_path: Path = ROOT / 'extensions/license-policy.json',
+    source_policy_path: Path = ROOT / 'extensions/source-policy.json',
 ) -> list[dict[str, Any]]:
     lock = load_extension_lock(lock_path)
     policy = load_license_policy(license_policy_path)
+    source_policy = load_source_policy(source_policy_path)
     installed: list[dict[str, Any]] = []
     extroot = dist / 'extensions'
     extroot.mkdir(parents=True, exist_ok=True)
@@ -313,7 +563,7 @@ def install_locked_extensions(
             entry['id'] not in existing_ids,
             f'extension id already exists in distribution: {entry["id"]}',
         )
-        vsix = materialize_vsix(entry, root=root)
+        vsix = materialize_vsix(entry, root=root, source_policy=source_policy)
         manifest = validate_vsix(entry, vsix)
         effective_license = enforce_license_policy(entry, manifest, policy)
         destination = extroot / entry['id']
@@ -323,7 +573,7 @@ def install_locked_extensions(
             temp = Path(td)
             with zipfile.ZipFile(vsix) as archive:
                 members = _safe_members(archive)
-                archive.extractall(temp, members=members)
+                _extract_members_bounded(archive, temp, members)
             extracted = temp / 'extension'
             require(extracted.is_dir(), f'VSIX extension directory missing: {vsix}')
             shutil.copytree(extracted, destination, symlinks=False)
@@ -348,13 +598,17 @@ def main() -> None:
     parser.add_argument(
         '--license-policy', type=Path, default=ROOT / 'extensions/license-policy.json'
     )
+    parser.add_argument(
+        '--source-policy', type=Path, default=ROOT / 'extensions/source-policy.json'
+    )
     parser.add_argument('--dist', type=Path)
     args = parser.parse_args()
     lock = load_extension_lock(args.lock)
     policy = load_license_policy(args.license_policy)
+    source_policy = load_source_policy(args.source_policy)
     if args.dist is None:
         for entry in lock['extensions']:
-            vsix = materialize_vsix(entry)
+            vsix = materialize_vsix(entry, source_policy=source_policy)
             manifest = validate_vsix(entry, vsix)
             enforce_license_policy(entry, manifest, policy)
         print(f'validated {len(lock["extensions"])} locked extension(s)')
@@ -363,6 +617,7 @@ def main() -> None:
         args.dist.resolve(),
         args.lock.resolve(),
         license_policy_path=args.license_policy.resolve(),
+        source_policy_path=args.source_policy.resolve(),
     )
     print(f'installed {len(installed)} locked extension(s)')
 

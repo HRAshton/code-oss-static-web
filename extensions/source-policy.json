@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "allowedOpenVsxRegistries": [
+    "https://open-vsx.org"
+  ],
+  "allowedOpenVsxDownloadOrigins": [
+    "https://open-vsx.org",
+    "https://openvsx.eclipsecontent.org"
+  ]
+}
