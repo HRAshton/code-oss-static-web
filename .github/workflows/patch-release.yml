@@ -58,20 +58,22 @@ jobs:
 
           latest_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$latest_tag" --jq '.sha')"
           if [[ "$latest_sha" == "$master_sha" ]]; then
-            echo "$latest_tag already points to current master; retry that immutable release instead." >&2
-            exit 1
+            target_tag="$latest_tag"
+            intent='retry existing immutable publication'
+          else
+            target_tag="v${version}-web.$((max_revision + 1))"
+            intent='qualify new patch release'
           fi
 
-          next_tag="v${version}-web.$((max_revision + 1))"
           echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
-          echo "next_tag=$next_tag" >> "$GITHUB_OUTPUT"
+          echo "target_tag=$target_tag" >> "$GITHUB_OUTPUT"
           {
-            echo "Patch release candidate: $next_tag"
+            echo "Patch release target: $target_tag"
             echo "Source commit: $master_sha"
-            echo "Previous release tag: $latest_tag"
+            echo "Intent: $intent"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Start full patch qualification
+      - name: Start patch qualification or publication recovery
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ steps.release.outputs.default_branch }}

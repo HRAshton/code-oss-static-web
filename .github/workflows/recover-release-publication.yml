@@ -59,11 +59,13 @@ jobs:
           source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID")"
           jq -e \
             --arg sha "$GITHUB_SHA" \
+            --arg tag "$GITHUB_REF_NAME" \
             '
               .status == "completed" and
               .event == "workflow_dispatch" and
               .name == "Release" and
               .path == ".github/workflows/release.yml" and
+              .head_branch == $tag and
               .head_sha == $sha
             ' <<<"$source_run" >/dev/null
 

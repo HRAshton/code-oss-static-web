@@ -51,15 +51,17 @@ security fix must ship before the next Microsoft release.
 The dispatcher is fail-closed:
 
 1. the current Microsoft version must already have a `web.0` tag;
-2. current `master` must differ from the latest `web.N` tag for that Microsoft version;
-3. the full Chromium/Firefox/WebKit qualification runs again with `release_mode=patch`;
+2. if current `master` already matches the latest `web.N` tag, the request is treated as a retry
+   of that immutable release and routes directly to artifact-only publication recovery;
+3. otherwise, full Chromium/Firefox/WebKit qualification runs with `release_mode=patch`;
 4. after qualification succeeds, the workflow selects one greater than the highest existing
    revision and creates that immutable tag;
-5. the independent Release workflow rebuilds and publishes the immutable patch release;
+5. the independent Release workflow rebuilds and publishes the new immutable patch release;
 6. automatic promotion verifies canary and advances stable to that same immutable release.
 
-For example, if `v1.140.0-web.0` already exists and a project fix is merged, the next successful
-patch release is `v1.140.0-web.1`.
+For example, if `v1.140.0-web.0` exists on an older commit and a project fix is merged, the next
+successful patch release is `v1.140.0-web.1`. Re-running Patch release without changing `master`
+keeps the existing `web.N` tag and enters recovery instead of allocating another revision.
 
 ## Retry versus patch
 

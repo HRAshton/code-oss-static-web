@@ -460,6 +460,49 @@ def check_release_publication_boundaries(workflow: Path, text: str) -> None:
         )
 
 
+def check_qualification_release_retry_policy() -> None:
+    workflow = ROOT / '.github/workflows/qualify.yml'
+    text = workflow.read_text(encoding='utf-8')
+
+    for required in (
+        'release_tag: ${{ steps.plan.outputs.release_tag }}',
+        'retry_tag: ${{ steps.plan.outputs.retry_tag }}',
+        'release_tag="$latest_tag"',
+        'retry_tag="$release_tag"',
+        "needs.browser-plan.outputs.retry_tag == ''",
+        'recover-publication:',
+        'actions/workflows/release.yml/runs',
+        '-f head_sha="$GITHUB_SHA"',
+        '.head_branch == $tag',
+        '.head_sha == $sha',
+        'gh workflow run recover-release-publication.yml',
+        '-f release_run_id="$release_run_id"',
+        '-f channel=all',
+    ):
+        require(required in text, f'qualification retry path missing recovery guard: {required}')
+
+    for forbidden in (
+        'publication is complete',
+        'gh release view "$RELEASE_TAG"',
+        'already points to this qualification commit',
+    ):
+        require(
+            forbidden not in text,
+            f'qualification retry path must not infer publication completion: {forbidden}',
+        )
+
+    patch = (ROOT / '.github/workflows/patch-release.yml').read_text(encoding='utf-8')
+    require(
+        "intent='retry existing immutable publication'" in patch
+        and 'target_tag="$latest_tag"' in patch,
+        'patch release dispatcher must carry same-commit tags into publication recovery',
+    )
+    require(
+        'already points to current master' not in patch,
+        'patch release dispatcher must not reject same-commit publication retries',
+    )
+
+
 def check_recovery_publication_boundaries() -> None:
     workflow = ROOT / '.github/workflows/recover-release-publication.yml'
     require(workflow.is_file(), 'release publication recovery workflow missing')
@@ -478,6 +521,7 @@ def check_recovery_publication_boundaries() -> None:
         'channel:',
         'repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID',
         '.path == ".github/workflows/release.yml"',
+        '.head_branch == $tag',
         '.head_sha == $sha',
         'required preparation job did not succeed exactly once',
         'release-static-dist',
@@ -784,6 +828,7 @@ def main() -> None:
     check_build_job_permissions()
     check_attestation_job_permissions()
     check_publication_job_permissions()
+    check_qualification_release_retry_policy()
     check_recovery_publication_boundaries()
     check_promotion_boundaries()
     check_release_integrity_policy()
