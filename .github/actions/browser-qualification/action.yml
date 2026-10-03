@@ -11,7 +11,7 @@ inputs:
     description: Workflow artifact containing the locked Playwright runtime.
     required: true
   scope:
-    description: Qualification scope: smoke or full.
+    description: Qualification scope (smoke or full).
     required: false
     default: full
   diagnostics-artifact:

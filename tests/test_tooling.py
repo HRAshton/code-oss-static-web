@@ -689,6 +689,13 @@ python-version: ${{ steps.versions.outputs.python }}
             workflow,
         )
 
+    def test_github_actions_yaml_checker_covers_actions_and_yaml_extensions(self):
+        checker = (ROOT / 'scripts/check_workflow_yaml.rb').read_text()
+        self.assertIn("Dir['.github/workflows/*.yml']", checker)
+        self.assertIn("Dir['.github/workflows/*.yaml']", checker)
+        self.assertIn("Dir['.github/actions/**/action.yml']", checker)
+        self.assertIn("Dir['.github/actions/**/action.yaml']", checker)
+
     def test_workflow_actions_are_commit_pinned(self):
         import re
 
