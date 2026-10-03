@@ -1,11 +1,158 @@
 # Operations
 
-## Recovering a partial release publication
+## Promotion model
 
-Release publication has three independent channels: GitHub Release assets, GitHub Pages, and the
-GHCR image. Completion of one channel is not evidence that either of the other channels completed.
-The authoritative record for an automated attempt is the job result for each publication channel in
-the `Release` or `Recover release publication` workflow.
+Immutable release creation and organizational deployment are separate operations:
+
+```text
+immutable v*-web.* release
+        |
+        v
+      canary
+        |
+        v
+      stable
+```
+
+The immutable release contains the GitHub Release assets, attestations, and the release-tagged GHCR
+image. Promotion never rebuilds, repackages, re-attests, or changes that release. The
+`Promote immutable release` workflow downloads the published GitHub Release archive, verifies the
+published checksums and GitHub attestations, and binds the promotion to:
+
+- immutable release tag and commit;
+- GitHub Release ID;
+- canonical distribution tree SHA-256 and file count;
+- release archive SHA-256;
+- promotion profile and SHA-256 of `config/promotion-policy.json`.
+
+Successful canary and stable promotions are recorded as GitHub Deployments. The latest successful
+deployment in each environment is the channel pointer; previous successful deployments are the audit
+history. GitHub additionally records the actor, workflow run, timestamps, and deployment statuses.
+
+The default promotion policy is fully automatic. A successful immutable release dispatches
+`target=auto`, which verifies canary and then promotes the same immutable identity to stable without
+human action. Automatic promotion refuses to move canary or stable behind the currently successful
+stable release.
+
+### Audit channel state
+
+List recent promotion records:
+
+```bash
+gh api "repos/HRAshton/code-oss-static-web/deployments?environment=canary&per_page=20"
+gh api "repos/HRAshton/code-oss-static-web/deployments?environment=stable&per_page=20"
+```
+
+For a deployment ID, inspect both the recorded immutable identity and its latest status:
+
+```bash
+DEPLOYMENT_ID=123456
+gh api "repos/HRAshton/code-oss-static-web/deployments/$DEPLOYMENT_ID"
+gh api "repos/HRAshton/code-oss-static-web/deployments/$DEPLOYMENT_ID/statuses?per_page=1"
+```
+
+The deployment payload is authoritative for the promoted release/artifact/policy identity. A channel
+is changed only by a new successful deployment record; immutable release tags and release assets are
+never moved or replaced.
+
+### Manual canary promotion
+
+Manual canary promotion is useful for replaying a failed automatic promotion or deliberately
+re-evaluating an immutable release:
+
+```bash
+TAG=v1.140.0-web.0
+
+gh workflow run promote.yml \
+  --ref master \
+  -f release_tag="$TAG" \
+  -f target=canary
+```
+
+The workflow executes from current protected `master`, but all deployed bytes and release identity
+come from the immutable GitHub Release named by `TAG`.
+
+### Stable promotion
+
+A new release may move to stable only after the same release/artifact identity has a successful canary
+record. The normal `target=auto` path satisfies that requirement in one promotion run.
+
+To finish a release whose canary succeeded but stable failed:
+
+```bash
+TAG=v1.140.0-web.0
+
+gh workflow run promote.yml \
+  --ref master \
+  -f release_tag="$TAG" \
+  -f target=stable
+```
+
+Stable promotion deploys GitHub Pages from the verified immutable release archive. It does not use a
+source checkout as release content and does not invoke `build.sh`, `package.sh`, or
+`actions/attest`.
+
+Forward stable promotion requires a canary recorded with the same complete promotion identity,
+including the promotion policy/profile digest. If the policy changes after canary, rerun canary under
+the current policy before promoting forward to stable.
+
+### Roll back stable
+
+Rollback is another stable promotion to an older immutable release that previously succeeded in the
+stable environment. During migration to this model, a successful historical `github-pages`
+deployment also counts as prior stable evidence, so the first post-migration rollback can return to
+the production release that existed before `stable` deployment records were introduced. Rollback
+creates a new deployment record; it does not move or recreate a release tag.
+
+First identify a previous successful stable deployment and its `payload.release.tag`, then run:
+
+```bash
+PREVIOUS_TAG=v1.139.1-web.2
+
+gh workflow run promote.yml \
+  --ref master \
+  -f release_tag="$PREVIOUS_TAG" \
+  -f target=stable
+```
+
+The workflow permits a backward stable transition only when that exact immutable release/artifact
+identity has successful stable history or the target commit has a successful legacy
+`github-pages` deployment. Historical rollback eligibility intentionally does not require the old
+promotion-policy digest to match: the new rollback attempt is evaluated under, and records, the
+current promotion policy/profile. GitHub Pages is redeployed when its currently served successful
+deployment does not match the rollback commit, even if that older commit was deployed in the past.
+
+Canary is not implicitly rolled back when stable is rolled back. Move canary separately if the
+operational intent is for both channel pointers to reference the same previous release.
+
+### Recover a failed promotion
+
+Promotion is retry-safe because it always re-resolves immutable GitHub Release assets and records a
+new deployment attempt.
+
+- If authorization, checksum, attestation, or canary verification fails, stable is untouched.
+- If stable fails before Pages succeeds, fix the external/configuration problem and rerun
+  `target=stable`; no new release is created.
+- If Pages succeeded but the promotion run failed before recording stable success, rerunning
+  `target=stable` re-resolves the same immutable release identity and safely redeploys the verified
+  bytes before recording stable success; it never rebuilds release content.
+- If an automatic promotion is stale relative to a newer stable release, it fails closed instead of
+  rolling stable backward.
+- If the requested backward target has neither stable history nor a successful legacy Pages
+  deployment, the workflow refuses the rollback.
+- Promotion uses durable GitHub Release assets rather than expiring workflow artifacts, so rollback
+  does not depend on the original release run's artifact-retention window.
+
+Human intervention is required only when the automated checks cannot prove a safe transition, for an
+explicit rollback, or for a deliberate promotion-policy change. Routine Microsoft upstream release
+promotion remains automatic.
+
+## Recovering a partial immutable release publication
+
+Immutable release publication has two independent channels: GitHub Release assets and the immutable
+release-tagged GHCR image. Completion of one channel is not evidence that the other completed.
+GitHub Pages is stable promotion state and is recovered through the promotion workflow above, not
+through immutable release publication recovery.
 
 Use publication recovery only after the source `Release` workflow reached and successfully completed
 its preparation boundary: authorization, clean build, reproducibility comparison, Chromium release
@@ -16,8 +163,8 @@ their retained artifacts. It never runs `build.sh`, `package.sh`, or `actions/at
 
 Record both the immutable release tag and the workflow-run ID of the failed or partially failed
 `Release` run. The recovery workflow must be dispatched on that exact tag, and the source run must
-have the same `head_sha`; the recovery run itself is dispatched on the immutable tag. Do not create
-a new `web.N` revision for a transient publication failure.
+have the same `head_sha`. Do not create a new `web.N` revision for a transient publication
+failure.
 
 Example:
 
@@ -26,15 +173,14 @@ TAG=v1.140.0-web.0
 RELEASE_RUN_ID=123456789
 ```
 
-### Inspect channel state
+### Inspect immutable publication state
 
 | Channel | Complete state | Retry behavior | Conflict behavior |
 | --- | --- | --- | --- |
 | GitHub Release | Published release has exactly the expected assets with matching SHA-256 digests | Matching published releases are verification-only; an interrupted draft may upload only its missing expected assets and is published only after the complete set verifies | Missing assets on an already-published release, unexpected assets, or mismatching bytes fail closed; published assets are never changed |
-| GitHub Pages | Pages deployment for the release commit reports `succeed` | Already-successful deployment is reused; otherwise the retained `release-static-dist` is deployed | A failed deployment can be retried independently without rebuilding the distribution |
 | GHCR | Both amd64 and arm64 child images have the expected release labels and their complete served file trees exactly match `release-static-dist` | A matching existing tag is reused; a confirmed-missing tag is rebuilt only as channel packaging from retained `release-static-dist` and then verified | An existing tag with missing, changed, or extra served files on either platform, or an indeterminate registry lookup, fails closed and is not overwritten |
 
-### Recover one channel
+### Recover one immutable publication channel
 
 Use the retained artifacts from the original Release run:
 
@@ -47,34 +193,34 @@ gh workflow run recover-release-publication.yml \
 gh workflow run recover-release-publication.yml \
   --ref "$TAG" \
   -f release_run_id="$RELEASE_RUN_ID" \
-  -f channel=pages
-
-gh workflow run recover-release-publication.yml \
-  --ref "$TAG" \
-  -f release_run_id="$RELEASE_RUN_ID" \
   -f channel=ghcr
 ```
 
-Use `channel=all` when more than one channel needs verification or recovery. The workflow uses the
-same `release-${ref}` concurrency group as normal publication, so recovery cannot race another
+Use `channel=all` when both channels need verification or recovery. The workflow uses the same
+`release-${ref}` concurrency group as normal immutable publication, so recovery cannot race another
 publication attempt for the same immutable tag.
 
-### Failure states
+### Immutable publication failure states
 
-- If `authorize`, `build`, `reproducibility`, `browser (chromium)`, `package`, or `attest` did not
-  succeed in the source Release run, publication recovery refuses to proceed. That is a
-  pre-publication failure, not a partial-publication failure.
-- If a required retained artifact has expired, automated publication recovery refuses to reconstruct
-  release content from source. Escalate for a deliberate maintainer decision rather than silently
-  rebuilding or changing an immutable publication.
+- If `authorize`, `build`, `reproducibility`, `browser (chromium)`, `package`, or `attest`
+  did not succeed in the source Release run, publication recovery refuses to proceed.
+- If a required retained artifact has expired, automated immutable publication recovery refuses to
+  reconstruct release content from source. This limitation applies to repairing GitHub Release/GHCR
+  publication; promotion and rollback use durable published GitHub Release assets once publication
+  succeeded.
 - If GitHub Release or GHCR already contains conflicting immutable content, recovery fails closed.
   Investigate the repository audit trail and registry/release state; do not use clobber or move the
   release tag.
-- A successful GitHub Release by itself does not imply Pages or GHCR success. Verify the individual
-  channel jobs or run recovery with `channel=all`.
 
 ### Post-recovery verification
 
-After recovery, confirm the selected channel job and the `publication-status` job are successful.
-For a complete release, verify all three publication channels independently as described in
-[Releasing](docs/releasing.md).
+After recovery, confirm the selected channel job and `publication-status` job are successful. Once
+both immutable channels are complete, run or rerun automatic promotion if necessary:
+
+```bash
+gh workflow run promote.yml \
+  --ref master \
+  -f release_tag="$TAG" \
+  -f source_release_run_id="$RELEASE_RUN_ID" \
+  -f target=auto
+```

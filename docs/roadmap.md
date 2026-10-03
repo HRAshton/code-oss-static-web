@@ -42,7 +42,11 @@
 - [x] canonical GitHub Release workflow;
 - [x] Pages deployment from the exact canonical `dist/`;
 - [x] OCI image built from that same `dist/`;
-- [x] reproducible full-build comparison gate.
+- [x] reproducible full-build comparison gate;
+- [x] separate immutable release publication from canary/stable promotion;
+- [x] automatically promote successful releases through canary to stable without human action;
+- [x] bind auditable promotion records to immutable release/artifact/policy identity and support
+  rollback by promotion state.
 
 ## Engineering policy
 

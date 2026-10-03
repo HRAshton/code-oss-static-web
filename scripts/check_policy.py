@@ -418,12 +418,14 @@ def check_pages_release_gate(workflow: Path, jobs: dict[str, str], evidence_job:
 
 
 def check_publication_job_permissions() -> None:
+    evidence_jobs = {
+        'recover-release-publication.yml': 'authorize-recovery',
+        'promote.yml': 'authorize',
+    }
     for workflow in workflow_definition_paths():
         text = workflow.read_text(encoding='utf-8')
         jobs = dict(workflow_job_blocks(text))
-        evidence_job = (
-            'authorize-recovery' if workflow.name == 'recover-release-publication.yml' else 'attest'
-        )
+        evidence_job = evidence_jobs.get(workflow.name, 'attest')
         has_pages_publication = False
         for job_name, block in jobs.items():
             publication_permissions = publication_write_permissions(block).intersection(
@@ -439,6 +441,11 @@ def check_publication_job_permissions() -> None:
 def check_release_publication_boundaries(workflow: Path, text: str) -> None:
     jobs = dict(workflow_job_blocks(text))
 
+    require('pages' not in jobs, 'immutable release workflow must not deploy GitHub Pages')
+    require(
+        'uses: ./.github/actions/publish-pages' not in text,
+        'immutable release workflow must not contain mutable Pages promotion',
+    )
     for job_name in ('github-release', 'oci'):
         block = jobs.get(job_name)
         require(block is not None, f'{workflow.relative_to(ROOT)}: missing {job_name} job')
@@ -451,21 +458,6 @@ def check_release_publication_boundaries(workflow: Path, text: str) -> None:
             'attest' in workflow_job_needs(block),
             f'{workflow.relative_to(ROOT)}:{job_name}: publication must depend on attestation',
         )
-
-    check_pages_release_gate(workflow, jobs, 'attest')
-
-    pages = jobs.get('pages')
-    require(pages is not None, f'{workflow.relative_to(ROOT)}: missing pages publication job')
-    assert pages is not None
-    require(
-        workflow_job_environment(pages) == 'github-pages',
-        f'{workflow.relative_to(ROOT)}:pages: must use github-pages deployment environment',
-    )
-    page_needs = workflow_job_needs(pages)
-    require(
-        {'attest', 'pages-release-gate'}.issubset(page_needs),
-        f'{workflow.relative_to(ROOT)}:pages: must depend on attestation and release gate',
-    )
 
 
 def check_recovery_publication_boundaries() -> None:
@@ -503,6 +495,12 @@ def check_recovery_publication_boundaries() -> None:
             f'publication recovery must not regenerate immutable release content: {forbidden}',
         )
 
+    require('pages' not in jobs, 'immutable release recovery must not deploy GitHub Pages')
+    require(
+        'uses: ./.github/actions/publish-pages' not in text,
+        'immutable release recovery must not change stable deployment state',
+    )
+
     for job_name in ('github-release', 'oci'):
         block = jobs.get(job_name)
         require(block is not None, f'publication recovery missing {job_name} job')
@@ -516,23 +514,9 @@ def check_recovery_publication_boundaries() -> None:
             f'publication recovery {job_name} must depend on authorization',
         )
 
-    check_pages_release_gate(workflow, jobs, 'authorize-recovery')
-    pages = jobs.get('pages')
-    require(pages is not None, 'publication recovery missing Pages job')
-    assert pages is not None
-    require(
-        workflow_job_environment(pages) == 'github-pages',
-        'publication recovery Pages job must use github-pages environment',
-    )
-    require(
-        {'authorize-recovery', 'pages-release-gate'}.issubset(workflow_job_needs(pages)),
-        'publication recovery Pages job must depend on authorization and release gate',
-    )
-
     for required in (
         'run-id: ${{ inputs.release_run_id }}',
         'uses: ./.github/actions/publish-github-release',
-        'uses: ./.github/actions/publish-pages',
         'uses: ./.github/actions/publish-oci',
         'group: release-${{ github.ref }}',
         'publication-status:',
@@ -540,9 +524,114 @@ def check_recovery_publication_boundaries() -> None:
         require(required in text, f'publication recovery missing: {required}')
 
     require(
-        text.count('name: Verify immutable release ref') == 3,
-        'publication recovery must verify the immutable tag before every publication path',
+        text.count('name: Verify immutable release ref') == 2,
+        'publication recovery must verify the immutable tag before both publication paths',
     )
+
+
+def check_promotion_boundaries() -> None:
+    workflow = ROOT / '.github/workflows/promote.yml'
+    require(workflow.is_file(), 'immutable release promotion workflow missing')
+    text = workflow.read_text(encoding='utf-8')
+    jobs = dict(workflow_job_blocks(text))
+
+    for forbidden in (
+        './build.sh',
+        'package.sh',
+        'actions/attest@',
+        'uses: ./.github/actions/publish-oci',
+        'uses: ./.github/actions/publish-github-release',
+    ):
+        require(
+            forbidden not in text,
+            f'promotion must not regenerate immutable release: {forbidden}',
+        )
+
+    authorize = jobs.get('authorize')
+    require(authorize is not None, 'promotion workflow must have an authorization job')
+    assert authorize is not None
+    require(
+        publication_write_permissions(authorize) == set(),
+        'promotion authorization must be read-only',
+    )
+
+    canary = jobs.get('canary')
+    require(canary is not None, 'promotion workflow must have a canary job')
+    assert canary is not None
+    require(
+        'authorize' in workflow_job_needs(canary),
+        'canary promotion must depend on authorization',
+    )
+    require('deployments: write' in canary, 'canary promotion must record GitHub deployment state')
+    require(
+        publication_write_permissions(canary).intersection({'contents', 'packages', 'pages'})
+        == set(),
+        'canary promotion must not publish immutable release channels or Pages',
+    )
+
+    check_pages_release_gate(workflow, jobs, 'authorize')
+    stable = jobs.get('stable')
+    require(stable is not None, 'promotion workflow must have a stable job')
+    assert stable is not None
+    require(
+        workflow_job_environment(stable) == 'github-pages',
+        'stable promotion must deploy through github-pages environment',
+    )
+    require(
+        {'authorize', 'canary', 'pages-release-gate'}.issubset(workflow_job_needs(stable)),
+        'stable promotion must depend on authorization, canary, and release gate',
+    )
+    require('deployments: write' in stable, 'stable promotion must record GitHub deployment state')
+    require('pages: write' in stable, 'stable promotion must own Pages deployment')
+    require(
+        'uses: ./.github/actions/publish-pages' in stable,
+        'stable promotion must use the shared Pages publication action',
+    )
+
+    for required in (
+        'group: promotion-state',
+        'release_tag:',
+        'source_release_run_id:',
+        'target:',
+        'gh release download',
+        'gh attestation verify',
+        'scripts/promotion.py',
+        'promotion-identity.json',
+        '--argjson identity "$target_identity"',
+        '--argjson releaseArtifact "$target_release_artifact"',
+        '[.[] | select(.state == "success")] | length',
+        'environment: "canary"',
+        'environment: "stable"',
+        'automatic promotion refuses to move stable backward',
+        'previous stable deployment history',
+        'environment=github-pages&ref=$RELEASE_COMMIT',
+        'promotion-status:',
+    ):
+        require(required in text, f'promotion workflow missing invariant: {required}')
+
+    pages_action = (ROOT / '.github/actions/publish-pages/action.yml').read_text(encoding='utf-8')
+    require(
+        'pages/deployments/$GITHUB_SHA' in pages_action,
+        'Pages publication must verify the exact Pages deployment created by the workflow',
+    )
+    require(
+        'deployments?environment=github-pages' not in pages_action,
+        'Pages publication must not infer completion from generic environment deployment state',
+    )
+    require(
+        'steps.state.outputs.complete' not in pages_action,
+        'Pages promotion must replay the verified immutable bytes on every attempt',
+    )
+
+    release = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+    for required in (
+        'immutable-publication-status:',
+        'gh workflow run promote.yml',
+        '--ref "$GITHUB_REF_NAME"',
+        '-f source_release_run_id="$GITHUB_RUN_ID"',
+        '-f target=auto',
+    ):
+        require(required in release, f'release workflow missing automatic promotion: {required}')
 
 
 def check_release_integrity_policy() -> None:
@@ -577,14 +666,6 @@ def check_release_integrity_policy() -> None:
     require(
         re.search(r'^    needs:\s*authorize\s*$', build, re.MULTILINE) is not None,
         'release build must depend on release authorization',
-    )
-
-    pages = jobs.get('pages')
-    require(pages is not None, 'release workflow must have a Pages publication job')
-    assert pages is not None
-    require(
-        'attest' in workflow_job_needs(pages),
-        'Pages publication must depend on attestation',
     )
 
     oci = jobs.get('oci')
@@ -645,8 +726,8 @@ def check_release_integrity_policy() -> None:
     )
 
     require(
-        workflow.count('name: Verify immutable release ref') == 3,
-        'release workflow must verify the immutable tag before every publication path',
+        workflow.count('name: Verify immutable release ref') == 2,
+        'release workflow must verify the immutable tag before both immutable publication paths',
     )
     for required in (
         'repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME',
@@ -704,6 +785,7 @@ def main() -> None:
     check_attestation_job_permissions()
     check_publication_job_permissions()
     check_recovery_publication_boundaries()
+    check_promotion_boundaries()
     check_release_integrity_policy()
     print('repository policy: ok')
 

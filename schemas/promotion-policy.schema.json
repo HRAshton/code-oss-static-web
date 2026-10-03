@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "profile", "automatic", "channels"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "profile": {"type": "string", "minLength": 1},
+    "automatic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "order"],
+      "properties": {
+        "enabled": {"const": true},
+        "order": {
+          "type": "array",
+          "minItems": 2,
+          "items": {"enum": ["canary", "stable"]}
+        }
+      }
+    },
+    "channels": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["canary", "stable"],
+      "properties": {
+        "canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["environment"],
+          "properties": {
+            "environment": {"const": "canary"}
+          }
+        },
+        "stable": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["environment", "requiresCanary", "deployPages"],
+          "properties": {
+            "environment": {"const": "stable"},
+            "requiresCanary": {"const": true},
+            "deployPages": {"const": true}
+          }
+        }
+      }
+    }
+  }
+}

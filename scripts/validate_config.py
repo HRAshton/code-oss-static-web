@@ -15,6 +15,7 @@ from extension_lock import (
     load_license_policy,
     load_source_policy,
 )
+from promotion import load_promotion_policy
 
 COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 DIGEST_RE = re.compile(r'^[0-9a-f]{64}$')
@@ -246,6 +247,7 @@ def validate_all() -> None:
     validate_json_syntax()
     validate_upstream_lock(ROOT / 'upstream.lock.json')
     validate_patch_manifest(ROOT / 'patches/manifest.json')
+    load_promotion_policy(ROOT / 'config/promotion-policy.json')
     selected = load_selected_profile()
     validate_profile_documents(selected)
     baseline = load_profile('baseline-static')

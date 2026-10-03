@@ -1,0 +1,651 @@
+name: Promote immutable release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Immutable v*-web.* release to promote
+        required: true
+        type: string
+      source_release_run_id:
+        description: Optional Release workflow run that created the immutable publication
+        required: false
+        default: ''
+        type: string
+      target:
+        description: Promotion target
+        required: true
+        default: auto
+        type: choice
+        options:
+          - auto
+          - canary
+          - stable
+
+concurrency:
+  group: promotion-state
+  cancel-in-progress: false
+
+permissions: read-all
+
+jobs:
+  authorize:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      release-commit: ${{ steps.release.outputs.release-commit }}
+      archive-name: ${{ steps.identity.outputs.archive-name }}
+      tree-sha256: ${{ steps.identity.outputs.tree-sha256 }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical Python
+        uses: ./.github/actions/setup-toolchain
+        with:
+          node: 'false'
+
+      - name: Verify promotion policy
+        run: python3 scripts/validate_config.py
+
+      - name: Verify immutable release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_RELEASE_RUN_ID: ${{ inputs.source_release_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v.+-web\.(0|[1-9][0-9]*)$ ]]; then
+            echo "invalid immutable release tag: $RELEASE_TAG" >&2
+            exit 2
+          fi
+
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
+          jq -e --arg tag "$RELEASE_TAG" '
+            .tag_name == $tag and
+            .draft == false and
+            .prerelease == false
+          ' <<<"$release" >/dev/null
+          release_id="$(jq -r '.id' <<<"$release")"
+          [[ "$release_id" =~ ^[1-9][0-9]*$ ]]
+
+          release_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')"
+          if [[ ! "$release_commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "invalid immutable release commit: $release_commit" >&2
+            exit 1
+          fi
+
+          expected_pattern='refs/tags/v*-web.*'
+          protected=0
+          while IFS= read -r ruleset_id; do
+            [[ -n "$ruleset_id" ]] || continue
+            ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id")"
+            if jq -e --arg pattern "$expected_pattern" '
+              (.target == "tag") and
+              (.enforcement == "active") and
+              (((.conditions.ref_name.include // []) | index($pattern)) != null) and
+              ((([.rules[].type] | index("update")) != null)) and
+              ((([.rules[].type] | index("deletion")) != null)) and
+              (((.bypass_actors // []) | length) == 0)
+            ' <<<"$ruleset" >/dev/null; then
+              protected=1
+              break
+            fi
+          done < <(
+            gh api "repos/$GITHUB_REPOSITORY/rulesets"               --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id'
+          )
+          if [[ "$protected" != 1 ]]; then
+            echo "no active immutable release-tag ruleset protects $expected_pattern" >&2
+            exit 1
+          fi
+
+          release_commit_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')"
+          if [[ "$release_commit_after" != "$release_commit" ]]; then
+            echo "immutable release tag moved during promotion authorization" >&2
+            exit 1
+          fi
+
+          if [[ -n "$SOURCE_RELEASE_RUN_ID" ]]; then
+            if [[ ! "$SOURCE_RELEASE_RUN_ID" =~ ^[1-9][0-9]*$ ]]; then
+              echo "source_release_run_id must be a positive integer" >&2
+              exit 2
+            fi
+            source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RELEASE_RUN_ID")"
+            jq -e --arg sha "$release_commit" '
+              .event == "workflow_dispatch" and
+              .name == "Release" and
+              .path == ".github/workflows/release.yml" and
+              .head_sha == $sha
+            ' <<<"$source_run" >/dev/null
+
+            jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RELEASE_RUN_ID/jobs?per_page=100")"
+            for job in authorize build reproducibility package attest github-release oci immutable-publication-status; do
+              count="$(jq --arg name "$job" '[.jobs[] | select(.name == $name and .conclusion == "success")] | length' <<<"$jobs")"
+              if [[ "$count" != 1 ]]; then
+                echo "source release job did not succeed exactly once: $job" >&2
+                exit 1
+              fi
+            done
+            browser_count="$(jq '[.jobs[] | select(.name == "browser (chromium)" and .conclusion == "success")] | length' <<<"$jobs")"
+            if [[ "$browser_count" != 1 ]]; then
+              echo "source release Chromium qualification did not succeed exactly once" >&2
+              exit 1
+            fi
+          fi
+
+          {
+            echo "release-id=$release_id"
+            echo "release-commit=$release_commit"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download immutable release identity
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .work/promotion
+          gh release download "$RELEASE_TAG"             --repo "$GITHUB_REPOSITORY"             --dir .work/promotion             --pattern artifact-manifest.json             --pattern SHA256SUMS
+
+          archive_name="$(
+            jq -r '
+              [.artifacts[].name | select(endswith(".tar.gz"))]
+              | if length == 1 then .[0] else error("expected exactly one release tar.gz") end
+            ' .work/promotion/artifact-manifest.json
+          )"
+          gh release download "$RELEASE_TAG"             --repo "$GITHUB_REPOSITORY"             --dir .work/promotion             --pattern "$archive_name"
+
+      - name: Verify immutable release attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_name="$(
+            jq -r '
+              [.artifacts[].name | select(endswith(".tar.gz"))]
+              | if length == 1 then .[0] else error("expected exactly one release tar.gz") end
+            ' .work/promotion/artifact-manifest.json
+          )"
+          for asset in artifact-manifest.json "$archive_name"; do
+            gh attestation verify ".work/promotion/$asset"               --repo "$GITHUB_REPOSITORY"               --source-ref "refs/tags/$RELEASE_TAG" >/dev/null
+          done
+
+      - name: Bind promotion identity
+        id: identity
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.release-commit }}
+          RELEASE_ID: ${{ steps.release.outputs.release-id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_name="$(
+            jq -r '
+              [.artifacts[].name | select(endswith(".tar.gz"))]
+              | if length == 1 then .[0] else error("expected exactly one release tar.gz") end
+            ' .work/promotion/artifact-manifest.json
+          )"
+          python3 scripts/promotion.py             --release-tag "$RELEASE_TAG"             --release-commit "$RELEASE_COMMIT"             --release-id "$RELEASE_ID"             --manifest .work/promotion/artifact-manifest.json             --checksums .work/promotion/SHA256SUMS             --archive ".work/promotion/$archive_name"             --policy config/promotion-policy.json             --output .work/promotion/promotion-identity.json
+
+          tree_sha256="$(jq -r '.artifact.distribution.treeSha256' .work/promotion/promotion-identity.json)"
+          {
+            echo "archive-name=$archive_name"
+            echo "tree-sha256=$tree_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload promotion input
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: promotion-input
+          path: |
+            .work/promotion/promotion-identity.json
+            .work/promotion/${{ steps.identity.outputs.archive-name }}
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 6
+
+  canary:
+    if: inputs.target == 'auto' || inputs.target == 'canary'
+    needs: authorize
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical Python
+        uses: ./.github/actions/setup-toolchain
+        with:
+          node: 'false'
+
+      - name: Download promotion input
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: promotion-input
+          path: .work/promotion
+
+      - name: Reject stale automatic canary
+        if: inputs.target == 'auto'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_COMMIT: ${{ needs.authorize.outputs.release-commit }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_commit=''
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            state="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=1" --jq '.[0].state // ""')"
+            [[ "$state" == success ]] || continue
+            current_commit="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id" --jq '.payload.release.commit // ""')"
+            [[ -n "$current_commit" ]] && break
+          done < <(
+            gh api "repos/$GITHUB_REPOSITORY/deployments?environment=stable&per_page=100" --jq '.[].id'
+          )
+
+          if [[ -n "$current_commit" && "$current_commit" != "$RELEASE_COMMIT" ]]; then
+            status="$(gh api "repos/$GITHUB_REPOSITORY/compare/$current_commit...$RELEASE_COMMIT" --jq '.status')"
+            if [[ "$status" != ahead && "$status" != identical ]]; then
+              echo "automatic promotion refuses to move canary behind current stable" >&2
+              exit 1
+            fi
+          fi
+
+      - name: Record canary deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_RELEASE_RUN_ID: ${{ inputs.source_release_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq               --arg promotionRunId "$GITHUB_RUN_ID"               --arg sourceReleaseRunId "$SOURCE_RELEASE_RUN_ID"               '. + {
+                promotion: {
+                  workflowRunId: ($promotionRunId | tonumber),
+                  sourceReleaseRunId: (
+                    if $sourceReleaseRunId == "" then null else ($sourceReleaseRunId | tonumber) end
+                  )
+                }
+              }'               .work/promotion/promotion-identity.json
+          )"
+          request="$(
+            jq -n               --arg ref "$RELEASE_TAG"               --argjson payload "$payload"               '{
+                ref: $ref,
+                environment: "canary",
+                description: ("Promote " + $ref + " to canary"),
+                auto_merge: false,
+                required_contexts: [],
+                transient_environment: true,
+                production_environment: false,
+                payload: $payload
+              }'
+          )"
+          deployment="$(gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" --input - <<<"$request")"
+          deployment_id="$(jq -r '.id' <<<"$deployment")"
+          echo "id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+          status="$(
+            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               '{
+                state: "in_progress",
+                environment: "canary",
+                log_url: $log_url,
+                description: "Canary verification in progress"
+              }'
+          )"
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses"             --input - <<<"$status" >/dev/null
+
+      - name: Verify canary artifact
+        env:
+          ARCHIVE_NAME: ${{ needs.authorize.outputs.archive-name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xzf ".work/promotion/$ARCHIVE_NAME"
+          python3 scripts/smoke_static.py dist
+
+      - name: Mark canary successful
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(
+            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               '{
+                state: "success",
+                environment: "canary",
+                log_url: $log_url,
+                description: "Canary promotion verified"
+              }'
+          )"
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"             --input - <<<"$status" >/dev/null
+
+      - name: Mark canary failed
+        if: failure() && steps.deployment.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        shell: bash
+        run: |
+          status="$(
+            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               '{
+                state: "failure",
+                environment: "canary",
+                log_url: $log_url,
+                description: "Canary promotion failed"
+              }'
+          )"
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"             --input - <<<"$status" >/dev/null
+
+  pages-release-gate:
+    if: inputs.target == 'auto' || inputs.target == 'stable'
+    needs: authorize
+    runs-on: ubuntu-latest
+    environment: release
+    permissions: {}
+    steps:
+      - name: Authorize stable Pages promotion
+        run: ':'
+
+  stable:
+    if: >-
+      always() &&
+      needs.authorize.result == 'success' &&
+      needs.pages-release-gate.result == 'success' &&
+      (
+        (inputs.target == 'auto' && needs.canary.result == 'success') ||
+        inputs.target == 'stable'
+      )
+    needs: [authorize, canary, pages-release-gate]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publication.outputs.page-url }}
+    permissions:
+      contents: read
+      deployments: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download promotion input
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: promotion-input
+          path: .work/promotion
+
+      - name: Verify stable transition
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_COMMIT: ${{ needs.authorize.outputs.release-commit }}
+          TARGET: ${{ inputs.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          target_identity="$(cat .work/promotion/promotion-identity.json)"
+          target_release_artifact="$(jq -c '{release, artifact}' .work/promotion/promotion-identity.json)"
+
+          has_successful_identity() {
+            local environment="$1"
+            local deployment_id success_count deployment
+            while IFS= read -r deployment_id; do
+              [[ -n "$deployment_id" ]] || continue
+              success_count="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=100" --jq '[.[] | select(.state == "success")] | length')"
+              [[ "$success_count" -gt 0 ]] || continue
+              deployment="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id")"
+              if jq -e                 --argjson identity "$target_identity"                 '
+                  (.payload | {
+                    schemaVersion,
+                    release,
+                    artifact,
+                    policy
+                  }) == $identity
+                ' <<<"$deployment" >/dev/null; then
+                return 0
+              fi
+            done < <(
+              gh api                 "repos/$GITHUB_REPOSITORY/deployments?environment=$environment&ref=$RELEASE_TAG&per_page=100"                 --jq '.[].id'
+            )
+            return 1
+          }
+
+          has_successful_release_artifact() {
+            local environment="$1"
+            local deployment_id success_count deployment
+            while IFS= read -r deployment_id; do
+              [[ -n "$deployment_id" ]] || continue
+              success_count="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=100" --jq '[.[] | select(.state == "success")] | length')"
+              [[ "$success_count" -gt 0 ]] || continue
+              deployment="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id")"
+              if jq -e                 --argjson releaseArtifact "$target_release_artifact"                 '
+                  (.payload | {release, artifact}) == $releaseArtifact
+                ' <<<"$deployment" >/dev/null; then
+                return 0
+              fi
+            done < <(
+              gh api                 "repos/$GITHUB_REPOSITORY/deployments?environment=$environment&ref=$RELEASE_TAG&per_page=100"                 --jq '.[].id'
+            )
+            return 1
+          }
+
+          has_canary=false
+          historical_stable=false
+          legacy_pages_stable=false
+          if has_successful_identity canary; then
+            has_canary=true
+          fi
+          if has_successful_release_artifact stable; then
+            historical_stable=true
+          fi
+
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            success_count="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=100" --jq '[.[] | select(.state == "success")] | length')"
+            if [[ "$success_count" -gt 0 ]]; then
+              legacy_pages_stable=true
+              break
+            fi
+          done < <(
+            gh api               "repos/$GITHUB_REPOSITORY/deployments?environment=github-pages&ref=$RELEASE_COMMIT&per_page=100"               --jq '.[].id'
+          )
+
+          if [[ "$TARGET" == stable && "$has_canary" != true && "$historical_stable" != true && "$legacy_pages_stable" != true ]]; then
+            echo "stable promotion requires successful canary or previous stable deployment history" >&2
+            exit 1
+          fi
+
+          current_stable=''
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            state="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=1" --jq '.[0].state // ""')"
+            [[ "$state" == success ]] || continue
+            current_stable="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id")"
+            break
+          done < <(
+            gh api "repos/$GITHUB_REPOSITORY/deployments?environment=stable&per_page=100" --jq '.[].id'
+          )
+
+          if [[ -n "$current_stable" ]]; then
+            current_commit="$(jq -r '.payload.release.commit // ""' <<<"$current_stable")"
+            if [[ -n "$current_commit" && "$current_commit" != "$RELEASE_COMMIT" ]]; then
+              status="$(gh api "repos/$GITHUB_REPOSITORY/compare/$current_commit...$RELEASE_COMMIT" --jq '.status')"
+              if [[ "$status" != ahead && "$status" != identical ]]; then
+                if [[ "$TARGET" == auto ]]; then
+                  echo "automatic promotion refuses to move stable backward" >&2
+                  exit 1
+                fi
+                if [[ "$historical_stable" != true && "$legacy_pages_stable" != true ]]; then
+                  echo "backward stable promotion requires previous stable deployment history" >&2
+                  exit 1
+                fi
+                echo "Rollback: stable will point to previously stable $RELEASE_TAG"
+              fi
+            fi
+          fi
+
+      - name: Record stable deployment
+        id: deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          SOURCE_RELEASE_RUN_ID: ${{ inputs.source_release_run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(
+            jq               --arg promotionRunId "$GITHUB_RUN_ID"               --arg sourceReleaseRunId "$SOURCE_RELEASE_RUN_ID"               '. + {
+                promotion: {
+                  workflowRunId: ($promotionRunId | tonumber),
+                  sourceReleaseRunId: (
+                    if $sourceReleaseRunId == "" then null else ($sourceReleaseRunId | tonumber) end
+                  )
+                }
+              }'               .work/promotion/promotion-identity.json
+          )"
+          request="$(
+            jq -n               --arg ref "$RELEASE_TAG"               --argjson payload "$payload"               '{
+                ref: $ref,
+                environment: "stable",
+                description: ("Promote " + $ref + " to stable"),
+                auto_merge: false,
+                required_contexts: [],
+                transient_environment: false,
+                production_environment: true,
+                payload: $payload
+              }'
+          )"
+          deployment="$(gh api --method POST "repos/$GITHUB_REPOSITORY/deployments" --input - <<<"$request")"
+          deployment_id="$(jq -r '.id' <<<"$deployment")"
+          echo "id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+          status="$(
+            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               '{
+                state: "in_progress",
+                environment: "stable",
+                log_url: $log_url,
+                description: "Stable promotion in progress"
+              }'
+          )"
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses"             --input - <<<"$status" >/dev/null
+
+      - name: Verify GitHub Pages is enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh api "repos/$GITHUB_REPOSITORY/pages" >/dev/null 2>&1; then
+            echo "GitHub Pages is not enabled. Set Settings > Pages > Source to GitHub Actions." >&2
+            exit 1
+          fi
+
+      - name: Extract immutable release
+        env:
+          ARCHIVE_NAME: ${{ needs.authorize.outputs.archive-name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xzf ".work/promotion/$ARCHIVE_NAME"
+
+      - name: Publish or verify stable GitHub Pages
+        id: publication
+        uses: ./.github/actions/publish-pages
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          commit: ${{ needs.authorize.outputs.release-commit }}
+          dist-path: dist
+
+      - name: Mark stable successful
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+          PAGE_URL: ${{ steps.publication.outputs.page-url }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(
+            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               --arg environment_url "$PAGE_URL"               '{
+                state: "success",
+                environment: "stable",
+                log_url: $log_url,
+                environment_url: $environment_url,
+                description: "Stable promotion complete"
+              }'
+          )"
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"             --input - <<<"$status" >/dev/null
+
+      - name: Mark stable failed
+        if: failure() && steps.deployment.outputs.id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOYMENT_ID: ${{ steps.deployment.outputs.id }}
+        shell: bash
+        run: |
+          status="$(
+            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               '{
+                state: "failure",
+                environment: "stable",
+                log_url: $log_url,
+                description: "Stable promotion failed"
+              }'
+          )"
+          gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"             --input - <<<"$status" >/dev/null
+
+  promotion-status:
+    if: always()
+    needs: [authorize, canary, pages-release-gate, stable]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify requested promotion
+        env:
+          TARGET: ${{ inputs.target }}
+          AUTHORIZE_RESULT: ${{ needs.authorize.result }}
+          CANARY_RESULT: ${{ needs.canary.result }}
+          PAGES_GATE_RESULT: ${{ needs.pages-release-gate.result }}
+          STABLE_RESULT: ${{ needs.stable.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$AUTHORIZE_RESULT" == success ]]
+          case "$TARGET" in
+            auto)
+              [[ "$CANARY_RESULT" == success ]]
+              [[ "$PAGES_GATE_RESULT" == success ]]
+              [[ "$STABLE_RESULT" == success ]]
+              ;;
+            canary)
+              [[ "$CANARY_RESULT" == success ]]
+              ;;
+            stable)
+              [[ "$PAGES_GATE_RESULT" == success ]]
+              [[ "$STABLE_RESULT" == success ]]
+              ;;
+            *)
+              echo "unsupported promotion target: $TARGET" >&2
+              exit 2
+              ;;
+          esac
+          echo "Promotion complete: target=$TARGET release=${{ inputs.release_tag }}"
