@@ -55,6 +55,7 @@ FULL_FILES = {
     'scripts/prepare_upstream.py',
     'scripts/run_e2e.py',
     'scripts/serve_static.py',
+    'scripts/verify_dist_identity.py',
     'upstream.lock.json',
 }
 FULL_PREFIXES = (

@@ -21,6 +21,7 @@ import generate_sbom
 import make_static
 import package_release
 import validate_config
+import verify_dist_identity
 
 
 class ToolingTests(unittest.TestCase):
@@ -177,6 +178,9 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('already points to this qualification commit', workflow)
         self.assertIn('name: release-qualification', workflow)
         self.assertIn('releaseMode: $releaseMode', workflow)
+        self.assertIn('distribution: $distribution', workflow)
+        self.assertIn('name: qualification-provenance', workflow)
+        self.assertIn('qualification-provenance.sigstore.json', workflow)
         self.assertIn('gh workflow run release.yml', workflow)
         self.assertIn('qualification_run_id="$GITHUB_RUN_ID"', workflow)
 
@@ -186,6 +190,20 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('already points to current master', patch)
         self.assertIn('-f browser=all', patch)
         self.assertIn('-f release_mode=patch', patch)
+
+    def test_release_binds_qualified_distribution_before_reproducibility(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertIn('Verify qualification provenance', workflow)
+        self.assertIn('qualification-provenance.sigstore.json', workflow)
+        self.assertIn('qualified-tree-sha256', workflow)
+        self.assertIn('scripts/verify_dist_identity.py', workflow)
+        self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
+
+        identity_gate = workflow.index('Verify qualified distribution identity')
+        archive = workflow.index('Archive canonical static distribution')
+        reproducibility = workflow.index('Independent clean rebuild')
+        self.assertLess(identity_gate, archive)
+        self.assertLess(archive, reproducibility)
 
     def test_scorecard_sensitive_permissions_are_job_scoped(self):
         for path in (
@@ -265,6 +283,31 @@ class ToolingTests(unittest.TestCase):
             (candidate / 'asset.js').write_text('changed\\n')
             with self.assertRaises(compare_dist.BuildError):
                 compare_dist.compare_distributions(reference, candidate)
+
+    def test_release_distribution_identity_rejects_changed_bytes(self):
+        with tempfile.TemporaryDirectory() as td:
+            dist = Path(td) / 'dist'
+            dist.mkdir()
+            (dist / 'index.html').write_text('ok\n')
+            (dist / 'asset.js').write_text('qualified\n')
+            expected_sha256, expected_count = package_release.distribution_tree_digest(dist)
+
+            self.assertEqual(
+                verify_dist_identity.verify_distribution_identity(
+                    dist,
+                    expected_sha256=expected_sha256,
+                    expected_file_count=expected_count,
+                ),
+                (expected_sha256, expected_count),
+            )
+
+            (dist / 'asset.js').write_text('released\n')
+            with self.assertRaises(verify_dist_identity.BuildError):
+                verify_dist_identity.verify_distribution_identity(
+                    dist,
+                    expected_sha256=expected_sha256,
+                    expected_file_count=expected_count,
+                )
 
     def test_distribution_tree_digest_is_deterministic(self):
         with tempfile.TemporaryDirectory() as td:

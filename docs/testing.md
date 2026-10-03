@@ -37,9 +37,14 @@ unknown paths fail closed to artifact qualification.
 The protected default-branch ruleset must require the `Artifact qualification gate` job from
 `Full build qualification`. That job is reported for every pull request, including documentation-only
 changes where the expensive build and browser jobs are intentionally skipped. Full qualification
-also runs on `develop` and for manual `all` dispatches. The release workflow independently rebuilds
-the tagged revision and reuses the same browser implementation for its release-grade Chromium and
-reproducibility gates.
+also runs on `develop` and for manual `all` dispatches. Release-intent qualification records the
+normalized distribution-tree SHA-256 and file count from the exact `static-dist` consumed by the
+browser jobs, and preserves the attested artifact manifest plus its provenance bundle with the
+qualification evidence. The release workflow verifies that provenance, independently rebuilds the
+tagged revision, and requires its normalized distribution identity to exactly match the qualified
+identity before archiving, packaging, attesting, or publishing it. The existing second clean rebuild
+still compares normalized distributions independently, so qualification binding and reproducibility
+remain separate release gates.
 
 ## Current Playwright coverage
 
