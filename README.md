@@ -86,8 +86,11 @@ configured to fail closed.
 
 ## Upstream
 
-The exact Code - OSS tag and commit are pinned in `upstream.lock.json`. A changed upstream
-revision is published only after the automated full-browser qualification succeeds.
+The exact Code - OSS tag and commit are pinned in `upstream.lock.json`. The tag is resolved
+independently (including peeling annotated tags) and must identify the exact pinned commit before a
+build can start; the fetched checkout is then separately verified to have that exact `HEAD`.
+A changed upstream revision is published only after the automated full-browser qualification
+succeeds.
 
 This project is not Microsoft's Visual Studio Code distribution and is not endorsed by Microsoft.
 

@@ -62,6 +62,9 @@ jobs:
       - name: Configuration validation
         run: python3 scripts/validate_config.py
 
+      - name: Upstream tag-to-commit binding
+        run: python3 scripts/fetch_upstream.py --verify-tag-only
+
       - name: Workflow YAML syntax
         run: ruby scripts/check_workflow_yaml.rb
 
