@@ -18,20 +18,7 @@ on:
       - '.github/actions/setup-toolchain/action.yml'
       - '.github/toolchain-versions.json'
   pull_request:
-    paths:
-      - upstream.lock.json
-      - build.sh
-      - package.sh
-      - 'scripts/**'
-      - 'config/**'
-      - 'patches/**'
-      - 'extensions/**'
-      - 'tests/e2e/**'
-      - 'tests/fixtures/**'
-      - '.github/workflows/qualify.yml'
-      - '.github/actions/browser-qualification/action.yml'
-      - '.github/actions/setup-toolchain/action.yml'
-      - '.github/toolchain-versions.json'
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       browser:
@@ -63,26 +50,59 @@ permissions:
 
 jobs:
   browser-plan:
+    name: Qualification plan
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       browsers: ${{ steps.plan.outputs.browsers }}
       scope: ${{ steps.plan.outputs.scope }}
+      level: ${{ steps.plan.outputs.level }}
     steps:
-      - name: Select browser qualification matrix
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Select browser qualification plan
         id: plan
         env:
           EVENT_NAME: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           REQUESTED_BROWSER: ${{ inputs.browser || 'all' }}
+          GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          level=full
           scope=full
           case "$EVENT_NAME" in
             pull_request)
-              browsers='["chromium"]'
-              scope=smoke
+              mkdir -p .work
+              gh api --paginate \
+                "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files?per_page=100" \
+                --jq '.[] | .filename, (.previous_filename // empty)' \
+                > .work/pull-request-files.txt
+              unset GH_TOKEN
+              level="$(python3 scripts/classify_pr.py .work/pull-request-files.txt)"
+              case "$level" in
+                lightweight)
+                  browsers='[]'
+                  scope=smoke
+                  ;;
+                artifact)
+                  browsers='["chromium"]'
+                  scope=smoke
+                  ;;
+                full)
+                  browsers='["chromium","firefox","webkit"]'
+                  scope=full
+                  ;;
+                *)
+                  echo "Unsupported pull request qualification level: $level" >&2
+                  exit 2
+                  ;;
+              esac
               ;;
             workflow_dispatch)
               case "$REQUESTED_BROWSER" in
@@ -107,11 +127,14 @@ jobs:
               ;;
           esac
           {
+            echo "level=$level"
             echo "browsers=$browsers"
             echo "scope=$scope"
           } >> "$GITHUB_OUTPUT"
 
   build:
+    needs: browser-plan
+    if: needs.browser-plan.outputs.level != 'lightweight'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -205,6 +228,7 @@ jobs:
 
   browser:
     needs: [build, browser-plan]
+    if: needs.browser-plan.outputs.level != 'lightweight'
     strategy:
       fail-fast: false
       matrix:
@@ -238,6 +262,43 @@ jobs:
           if-no-files-found: error
           retention-days: 2
           compression-level: 6
+
+  artifact-gate:
+    name: Artifact qualification gate
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    needs: [browser-plan, build, browser]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify required artifact evidence
+        env:
+          LEVEL: ${{ needs.browser-plan.outputs.level }}
+          PLAN_RESULT: ${{ needs.browser-plan.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$PLAN_RESULT" != success ]]; then
+            echo "qualification planning did not succeed: $PLAN_RESULT" >&2
+            exit 1
+          fi
+
+          case "$LEVEL" in
+            lightweight)
+              echo "Documentation-only pull request: artifact build not required."
+              ;;
+            artifact|full)
+              if [[ "$BUILD_RESULT" != success || "$BROWSER_RESULT" != success ]]; then
+                echo "required artifact evidence missing: build=$BUILD_RESULT browser=$BROWSER_RESULT" >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "Unknown pull request qualification level: $LEVEL" >&2
+              exit 1
+              ;;
+          esac
 
   package:
     needs: browser
