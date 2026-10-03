@@ -37,8 +37,9 @@ design choices are recorded in the [ADR index](adr/README.md).
 | Qualification | Classifies pull-request risk, structurally checks <code>dist/</code>, boots it as a static site, and for high-risk changes runs multi-browser behavioral/security qualification. | [.github/workflows/qualify.yml](../.github/workflows/qualify.yml), [.github/actions/browser-qualification/action.yml](../.github/actions/browser-qualification/action.yml), [scripts/classify_pr.py](../scripts/classify_pr.py), [tests/e2e](../tests/e2e) |
 | Packaging and metadata | Produces deterministic archives, checksums, artifact manifest, SBOM, license inventory, and distribution tree identity. | [scripts/package_release.py](../scripts/package_release.py), [scripts/generate_sbom.py](../scripts/generate_sbom.py), [scripts/generate_license_inventory.py](../scripts/generate_license_inventory.py), [scripts/verify_release.py](../scripts/verify_release.py) |
 | Attestation | Consumes the verified release candidate in an isolated job with OIDC/attestation permission and no source build. | [.github/workflows/release.yml](../.github/workflows/release.yml), [scripts/check_policy.py](../scripts/check_policy.py), [docs/release-security.md](release-security.md) |
-| Publication | Fans out after attestation: GitHub Release consumes the packaged `release-candidate` plus attestation bundle, while Pages and GHCR independently consume the canonical `release-static-dist`. | [.github/workflows/release.yml](../.github/workflows/release.yml), [.github/actions/publish-github-release/action.yml](../.github/actions/publish-github-release/action.yml), [.github/actions/publish-pages/action.yml](../.github/actions/publish-pages/action.yml), [.github/actions/publish-oci/action.yml](../.github/actions/publish-oci/action.yml) |
-| Publication recovery | Reuses retained artifacts from a completed pre-publication release run and never rebuilds or re-attests content. | [.github/workflows/recover-release-publication.yml](../.github/workflows/recover-release-publication.yml), [OPERATIONS.md](../OPERATIONS.md) |
+| Immutable publication | After attestation, publishes the immutable GitHub Release and immutable GHCR image. GitHub Release consumes `release-candidate` plus attestation evidence; GHCR consumes the canonical `release-static-dist`. | [.github/workflows/release.yml](../.github/workflows/release.yml), [.github/actions/publish-github-release/action.yml](../.github/actions/publish-github-release/action.yml), [.github/actions/publish-oci/action.yml](../.github/actions/publish-oci/action.yml) |
+| Promotion | Resolves a published immutable release, verifies its attestations and policy-bound identity, records canary/stable state as GitHub Deployments, and deploys stable Pages without rebuilding. | [.github/workflows/promote.yml](../.github/workflows/promote.yml), [config/promotion-policy.json](../config/promotion-policy.json), [scripts/promotion.py](../scripts/promotion.py), [.github/actions/publish-pages/action.yml](../.github/actions/publish-pages/action.yml) |
+| Publication recovery | Reuses retained artifacts from a completed pre-publication release run for immutable GitHub Release/GHCR recovery; promotion recovery resolves durable immutable release assets and moves channel state without rebuilding. | [.github/workflows/recover-release-publication.yml](../.github/workflows/recover-release-publication.yml), [.github/workflows/promote.yml](../.github/workflows/promote.yml), [OPERATIONS.md](../OPERATIONS.md) |
 | Browser runtime | Loads only static same-origin assets, enables workspace trust, keeps gallery/webviews disabled, and persists browser/workbench state in origin-scoped browser storage. | [scripts/make_static.py](../scripts/make_static.py), [tests/e2e/security.spec.cjs](../tests/e2e/security.spec.cjs), [tests/e2e/network-policy.spec.cjs](../tests/e2e/network-policy.spec.cjs), [tests/e2e/workbench.spec.cjs](../tests/e2e/workbench.spec.cjs) |
 
 ## End-to-end build and release data flow
@@ -109,21 +110,35 @@ Release workflow on immutable v*-web.* tag
                      |               v
                      |         OIDC provenance/SBOM attestations
                      |               |
-                     +---------------+ TB8: attestation completion -> publication authorization
+                     +---------------+ TB8: attestation completion -> immutable publication
                                      |
-                         +-----------+-----------+
-                         |           |           |
-                         v           v           v
-                  GitHub Release   Pages       GHCR
-                  consumes         consumes    consumes
-                  release-candidate release-   release-
-                  + attestation     static-dist static-dist
-                         |           |           |
-                         +-----------+-----------+
+                              +------+------+
+                              |             |
+                              v             v
+                        GitHub Release     GHCR
+                        release-candidate  release-static-dist
+                        + attestation      immutable image
+                              |             |
+                              +------+------+
                                      |
-                                     | TB9: publication systems -> users/static browsers
                                      v
-                         same qualified static distribution
+                           immutable release identity
+                       tag + commit + artifact/tree digest
+                                     |
+                                     | TB9: immutable release -> mutable promotion state
+                                     v
+                                  canary
+                                     |
+                          policy/identity verification
+                                     |
+                                     v
+                                  stable
+                                     |
+                                     v
+                              GitHub Pages
+                                     |
+                                     v
+                              static browsers
 ~~~
 
 ### 1. Repository inputs to upstream identity
@@ -196,34 +211,42 @@ attestation job to have the required OIDC/attestation permissions while prohibit
 shell build steps, or upstream build execution. The security design is documented in
 [docs/release-security.md](release-security.md).
 
-### 7. Attestation gate to publication
+### 7. Attestation to immutable publication
 
-Attestation completion is the common sequencing gate for publication, not a single common data
-artifact consumed by every channel. GitHub Release downloads the packaged <code>release-candidate</code>
-and <code>release-attestation</code>. Pages and GHCR instead download the canonical
-<code>release-static-dist</code> produced by the clean release build; they depend on successful
-attestation before publication but do not consume the packaged candidate bytes.
+Attestation completion gates immutable publication. GitHub Release consumes the packaged
+<code>release-candidate</code> plus attestation evidence, while GHCR consumes the canonical
+<code>release-static-dist</code>. Both cross the protected <code>release</code> environment and
+re-check immutable-tag invariants immediately before publication.
 
-All publication paths cross the protected <code>release</code> authorization boundary: GitHub Release
-and GHCR use that environment directly, while Pages passes through the <code>pages-release-gate</code>
-on <code>release</code> before deployment through <code>github-pages</code>. Release-tag protection is
-represented by [.github/rulesets/immutable-release-tags.json](../.github/rulesets/immutable-release-tags.json).
-Immediately before publication, workflows re-check tag/ruleset invariants described in
-[docs/release-security.md](release-security.md).
+Immutable publication is retry-safe and fail-closed. GitHub Release assets are reconciled
+monotonically; conflicting or incomplete published content is never overwritten. GHCR distinguishes a
+confirmed missing tag from indeterminate registry state, verifies existing images, and re-verifies
+newly published images.
 
-Publication is channel-specific and retry-safe:
+### 8. Immutable release to canary and stable
 
-- GitHub Release assets are reconciled monotonically and conflicting published content fails closed
-  through [scripts/publish_github_release.py](../scripts/publish_github_release.py).
-- Pages reuses a successful deployment for the immutable release commit or deploys the retained
-  canonical distribution through [.github/actions/publish-pages/action.yml](../.github/actions/publish-pages/action.yml).
-- GHCR distinguishes a confirmed missing tag from an indeterminate registry failure; existing images
-  are verified, and newly published images are re-verified through
-  [.github/actions/publish-oci/action.yml](../.github/actions/publish-oci/action.yml) and
-  [scripts/verify_oci_image.sh](../scripts/verify_oci_image.sh).
+Deployment state is deliberately separate from release creation. After immutable GitHub Release and
+GHCR publication succeed, the Release workflow automatically dispatches
+[.github/workflows/promote.yml](../.github/workflows/promote.yml) on the immutable release ref.
 
-Recovery uses the same channel implementations and retained artifacts; it does not rebuild source or
-create new attestations.
+Promotion downloads durable GitHub Release assets, verifies their attestations and checksums, and
+builds a promotion identity containing the immutable release tag/commit, GitHub Release ID, archive
+digest, distribution tree digest/file count, and promotion policy/profile digest. It never executes
+the upstream build, packaging, or attestation.
+
+The happy path is automatic: the immutable release is recorded as a successful <code>canary</code>
+deployment after artifact verification, then the exact same release/artifact/policy identity is
+promoted to <code>stable</code> and deployed to GitHub Pages. GitHub Deployments provide the
+auditable channel history.
+
+Automatic promotion refuses to move stable backward. An explicit rollback is a new stable promotion
+to an identity that has previously been successful in stable (or a legacy successful Pages
+deployment during migration). Release tags, GitHub Release assets, and immutable GHCR tags never move.
+
+Immutable publication recovery remains artifact-only through
+[.github/workflows/recover-release-publication.yml](../.github/workflows/recover-release-publication.yml).
+Promotion recovery uses the durable immutable GitHub Release as its source and changes only deployment
+state; it does not rebuild or re-attest release content.
 
 ## Runtime data flows
 
@@ -281,8 +304,8 @@ static assets.
 | TB5 | Qualification -> release rebuild | Provenance verification, qualified tree digest/file count | Release workflow |
 | TB6 | Rebuild -> release candidate | Second clean build and normalized distribution comparison | Release workflow |
 | TB7 | Candidate -> attestation authority | Source-free/build-free attestation job, minimal write permissions | GitHub Actions + maintainers |
-| TB8 | Attestation completion -> publication authorization | Protected <code>release</code> boundary, channel-specific artifact inputs, immutable tag checks | Repository settings + maintainers |
-| TB9 | Publication -> browser | Channel verification, HTTPS/static-host integrity, browser same-origin/CSP | GitHub/host operator + browser |
+| TB8 | Attestation -> immutable publication | Protected <code>release</code> environment, immutable tag checks, channel-specific artifact verification | Repository settings + maintainers |
+| TB9 | Immutable release -> canary/stable -> browser | Policy-bound promotion identity, serialized GitHub Deployments, stable Pages deployment, rollback by pointer movement | Release workflow + GitHub/host operator + browser |
 
 ## Control ownership
 

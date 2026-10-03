@@ -33,8 +33,9 @@ gh attestation verify code-oss-static-web-1.139.1-web.0.tar.gz \
 ```
 
 Development qualification may reuse the content-addressed upstream web-build cache. Cache hits are
-an optimization, not provenance. Release publication performs independent clean builds and compares
-their normalized distributions before publishing immutable release assets.
+an optimization, not provenance. Immutable release publication performs independent clean builds and compares their normalized
+distributions before publishing release assets. Promotion consumes those already-published immutable
+assets and never rebuilds or re-attests them.
 
 Release tags matching `v*-web.*` must be protected by the repository ruleset represented in
 `.github/rulesets/immutable-release-tags.json`: active tag targeting, update restriction, deletion
@@ -43,31 +44,49 @@ branch and requires the tagged `GITHUB_SHA` to be an ancestor of, or identical t
 before any release build can proceed. This prevents an otherwise-authorized repository writer from
 turning an arbitrary off-branch commit into a release merely by creating a matching tag.
 
-All publication paths cross the protected `release` environment boundary after attestation.
-The `release` environment is the shared publication authorization boundary and carries the
-repository's deployment protection rules. The qualification release job crosses that boundary
-before creating the immutable release tag and dispatching publication. GitHub Release and OCI
-publication jobs use the environment directly. Pages first passes through a `pages-release-gate`
-job on the `release` environment with no token permissions, then deploys through the separate
-`github-pages` environment. The Pages deployment environment does not replace the shared
-`release` authorization boundary.
+Immutable publication and mutable deployment are separate trust transitions. After attestation,
+the GitHub Release and release-tagged GHCR image cross the protected `release` environment boundary.
+They retain the immutable `v*-web.*` identity and never serve as mutable canary/stable aliases.
 
-Every GitHub Release, Pages, and OCI publication path additionally checks that the release-tag
-ruleset is active and that `GITHUB_REF_NAME` still resolves to the workflow's immutable
-`GITHUB_SHA` immediately before publication. Publication fails closed if either invariant is false.
+The qualification release job crosses the same `release` boundary before creating the immutable
+release tag and dispatching Release. Every immutable GitHub Release/GHCR publication path checks that
+the release-tag ruleset is active and that the release tag still resolves to the workflow's immutable
+commit immediately before publication.
 
-Publication is retry-safe per channel. The normal Release workflow and the recovery workflow share
-the same channel implementations and the same `release-${ref}` concurrency group. GitHub Release
-publication reconciles assets monotonically: matching published assets are verification-only, and
-only an interrupted draft may add missing expected assets before publication. Conflicting,
-unexpected, or incomplete published asset sets fail closed. Pages treats a successful deployment
-for the immutable release commit as complete before creating another deployment. GHCR verifies the
-existing release tag, multi-platform manifest, release labels on both amd64 and arm64 children,
-and the exact served static file tree for both platform images; it publishes only after the registry
-explicitly reports that the tag is absent, while indeterminate registry failures abort without pushing.
+After both immutable publication channels succeed, Release dispatches
+`.github/workflows/promote.yml` on the same immutable release tag, so normal Pages deployment records
+carry the promoted release SHA. Manual recovery or rollback may run the current workflow from
+`master` while naming an older immutable release. Promotion independently resolves the
+immutable GitHub Release, verifies the protected release ref, downloads the published
+`artifact-manifest.json`, `SHA256SUMS`, and canonical tar archive, verifies GitHub attestations and
+checksums, and constructs a promotion identity containing the release tag/commit/Release ID,
+distribution tree digest/file count, archive digest, and promotion profile/policy digest.
 
-`Recover release publication` accepts the completed source Release workflow-run ID, verifies that
-all pre-publication preparation jobs succeeded, and downloads retained `release-static-dist`,
-`release-candidate`, and/or `release-attestation` artifacts as required by the selected channel. It
-contains no upstream build, package, or attestation step. GitHub Release existence is therefore not
-used as a proxy for Pages or GHCR completion; each channel is verified independently.
+Canary and stable are GitHub Deployment environments. Each attempt records the complete promotion
+identity in its deployment payload and records success/failure as deployment status. Stable
+promotion additionally crosses a no-token `release` environment gate and deploys the verified
+archive through the separate `github-pages` environment. The current stable pointer is therefore
+the latest successful `stable` deployment, not a mutable release tag.
+
+Automatic promotion is serialized across releases and fails closed if a stale release would move
+canary or stable behind the current stable commit. A forward stable transition requires successful
+canary with the same complete release/artifact/policy identity. A backward stable transition is
+accepted only when the target immutable release/artifact identity has previous successful stable
+history; the new rollback event records the current policy/profile identity. Rollback is therefore a
+new audited promotion event rather than release mutation.
+
+Immutable publication is retry-safe per channel. The normal Release workflow and immutable recovery
+workflow share the same GitHub Release/GHCR implementations and the same `release-${ref}` concurrency
+group. GitHub Release publication reconciles assets monotonically: matching published assets are
+verification-only, and only an interrupted draft may add missing expected assets before publication.
+Conflicting, unexpected, or incomplete published asset sets fail closed. GHCR verifies the existing
+release tag, multi-platform manifest, release labels on both amd64 and arm64 children, and the exact
+served static file tree for both platform images; it publishes only after the registry explicitly
+reports that the tag is absent, while indeterminate registry failures abort without pushing.
+
+`Recover immutable release publication` accepts the source Release workflow-run ID, verifies that all
+pre-publication preparation jobs succeeded, and downloads retained `release-static-dist`,
+`release-candidate`, and/or `release-attestation` artifacts as required for GitHub Release/GHCR
+repair. It contains no upstream build, package, or attestation step. Promotion recovery is separate:
+it re-resolves durable GitHub Release assets, so stable rollback is not bounded by workflow-artifact
+retention and never reconstructs release content from source.

@@ -1,7 +1,8 @@
 # Releasing
 
-Microsoft Code - OSS updates normally publish automatically. Project-side fixes can publish an
-explicit patch revision without waiting for another Microsoft release.
+Microsoft Code - OSS updates normally create, verify, publish, and promote automatically. Project-side
+fixes can publish an explicit patch revision without waiting for another Microsoft release. Immutable
+release creation is separate from mutable canary/stable deployment state.
 
 ## Version contract
 
@@ -37,7 +38,10 @@ succeed, the workflow creates exactly:
 v<code-oss-version>-web.0
 ```
 
-It then dispatches the independent Release workflow for that immutable tag.
+It then dispatches the independent Release workflow for that immutable tag. After immutable GitHub
+Release and release-tagged GHCR publication succeeds, Release automatically dispatches the promotion
+workflow. The default policy verifies canary and promotes the same immutable identity to stable,
+including GitHub Pages, without human action.
 
 ## Project patch release
 
@@ -51,33 +55,32 @@ The dispatcher is fail-closed:
 3. the full Chromium/Firefox/WebKit qualification runs again with `release_mode=patch`;
 4. after qualification succeeds, the workflow selects one greater than the highest existing
    revision and creates that immutable tag;
-5. the independent Release workflow rebuilds and publishes the patch release.
+5. the independent Release workflow rebuilds and publishes the immutable patch release;
+6. automatic promotion verifies canary and advances stable to that same immutable release.
 
 For example, if `v1.140.0-web.0` already exists and a project fix is merged, the next successful
 patch release is `v1.140.0-web.1`.
 
 ## Retry versus patch
 
-Do **not** increment the revision for a transient publication failure when the source commit has not
-changed. The initial Release workflow records GitHub Release, Pages, and GHCR as independent
-publication jobs and verifies all three before the run is considered complete.
+Do **not** increment the revision for a transient immutable-publication or promotion failure when the
+source commit has not changed.
 
-For a partial publication failure, do not rerun build, reproducibility, packaging, or attestation.
-Run **Recover release publication** on the existing immutable tag and provide the original Release
-workflow-run ID. Select `github-release`, `pages`, `ghcr`, or `all`. Recovery consumes only retained
-artifacts from the source Release run and verifies that its authorization, clean build,
-reproducibility, release-grade Chromium qualification, package, and attestation jobs succeeded.
+GitHub Release and release-tagged GHCR are immutable publication channels. For a partial failure in
+those channels, run **Recover immutable release publication** on the existing tag and provide the
+original Release workflow-run ID. Recovery consumes retained release artifacts and never rebuilds,
+repackages, or re-attests content.
 
-GitHub Release recovery treats a published release as verification-only; only an interrupted draft
-may fill missing expected assets before it is published, and existing assets are never clobbered.
-Pages reuses an already-successful deployment for the release commit. GHCR verifies an existing
-image before publishing and publishes only after a registry lookup confirms that the tag is absent.
+Canary, stable, and GitHub Pages are promotion state. For a failed promotion, rerun
+`promote.yml` against the same immutable release. Promotion downloads durable published GitHub
+Release assets, verifies their attestations and digests, and never executes the release build.
+Stable remains on the previous successful immutable release until the new stable promotion succeeds.
 
-See [Operations](../OPERATIONS.md) for the channel-state table and recovery commands.
+Rollback also uses `promote.yml`: promoting a previously successful stable release creates a new
+stable deployment record pointing to that older immutable identity. Release tags and assets are not
+moved.
 
-Increment to the next `web.N` only when a source change was required after the previous tag was
-created. The Patch release workflow refuses to create another revision when the latest release tag
-already points to current `master`.
+See [Operations](../OPERATIONS.md) for promotion, rollback, audit, and both recovery procedures.
 
 ## Qualification evidence
 
@@ -90,15 +93,18 @@ verifies all of those bindings before doing any publication work.
 
 The Release workflow then performs an independent clean rebuild, reproducibility comparison,
 release-grade Chromium qualification, tag-specific packaging, provenance/SBOM attestation, and
-publication to GitHub Releases, GitHub Pages and GHCR.
+immutable publication to GitHub Releases and the release-tagged GHCR image. A separate promotion
+workflow consumes that immutable identity and advances canary then stable; stable owns GitHub Pages.
 
 Final archives, SBOM metadata and the OCI image use the actual immutable `web.N` release tag.
 
 ## Failure behavior
 
-If any build, browser, packaging, reproducibility, security or publication gate fails, automation
-stops. No mutable tag is moved. A maintainer only needs to intervene when the automated path cannot
-prove the revision works or when a project patch release is intentionally requested.
+If any build, browser, packaging, reproducibility, security, immutable-publication, or promotion gate
+fails, automation stops. No immutable tag is moved, and failed promotion leaves the previous stable
+release authoritative. A maintainer only needs to intervene when the automated path cannot prove the
+revision works, for an explicit rollback/policy change, or when a project patch release is
+intentionally requested.
 
 ## Release notes
 
@@ -109,8 +115,7 @@ are part of the immutable release history.
 ## One-time repository setup
 
 GitHub Pages must be enabled separately from the `github-pages` environment. In repository
-**Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**. The Release
-workflow checks this before starting its expensive independent rebuild.
+**Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**. The stable promotion job checks this before attempting a Pages deployment.
 
 ## Verify
 
@@ -118,7 +123,9 @@ After publication:
 
 - verify the GitHub Release archives and `SHA256SUMS`;
 - verify artifact attestations with `gh attestation verify`;
-- verify the Pages deployment;
-- verify the GHCR tag exposes both `linux/amd64` and `linux/arm64` manifests.
+- verify the release-tagged GHCR image exposes both `linux/amd64` and `linux/arm64` manifests;
+- verify the latest successful `canary` and `stable` GitHub Deployment payloads reference the expected
+  immutable release/artifact/policy identity;
+- verify GitHub Pages serves the stable release commit.
 
 Do not publish or move a mutable `latest` tag as part of the immutable release contract.

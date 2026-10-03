@@ -11,6 +11,7 @@ from common import ROOT, BuildError
 SCHEMA_TARGETS = (
     ('upstream.lock.json', 'schemas/upstream.lock.schema.json'),
     ('config/deployment.json', 'schemas/deployment-selector.schema.json'),
+    ('config/promotion-policy.json', 'schemas/promotion-policy.schema.json'),
     ('patches/manifest.json', 'schemas/patch-manifest.schema.json'),
     ('extensions/extensions.lock.json', 'extensions/extensions.lock.schema.json'),
     ('extensions/license-policy.json', 'schemas/license-policy.schema.json'),

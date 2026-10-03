@@ -20,7 +20,6 @@ jobs:
     permissions:
       actions: read
       contents: read
-      pages: read
     outputs:
       qualified-tree-sha256: ${{ steps.binding.outputs.tree-sha256 }}
       qualified-file-count: ${{ steps.binding.outputs.file-count }}
@@ -150,17 +149,6 @@ jobs:
           )"
           if [[ "$compare_status" != 'ahead' && "$compare_status" != 'identical' ]]; then
             echo "release commit $GITHUB_SHA is not contained in protected default branch $default_branch" >&2
-            exit 1
-          fi
-
-      - name: Verify GitHub Pages is enabled
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! gh api "repos/$GITHUB_REPOSITORY/pages" >/dev/null 2>&1; then
-            echo "GitHub Pages is not enabled. Set Settings > Pages > Build and deployment > Source to GitHub Actions." >&2
             exit 1
           fi
 
@@ -475,7 +463,7 @@ jobs:
           tag: ${{ github.ref_name }}
 
   scorecard-refresh:
-    needs: publication-status
+    needs: immutable-publication-status
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -489,95 +477,6 @@ jobs:
           set -euo pipefail
           default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
           gh workflow run scorecard.yml --repo "$GITHUB_REPOSITORY" --ref "$default_branch"
-
-  pages-release-gate:
-    needs: attest
-    runs-on: ubuntu-latest
-    environment: release
-    permissions: {}
-    steps:
-      - name: Authorize Pages publication
-        run: ':'
-
-  pages:
-    needs: [attest, pages-release-gate]
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.publication.outputs.page-url }}
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Download qualified static distribution
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: release-static-dist
-          path: .work/release-static-dist
-
-      - name: Extract canonical static distribution
-        run: |
-          rm -rf dist
-          mkdir -p dist
-          tar -C dist -xf .work/release-static-dist/release-static-dist.tar
-
-      - name: Verify immutable release ref
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          expected_pattern='refs/tags/v*-web.*'
-
-          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
-          if [[ "$tag_sha" != "$GITHUB_SHA" ]]; then
-            echo "release tag target mismatch: expected $GITHUB_SHA, got $tag_sha" >&2
-            exit 1
-          fi
-
-          protected=0
-          while IFS= read -r ruleset_id; do
-            [[ -n "$ruleset_id" ]] || continue
-            ruleset="$(gh api "repos/$GITHUB_REPOSITORY/rulesets/$ruleset_id")"
-            if jq -e --arg pattern "$expected_pattern" '
-              (.target == "tag") and
-              (.enforcement == "active") and
-              (((.conditions.ref_name.include // []) | index($pattern)) != null) and
-              ((([.rules[].type] | index("update")) != null)) and
-              ((([.rules[].type] | index("deletion")) != null)) and
-              (((.bypass_actors // []) | length) == 0)
-            ' <<<"$ruleset" >/dev/null; then
-              protected=1
-              break
-            fi
-          done < <(
-            gh api "repos/$GITHUB_REPOSITORY/rulesets"               --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id'
-          )
-
-          if [[ "$protected" != 1 ]]; then
-            echo "no active immutable release-tag ruleset protects $expected_pattern" >&2
-            exit 1
-          fi
-
-          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
-          if [[ "$tag_sha_after" != "$GITHUB_SHA" ]]; then
-            echo "release tag moved during integrity check: expected $GITHUB_SHA, got $tag_sha_after" >&2
-            exit 1
-          fi
-
-      - name: Publish or verify GitHub Pages
-        id: publication
-        uses: ./.github/actions/publish-pages
-        with:
-          github-token: ${{ github.token }}
-          repository: ${{ github.repository }}
-          commit: ${{ github.sha }}
-          dist-path: dist
 
   oci:
     needs: attest
@@ -656,21 +555,39 @@ jobs:
           tag: ${{ github.ref_name }}
           dist-path: dist
 
-  publication-status:
+  immutable-publication-status:
     if: always()
-    needs: [github-release, pages, oci]
+    needs: [github-release, oci]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
       - name: Verify publication channels
         env:
           GITHUB_RELEASE_RESULT: ${{ needs.github-release.result }}
-          PAGES_RESULT: ${{ needs.pages.result }}
           OCI_RESULT: ${{ needs.oci.result }}
         shell: bash
         run: |
           set -euo pipefail
           [[ "$GITHUB_RELEASE_RESULT" == success ]]
-          [[ "$PAGES_RESULT" == success ]]
           [[ "$OCI_RESULT" == success ]]
-          echo "All publication channels complete for $GITHUB_REF_NAME"
+          echo "Immutable release publication complete for $GITHUB_REF_NAME"
+
+  promote:
+    needs: immutable-publication-status
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Start automatic canary and stable promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run promote.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$GITHUB_REF_NAME" \
+            -f release_tag="$GITHUB_REF_NAME" \
+            -f source_release_run_id="$GITHUB_RUN_ID" \
+            -f target=auto

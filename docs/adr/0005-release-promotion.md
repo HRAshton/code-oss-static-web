@@ -28,14 +28,23 @@ Release promotion is a sequence of independently checked boundaries:
 6. Packaging creates deterministic archives and release metadata from the verified distribution.
 7. Attestation runs in a downstream job that has OIDC/attestation authority but no source checkout or
    upstream build.
-8. Publication crosses the protected <code>release</code> environment and re-checks immutable-tag
-   invariants before publishing independently to GitHub Release, Pages, and GHCR.
-9. Publication recovery may reuse only retained artifacts from a source Release run that completed
-   every required pre-publication gate. It does not rebuild or re-attest.
+8. Immutable publication crosses the protected <code>release</code> environment and re-checks
+   immutable-tag invariants before publishing GitHub Release assets and the immutable GHCR image.
+9. After immutable publication succeeds, a separate promotion workflow resolves the durable release,
+   verifies attestations/checksums, and records a policy-bound identity containing the release tag,
+   commit, artifact/distribution digests, and promotion profile/policy digest.
+10. Routine upstream releases automatically progress through <code>canary</code> and then
+    <code>stable</code>. The exact canary identity must succeed before automatic stable promotion.
+    Stable owns the Pages deployment.
+11. Rollback creates a new stable deployment pointing at a previously stable immutable release; it
+    never moves a release tag or rebuilds/re-attests content.
+12. Immutable publication recovery may reuse retained source-run artifacts; promotion recovery uses
+    durable GitHub Release assets. Neither path rebuilds the immutable release.
 
 Release tags are never moved, and no mutable <code>latest</code> tag is part of the release contract.
-A transient publication failure is recovered on the existing immutable tag rather than producing a
-different <code>web.N</code> revision with unchanged source.
+The mutable state is explicitly the canary/stable deployment pointer recorded in GitHub Deployments.
+A transient publication or promotion failure is recovered against the existing immutable release
+rather than producing a different <code>web.N</code> revision with unchanged source.
 
 ## Consequences
 
@@ -52,6 +61,9 @@ affect future releases.
 - [.github/workflows/qualify.yml](../../.github/workflows/qualify.yml)
 - [.github/workflows/release.yml](../../.github/workflows/release.yml)
 - [.github/workflows/recover-release-publication.yml](../../.github/workflows/recover-release-publication.yml)
+- [.github/workflows/promote.yml](../../.github/workflows/promote.yml)
+- [config/promotion-policy.json](../../config/promotion-policy.json)
+- [scripts/promotion.py](../../scripts/promotion.py)
 - [.github/rulesets/immutable-release-tags.json](../../.github/rulesets/immutable-release-tags.json)
 - [scripts/check_policy.py](../../scripts/check_policy.py)
 - [scripts/verify_dist_identity.py](../../scripts/verify_dist_identity.py)

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "profile": "automatic-default-v1",
+  "automatic": {
+    "enabled": true,
+    "order": ["canary", "stable"]
+  },
+  "channels": {
+    "canary": {
+      "environment": "canary"
+    },
+    "stable": {
+      "environment": "stable",
+      "requiresCanary": true,
+      "deployPages": true
+    }
+  }
+}
