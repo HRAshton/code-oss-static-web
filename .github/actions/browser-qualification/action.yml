@@ -1,0 +1,127 @@
+name: Browser qualification
+description: Qualify a canonical static distribution with the locked Playwright runtime.
+inputs:
+  browser:
+    description: Playwright browser project to qualify.
+    required: true
+  distribution-artifact:
+    description: Workflow artifact containing <name>.tar for the canonical distribution.
+    required: true
+  playwright-runtime-artifact:
+    description: Workflow artifact containing the locked Playwright runtime.
+    required: true
+  scope:
+    description: Qualification scope (smoke or full).
+    required: false
+    default: full
+  diagnostics-artifact:
+    description: Artifact name for Playwright diagnostics.
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Validate browser qualification inputs
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ inputs.browser }}" in
+          chromium|firefox|webkit) ;;
+          *)
+            echo "Unsupported browser: ${{ inputs.browser }}" >&2
+            exit 2
+            ;;
+        esac
+        case "${{ inputs.scope }}" in
+          smoke|full) ;;
+          *)
+            echo "Unsupported qualification scope: ${{ inputs.scope }}" >&2
+            exit 2
+            ;;
+        esac
+
+    - name: Set up canonical toolchain
+      uses: ./.github/actions/setup-toolchain
+
+    - name: Download canonical static distribution
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: ${{ inputs.distribution-artifact }}
+        path: .work/browser-dist
+
+    - name: Extract canonical static distribution
+      shell: bash
+      run: |
+        rm -rf dist
+        mkdir -p dist
+        tar -C dist -xf ".work/browser-dist/${{ inputs.distribution-artifact }}.tar"
+
+    - name: Download locked Playwright runtime
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      with:
+        name: ${{ inputs.playwright-runtime-artifact }}
+        path: .work/playwright-runtime
+
+    - name: Install locked browser runtime
+      env:
+        PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+      shell: bash
+      run: python3 scripts/install_playwright_browser.py --with-deps "${{ inputs.browser }}"
+
+    - name: Browser boot gate
+      env:
+        PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/boot
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/boot
+      shell: bash
+      run: >-
+        python3 scripts/run_e2e.py
+        --project "${{ inputs.browser }}"
+        --dist dist
+        --grep "packaged workbench boots from static hosting"
+        --grep-invert @extension
+        --retries=0
+
+    - name: Browser qualification
+      if: inputs.scope == 'full'
+      env:
+        PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/base
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/base
+      shell: bash
+      run: >-
+        python3 scripts/run_e2e.py
+        --project "${{ inputs.browser }}"
+        --dist dist
+        --grep-invert @extension
+
+    - name: Prepare extension-host qualification copy
+      if: inputs.scope == 'full'
+      shell: bash
+      run: |
+        rm -rf .work/qualification-dist
+        cp -a dist .work/qualification-dist
+        python3 scripts/add_test_extension.py --dist .work/qualification-dist
+
+    - name: Browser extension-host qualification
+      if: inputs.scope == 'full'
+      env:
+        PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/extension
+        CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/extension
+      shell: bash
+      run: >-
+        python3 scripts/run_e2e.py
+        --project "${{ inputs.browser }}"
+        --dist .work/qualification-dist
+        --grep @extension
+
+    - name: Upload qualification diagnostics
+      if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ inputs.diagnostics-artifact }}
+        path: |
+          playwright-report/
+          test-results/
+        if-no-files-found: ignore
+        retention-days: 7

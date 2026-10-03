@@ -25,10 +25,12 @@ still regenerating the current static wrapper.
 
 ## Current browser policy
 
-Chromium is the default interactive qualification target. Microsoft upstream updates run the full
-Chromium, Firefox and WebKit qualification automatically before the immutable release tag is created.
-The release workflow independently rebuilds the tagged revision and reruns its release-grade
-Chromium and reproducibility gates.
+Browser execution is centralized in `.github/actions/browser-qualification`. Pull requests that touch
+qualification inputs build the candidate and run the Chromium zero-retry boot gate only. Full
+qualification runs on `develop` and for manual `all` dispatches run the same zero-retry boot gate
+before executing the complete Chromium, Firefox and WebKit non-extension suites once each. Extension-host qualification is a distinct pass against the injected
+qualification copy so the canonical distribution remains unchanged. The release workflow independently rebuilds the tagged revision and reuses the same
+implementation for its release-grade Chromium and reproducibility gates.
 
 ## Current Playwright coverage
 
@@ -79,8 +81,7 @@ qualification workflow with the `chromium` target. Manual Chromium runs addition
 large, short-lived `playwright-browser-chromium` artifact; normal push qualification intentionally
 does not upload that browser bundle.
 
-Download `static-dist`, `playwright-runtime`, `qualification-harness`, and
-`playwright-browser-chromium` from that manual run. Place the browser bundle at
+Download `static-dist`, `playwright-runtime`, and `playwright-browser-chromium` from that manual run. Place the browser bundle at
 `.work/playwright-browsers/` and run:
 
 ```bash

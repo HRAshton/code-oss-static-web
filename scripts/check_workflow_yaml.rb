@@ -3,7 +3,10 @@
 
 require 'yaml'
 
-Dir['.github/workflows/*.yml'].sort.each do |path|
+paths = Dir['.github/workflows/*.yml'] + Dir['.github/workflows/*.yaml']
+paths += Dir['.github/actions/**/action.yml'] + Dir['.github/actions/**/action.yaml']
+
+paths.sort.each do |path|
   begin
     YAML.safe_load(File.read(path), aliases: true)
   rescue Psych::SyntaxError => e
@@ -12,4 +15,4 @@ Dir['.github/workflows/*.yml'].sort.each do |path|
   end
 end
 
-puts 'workflow YAML syntax: ok'
+puts 'GitHub Actions YAML syntax: ok'

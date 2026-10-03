@@ -14,7 +14,22 @@ on:
       - 'tests/e2e/**'
       - 'tests/fixtures/**'
       - '.github/workflows/qualify.yml'
-      - '.github/workflows/browser-matrix.yml'
+      - '.github/actions/browser-qualification/action.yml'
+      - '.github/actions/setup-toolchain/action.yml'
+      - '.github/toolchain-versions.json'
+  pull_request:
+    paths:
+      - upstream.lock.json
+      - build.sh
+      - package.sh
+      - 'scripts/**'
+      - 'config/**'
+      - 'patches/**'
+      - 'extensions/**'
+      - 'tests/e2e/**'
+      - 'tests/fixtures/**'
+      - '.github/workflows/qualify.yml'
+      - '.github/actions/browser-qualification/action.yml'
       - '.github/actions/setup-toolchain/action.yml'
       - '.github/toolchain-versions.json'
   workflow_dispatch:
@@ -46,10 +61,56 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  QUALIFICATION_BROWSER: ${{ inputs.browser || 'chromium' }}
-
 jobs:
+  browser-plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      browsers: ${{ steps.plan.outputs.browsers }}
+      scope: ${{ steps.plan.outputs.scope }}
+    steps:
+      - name: Select browser qualification matrix
+        id: plan
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_BROWSER: ${{ inputs.browser || 'all' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          scope=full
+          case "$EVENT_NAME" in
+            pull_request)
+              browsers='["chromium"]'
+              scope=smoke
+              ;;
+            workflow_dispatch)
+              case "$REQUESTED_BROWSER" in
+                chromium|firefox|webkit)
+                  browsers="[\"$REQUESTED_BROWSER\"]"
+                  ;;
+                all)
+                  browsers='["chromium","firefox","webkit"]'
+                  ;;
+                *)
+                  echo "Unsupported browser: $REQUESTED_BROWSER" >&2
+                  exit 2
+                  ;;
+              esac
+              ;;
+            push)
+              browsers='["chromium","firefox","webkit"]'
+              ;;
+            *)
+              echo "Unsupported qualification event: $EVENT_NAME" >&2
+              exit 2
+              ;;
+          esac
+          {
+            echo "browsers=$browsers"
+            echo "scope=$scope"
+          } >> "$GITHUB_OUTPUT"
+
   build:
     runs-on: ubuntu-latest
     permissions:
@@ -124,23 +185,6 @@ jobs:
           retention-days: 3
           compression-level: 6
 
-      - name: Upload browser qualification harness
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qualification-harness
-          path: |
-            scripts/common.py
-            scripts/run_e2e.py
-            scripts/install_playwright_browser.py
-            scripts/serve_static.py
-            scripts/add_test_extension.py
-            scripts/extensions_index.py
-            tests/e2e/
-            tests/fixtures/web-extension/
-          if-no-files-found: error
-          retention-days: 3
-          compression-level: 6
-
       - name: Upload build metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -160,57 +204,33 @@ jobs:
           retention-days: 7
 
   browser:
-    needs: build
+    needs: [build, browser-plan]
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: ${{ fromJSON(needs.browser-plan.outputs.browsers) }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up canonical toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-toolchain
-
-      - name: Download canonical static distribution
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+      - name: Qualify browser
+        uses: ./.github/actions/browser-qualification
         with:
-          name: static-dist
-          path: .work/static-dist
-
-      - name: Extract canonical static distribution
-        run: |
-          rm -rf dist
-          mkdir -p dist
-          tar -C dist -xf .work/static-dist/static-dist.tar
-
-      - name: Download locked Playwright runtime
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: playwright-runtime
-          path: .work/playwright-runtime
-
-      - name: Install locked Playwright browser runtime
-        shell: bash
-        run: |
-          case "$QUALIFICATION_BROWSER" in
-            chromium|firefox|webkit)
-              python3 scripts/install_playwright_browser.py --with-deps "$QUALIFICATION_BROWSER"
-              ;;
-            all)
-              python3 scripts/install_playwright_browser.py --with-deps chromium firefox webkit
-              ;;
-            *)
-              echo "Unsupported browser: $QUALIFICATION_BROWSER" >&2
-              exit 2
-              ;;
-          esac
+          browser: ${{ matrix.browser }}
+          distribution-artifact: static-dist
+          playwright-runtime-artifact: playwright-runtime
+          scope: ${{ needs.browser-plan.outputs.scope }}
+          diagnostics-artifact: qualification-diagnostics-${{ matrix.browser }}
 
       - name: Upload qualified Chromium runtime
-        if: github.event_name == 'workflow_dispatch' && env.QUALIFICATION_BROWSER == 'chromium'
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.browser == 'chromium' &&
+          matrix.browser == 'chromium'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-browser-chromium
@@ -219,139 +239,9 @@ jobs:
           retention-days: 2
           compression-level: 6
 
-      - name: Browser boot gate
-        env:
-          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/boot
-          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/boot
-        run: >-
-          python3 scripts/run_e2e.py
-          --project "$QUALIFICATION_BROWSER"
-          --dist dist
-          --grep "packaged workbench boots from static hosting"
-          --grep-invert @extension
-          --retries=0
-
-      - name: Browser qualification of canonical dist
-        env:
-          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/base
-          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/base
-        run: >-
-          python3 scripts/run_e2e.py
-          --project "$QUALIFICATION_BROWSER"
-          --dist dist
-          --grep-invert @extension
-
-      - name: Prepare extension-host qualification copy
-        shell: bash
-        run: |
-          rm -rf .work/qualification-dist
-          cp -a dist .work/qualification-dist
-          python3 scripts/add_test_extension.py --dist .work/qualification-dist
-
-      - name: Browser extension-host qualification
-        env:
-          CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/extension
-          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/extension
-        run: >-
-          python3 scripts/run_e2e.py
-          --project "$QUALIFICATION_BROWSER"
-          --dist .work/qualification-dist
-          --grep @extension
-
-      - name: Upload qualification diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qualification-diagnostics-${{ env.QUALIFICATION_BROWSER }}
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-
-  secondary-browsers:
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        browser: [firefox, webkit]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up canonical toolchain
-        id: toolchain
-        uses: ./.github/actions/setup-toolchain
-
-      - name: Download canonical static distribution
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: static-dist
-          path: .work/static-dist
-
-      - name: Extract canonical static distribution
-        run: |
-          rm -rf dist
-          mkdir -p dist
-          tar -C dist -xf .work/static-dist/static-dist.tar
-
-      - name: Download locked Playwright runtime
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          name: playwright-runtime
-          path: .work/playwright-runtime
-
-      - name: Install locked browser runtime
-        run: python3 scripts/install_playwright_browser.py --with-deps "${{ matrix.browser }}"
-
-      - name: Browser boot gate
-        run: >-
-          python3 scripts/run_e2e.py
-          --project "${{ matrix.browser }}"
-          --dist dist
-          --grep "packaged workbench boots from static hosting"
-          --grep-invert @extension
-          --retries=0
-
-      - name: Browser qualification
-        run: >-
-          python3 scripts/run_e2e.py
-          --project "${{ matrix.browser }}"
-          --dist dist
-          --grep-invert @extension
-
-      - name: Prepare extension-host qualification copy
-        run: |
-          rm -rf .work/qualification-dist
-          cp -a dist .work/qualification-dist
-          python3 scripts/add_test_extension.py --dist .work/qualification-dist
-
-      - name: Browser extension-host qualification
-        run: >-
-          python3 scripts/run_e2e.py
-          --project "${{ matrix.browser }}"
-          --dist .work/qualification-dist
-          --grep @extension
-
-      - name: Upload secondary browser diagnostics
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: qualification-diagnostics-${{ matrix.browser }}
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: ignore
-          retention-days: 7
-
   package:
-    needs: [browser, secondary-browsers]
+    needs: browser
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -425,7 +315,7 @@ jobs:
 
 
   release:
-    needs: [build, browser, secondary-browsers, package, attest]
+    needs: [build, browser, package, attest]
     if: >-
       github.event_name == 'workflow_dispatch' &&
       github.ref_name == 'master' &&

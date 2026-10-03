@@ -117,6 +117,64 @@ def check_toolchain_versions() -> None:
         )
 
 
+def check_browser_qualification_topology() -> None:
+    action_path = ROOT / '.github/actions/browser-qualification/action.yml'
+    require(action_path.is_file(), 'reusable browser qualification action missing')
+    action = action_path.read_text(encoding='utf-8')
+    for required in (
+        'scripts/install_playwright_browser.py',
+        'scripts/run_e2e.py',
+        '--grep-invert @extension',
+        'scripts/add_test_extension.py',
+        '--grep @extension',
+    ):
+        require(required in action, f'browser qualification action missing: {required}')
+
+    boot_gate = re.search(
+        r'(?ms)^    - name: Browser boot gate\n(?P<body>.*?)(?=^    - name: )',
+        action,
+    )
+    require(boot_gate is not None, 'browser qualification action missing boot gate')
+    assert boot_gate is not None
+    boot_gate_body = boot_gate.group('body')
+    require(
+        '\n      if:' not in boot_gate_body,
+        'browser boot gate must run for both smoke and full qualification',
+    )
+    require('--retries=0' in boot_gate_body, 'browser boot gate must disable retries')
+    duplicate = ROOT / '.github/workflows/browser-matrix.yml'
+    require(not duplicate.exists(), 'duplicate browser-matrix workflow must be removed')
+
+    qualify_path = ROOT / '.github/workflows/qualify.yml'
+    release_path = ROOT / '.github/workflows/release.yml'
+    qualify = qualify_path.read_text(encoding='utf-8')
+    release = release_path.read_text(encoding='utf-8')
+    shared_action = 'uses: ./.github/actions/browser-qualification'
+    require(qualify.count(shared_action) == 1, 'qualification must use one shared browser action')
+    require(release.count(shared_action) == 1, 'release must use one shared browser action')
+    require('secondary-browsers:' not in qualify, 'duplicate secondary browser job is forbidden')
+    require('browsers=\'["chromium"]\'' in qualify, 'pull requests must plan Chromium-only smoke')
+    require(
+        'browsers=\'["chromium","firefox","webkit"]\'' in qualify,
+        'full qualification must plan Chromium, Firefox and WebKit',
+    )
+    require('scope=smoke' in qualify, 'pull request qualification must use smoke scope')
+    require('browser: [chromium]' in release, 'release validation must use Chromium matrix')
+
+    browser_scripts = (
+        'scripts/install_playwright_browser.py',
+        'scripts/run_e2e.py',
+        'scripts/add_test_extension.py',
+    )
+    for workflow in workflow_definition_paths():
+        text = workflow.read_text(encoding='utf-8')
+        for script in browser_scripts:
+            require(
+                script not in text,
+                f'{workflow.relative_to(ROOT)}: use the reusable browser qualification action',
+            )
+
+
 def check_shell_scripts() -> None:
     for script in (ROOT / 'build.sh', ROOT / 'package.sh'):
         lines = script.read_text(encoding='utf-8').splitlines()
@@ -525,6 +583,7 @@ def check_release_integrity_policy() -> None:
 def main() -> None:
     check_actions()
     check_toolchain_versions()
+    check_browser_qualification_topology()
     check_shell_scripts()
     check_forbidden_execution_patterns()
     check_extension_lock()
