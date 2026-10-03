@@ -30,10 +30,13 @@ Stale approvals are dismissed when the pull request changes, and the last push m
 someone other than its author.
 
 Repository ownership and sensitive-path review expectations are defined in
-[Governance](GOVERNANCE.md). During the current personal-account phase, role-specific review is a
-documented procedural control: pull requests touching sensitive paths must record the applicable
-review roles in the review discussion. Team-backed CODEOWNERS and role enforcement are deferred
-until approved organization identities exist.
+[Governance](GOVERNANCE.md). During the current personal-account phase, `.github/CODEOWNERS`
+requires one of the designated current maintainers to approve sensitive-path changes. Distinct
+organization roles remain a documented procedural control until team-backed rules are available.
+
+`upstream.lock.json` is intentionally outside CODEOWNERS. It is the sole Renovate auto-approval
+exception, allowing routine Microsoft updates to remain humanless while changes to workflows,
+automation, release policy, deployment, security, and other trust boundaries require human owners.
 
 The protected default-branch ruleset must require the `Artifact qualification gate` job from the
 `Full build qualification` workflow. The gate is reported for every pull request: documentation-only

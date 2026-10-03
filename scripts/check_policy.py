@@ -818,6 +818,66 @@ def check_release_integrity_policy() -> None:
     require('deletion' in rule_types, 'release-tag ruleset must restrict deletions')
 
 
+def check_codeowners_policy() -> None:
+    codeowners_path = ROOT / '.github/CODEOWNERS'
+    require(codeowners_path.is_file(), 'sensitive-path CODEOWNERS file missing')
+
+    entries: dict[str, tuple[str, ...]] = {}
+    for line_number, raw_line in enumerate(
+        codeowners_path.read_text(encoding='utf-8').splitlines(),
+        1,
+    ):
+        line = raw_line.strip()
+        if not line or line.startswith('#'):
+            continue
+        parts = line.split()
+        require(
+            len(parts) >= 2,
+            f'.github/CODEOWNERS:{line_number}: owner list missing',
+        )
+        pattern, *owners = parts
+        require(
+            pattern not in entries,
+            f'.github/CODEOWNERS:{line_number}: duplicate pattern {pattern}',
+        )
+        entries[pattern] = tuple(owners)
+
+    expected_patterns = {
+        '/.github/',
+        '/GOVERNANCE.md',
+        '/CONTRIBUTING.md',
+        '/SECURITY.md',
+        '/OPERATIONS.md',
+        '/renovate.json',
+        '/security/',
+        '/extensions/',
+        '/deploy/',
+        '/scripts/',
+        '/config/',
+        '/patches/',
+        '/build.sh',
+        '/package.sh',
+        '/docs/release-security.md',
+        '/docs/releasing.md',
+    }
+    require(
+        set(entries) == expected_patterns,
+        'CODEOWNERS sensitive-path allowlist changed; review governance mapping explicitly',
+    )
+
+    expected_owners = {'@HRAshton', '@vodyanica'}
+    for pattern, owners in entries.items():
+        require(
+            set(owners) == expected_owners and len(owners) == len(expected_owners),
+            f'CODEOWNERS interim owner set changed for {pattern}',
+        )
+
+    require(
+        '/upstream.lock.json' not in entries and 'upstream.lock.json' not in entries,
+        'upstream.lock.json must remain outside CODEOWNERS for zero-touch upstream releases',
+    )
+
+
 def main() -> None:
     check_actions()
     check_toolchain_versions()
@@ -828,6 +888,7 @@ def main() -> None:
     check_build_job_permissions()
     check_attestation_job_permissions()
     check_publication_job_permissions()
+    check_codeowners_policy()
     check_qualification_release_retry_policy()
     check_recovery_publication_boundaries()
     check_promotion_boundaries()
