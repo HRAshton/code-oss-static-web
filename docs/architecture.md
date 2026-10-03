@@ -37,7 +37,7 @@ design choices are recorded in the [ADR index](adr/README.md).
 | Qualification | Classifies pull-request risk, structurally checks <code>dist/</code>, boots it as a static site, and for high-risk changes runs multi-browser behavioral/security qualification. | [.github/workflows/qualify.yml](../.github/workflows/qualify.yml), [.github/actions/browser-qualification/action.yml](../.github/actions/browser-qualification/action.yml), [scripts/classify_pr.py](../scripts/classify_pr.py), [tests/e2e](../tests/e2e) |
 | Packaging and metadata | Produces deterministic archives, checksums, artifact manifest, SBOM, license inventory, and distribution tree identity. | [scripts/package_release.py](../scripts/package_release.py), [scripts/generate_sbom.py](../scripts/generate_sbom.py), [scripts/generate_license_inventory.py](../scripts/generate_license_inventory.py), [scripts/verify_release.py](../scripts/verify_release.py) |
 | Attestation | Consumes the verified release candidate in an isolated job with OIDC/attestation permission and no source build. | [.github/workflows/release.yml](../.github/workflows/release.yml), [scripts/check_policy.py](../scripts/check_policy.py), [docs/release-security.md](release-security.md) |
-| Publication | Reconciles the immutable GitHub Release, Pages deployment, and GHCR image from the qualified release candidate. | [.github/actions/publish-github-release/action.yml](../.github/actions/publish-github-release/action.yml), [.github/actions/publish-pages/action.yml](../.github/actions/publish-pages/action.yml), [.github/actions/publish-oci/action.yml](../.github/actions/publish-oci/action.yml) |
+| Publication | Fans out after attestation: GitHub Release consumes the packaged `release-candidate` plus attestation bundle, while Pages and GHCR independently consume the canonical `release-static-dist`. | [.github/workflows/release.yml](../.github/workflows/release.yml), [.github/actions/publish-github-release/action.yml](../.github/actions/publish-github-release/action.yml), [.github/actions/publish-pages/action.yml](../.github/actions/publish-pages/action.yml), [.github/actions/publish-oci/action.yml](../.github/actions/publish-oci/action.yml) |
 | Publication recovery | Reuses retained artifacts from a completed pre-publication release run and never rebuilds or re-attests content. | [.github/workflows/recover-release-publication.yml](../.github/workflows/recover-release-publication.yml), [OPERATIONS.md](../OPERATIONS.md) |
 | Browser runtime | Loads only static same-origin assets, enables workspace trust, keeps gallery/webviews disabled, and persists browser/workbench state in origin-scoped browser storage. | [scripts/make_static.py](../scripts/make_static.py), [tests/e2e/security.spec.cjs](../tests/e2e/security.spec.cjs), [tests/e2e/network-policy.spec.cjs](../tests/e2e/network-policy.spec.cjs), [tests/e2e/workbench.spec.cjs](../tests/e2e/workbench.spec.cjs) |
 
@@ -93,30 +93,37 @@ Release workflow on immutable v*-web.* tag
                      |
         clean build #1 + verify qualified identity
                      |
-        clean build #2 + normalized distribution comparison
-                     |
-                     | TB6: reproducible dist -> packaging metadata
-                     v
-release candidate
-archives + checksums + manifest + SBOM + license inventory
-                     |
-                     | TB7: untrusted build/package jobs -> isolated attestation authority
-                     v
-OIDC provenance/SBOM attestations
-                     |
-                     | TB8: attested candidate -> protected release environment
-                     v
-        +------------+-------------+
-        |                          |
-        v                          v
-GitHub Release             Pages deployment
-        |
-        v
-GHCR multi-platform image
-        |
-        | TB9: publication systems -> users/static browsers
-        v
-same qualified static distribution
+                     +--> release-static-dist
+                     |       |
+                     |       +--> clean build #2 + normalized distribution comparison
+                     |       +--> release browser qualification
+                     |       |
+                     |       +--> package archives + metadata
+                     |               |
+                     |               | TB6: qualified static dist -> packaged release candidate
+                     |               v
+                     |         release-candidate
+                     |         archives + checksums + manifest + SBOM + license inventory
+                     |               |
+                     |               | TB7: untrusted build/package jobs -> isolated attestation authority
+                     |               v
+                     |         OIDC provenance/SBOM attestations
+                     |               |
+                     +---------------+ TB8: attestation completion -> publication authorization
+                                     |
+                         +-----------+-----------+
+                         |           |           |
+                         v           v           v
+                  GitHub Release   Pages       GHCR
+                  consumes         consumes    consumes
+                  release-candidate release-   release-
+                  + attestation     static-dist static-dist
+                         |           |           |
+                         +-----------+-----------+
+                                     |
+                                     | TB9: publication systems -> users/static browsers
+                                     v
+                         same qualified static distribution
 ~~~
 
 ### 1. Repository inputs to upstream identity
@@ -189,9 +196,17 @@ attestation job to have the required OIDC/attestation permissions while prohibit
 shell build steps, or upstream build execution. The security design is documented in
 [docs/release-security.md](release-security.md).
 
-### 7. Attested candidate to publication
+### 7. Attestation gate to publication
 
-All publication paths cross the protected <code>release</code> environment. Release-tag protection is
+Attestation completion is the common sequencing gate for publication, not a single common data
+artifact consumed by every channel. GitHub Release downloads the packaged <code>release-candidate</code>
+and <code>release-attestation</code>. Pages and GHCR instead download the canonical
+<code>release-static-dist</code> produced by the clean release build; they depend on successful
+attestation before publication but do not consume the packaged candidate bytes.
+
+All publication paths cross the protected <code>release</code> authorization boundary: GitHub Release
+and GHCR use that environment directly, while Pages passes through the <code>pages-release-gate</code>
+on <code>release</code> before deployment through <code>github-pages</code>. Release-tag protection is
 represented by [.github/rulesets/immutable-release-tags.json](../.github/rulesets/immutable-release-tags.json).
 Immediately before publication, workflows re-check tag/ruleset invariants described in
 [docs/release-security.md](release-security.md).
@@ -266,7 +281,7 @@ static assets.
 | TB5 | Qualification -> release rebuild | Provenance verification, qualified tree digest/file count | Release workflow |
 | TB6 | Rebuild -> release candidate | Second clean build and normalized distribution comparison | Release workflow |
 | TB7 | Candidate -> attestation authority | Source-free/build-free attestation job, minimal write permissions | GitHub Actions + maintainers |
-| TB8 | Attested candidate -> publication | Protected <code>release</code> environment, immutable tag checks | Repository settings + maintainers |
+| TB8 | Attestation completion -> publication authorization | Protected <code>release</code> boundary, channel-specific artifact inputs, immutable tag checks | Repository settings + maintainers |
 | TB9 | Publication -> browser | Channel verification, HTTPS/static-host integrity, browser same-origin/CSP | GitHub/host operator + browser |
 
 ## Control ownership
