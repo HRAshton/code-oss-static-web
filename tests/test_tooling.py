@@ -764,7 +764,14 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('--grep-invert @extension', action)
         self.assertIn('--grep @extension', action)
         self.assertIn('scripts/add_test_extension.py', action)
-        self.assertIn("if: inputs.scope == 'smoke'", action)
+        boot_gate = action[
+            action.index('    - name: Browser boot gate') : action.index(
+                '    - name: Browser qualification'
+            )
+        ]
+        self.assertNotIn("if: inputs.scope == 'smoke'", boot_gate)
+        self.assertNotIn("if: inputs.scope == 'full'", boot_gate)
+        self.assertIn('--retries=0', boot_gate)
         self.assertIn("if: inputs.scope == 'full'", action)
         self.assertIn('--reuse-upstream-build', workflow)
 

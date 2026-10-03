@@ -26,9 +26,9 @@ still regenerating the current static wrapper.
 ## Current browser policy
 
 Browser execution is centralized in `.github/actions/browser-qualification`. Pull requests that touch
-qualification inputs build the candidate and run the Chromium boot smoke only. Full qualification
-runs on `develop` and for manual `all` dispatches execute the complete Chromium, Firefox and WebKit
-non-extension suites once each. Extension-host qualification is a distinct pass against the injected
+qualification inputs build the candidate and run the Chromium zero-retry boot gate only. Full
+qualification runs on `develop` and for manual `all` dispatches run the same zero-retry boot gate
+before executing the complete Chromium, Firefox and WebKit non-extension suites once each. Extension-host qualification is a distinct pass against the injected
 qualification copy so the canonical distribution remains unchanged. The release workflow independently rebuilds the tagged revision and reuses the same
 implementation for its release-grade Chromium and reproducibility gates.
 

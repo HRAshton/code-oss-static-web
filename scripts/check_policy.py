@@ -130,6 +130,18 @@ def check_browser_qualification_topology() -> None:
     ):
         require(required in action, f'browser qualification action missing: {required}')
 
+    boot_gate = re.search(
+        r'(?ms)^    - name: Browser boot gate\n(?P<body>.*?)(?=^    - name: )',
+        action,
+    )
+    require(boot_gate is not None, 'browser qualification action missing boot gate')
+    assert boot_gate is not None
+    boot_gate_body = boot_gate.group('body')
+    require(
+        '\n      if:' not in boot_gate_body,
+        'browser boot gate must run for both smoke and full qualification',
+    )
+    require('--retries=0' in boot_gate_body, 'browser boot gate must disable retries')
     duplicate = ROOT / '.github/workflows/browser-matrix.yml'
     require(not duplicate.exists(), 'duplicate browser-matrix workflow must be removed')
 

@@ -68,7 +68,6 @@ runs:
       run: python3 scripts/install_playwright_browser.py --with-deps "${{ inputs.browser }}"
 
     - name: Browser boot gate
-      if: inputs.scope == 'smoke'
       env:
         PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
         CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/boot
