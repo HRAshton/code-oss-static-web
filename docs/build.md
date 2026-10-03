@@ -13,6 +13,18 @@ python3 scripts/smoke_static.py dist
 The disposable checkout is `.work/vscode`. `npm ci` executes upstream scripts, therefore the CI
 build job must not possess release credentials or OIDC attestation permission.
 
+The upstream lock has a two-part identity invariant: the configured release `tag` must resolve to
+the exact 40-character `commit`. Validation resolves the tag independently with `git ls-remote`;
+when the tag is annotated, the peeled `^{}` target is compared with the pinned commit. A mismatch
+fails before any product build starts. The source fetch then still checks out the commit directly and
+verifies that the disposable checkout's `HEAD` is exactly the same SHA.
+
+To verify only the remote tag-to-commit binding without building:
+
+```bash
+python3 scripts/fetch_upstream.py --verify-tag-only
+```
+
 
 ## Build interface
 

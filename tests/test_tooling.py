@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import check_policy
 import extension_lock
 import extensions_index
+import fetch_upstream
 import generate_license_inventory
 import generate_runtime_metadata
 import generate_sbom
@@ -27,6 +29,99 @@ class ToolingTests(unittest.TestCase):
         self.assertRegex(lock['commit'], r'^[0-9a-f]{40}$')
         self.assertNotIn('qualified', lock)
         self.assertNotIn('qualificationNote', lock)
+
+    def _create_upstream_tag_fixture(self, root: Path) -> tuple[Path, str, str]:
+        remote = root / 'remote.git'
+        source = root / 'source'
+        remote.mkdir()
+        source.mkdir()
+        subprocess.run(['git', 'init', '-q', '--bare'], cwd=remote, check=True)
+        subprocess.run(['git', 'init', '-q'], cwd=source, check=True)
+        subprocess.run(
+            ['git', 'config', 'user.email', 'fixture@example.invalid'],
+            cwd=source,
+            check=True,
+        )
+        subprocess.run(['git', 'config', 'user.name', 'Fixture'], cwd=source, check=True)
+
+        tracked = source / 'fixture.txt'
+        tracked.write_text('lightweight\n')
+        subprocess.run(['git', 'add', 'fixture.txt'], cwd=source, check=True)
+        subprocess.run(['git', 'commit', '-q', '-m', 'lightweight'], cwd=source, check=True)
+        lightweight_commit = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'],
+            cwd=source,
+            text=True,
+        ).strip()
+        subprocess.run(['git', 'tag', 'lightweight'], cwd=source, check=True)
+
+        tracked.write_text('annotated\n')
+        subprocess.run(['git', 'commit', '-q', '-am', 'annotated'], cwd=source, check=True)
+        annotated_commit = subprocess.check_output(
+            ['git', 'rev-parse', 'HEAD'],
+            cwd=source,
+            text=True,
+        ).strip()
+        subprocess.run(
+            ['git', 'tag', '-a', 'annotated', '-m', 'annotated release'],
+            cwd=source,
+            check=True,
+        )
+
+        subprocess.run(
+            ['git', 'remote', 'add', 'origin', str(remote)],
+            cwd=source,
+            check=True,
+        )
+        subprocess.run(
+            ['git', 'push', '-q', 'origin', 'HEAD:refs/heads/main', '--tags'],
+            cwd=source,
+            check=True,
+        )
+        return remote, lightweight_commit, annotated_commit
+
+    def test_upstream_lightweight_tag_resolves_to_commit(self):
+        with tempfile.TemporaryDirectory() as td:
+            remote, lightweight_commit, _ = self._create_upstream_tag_fixture(Path(td))
+            self.assertEqual(
+                fetch_upstream.resolve_remote_tag(str(remote), 'lightweight'),
+                lightweight_commit,
+            )
+
+    def test_upstream_annotated_tag_is_peeled_to_commit(self):
+        with tempfile.TemporaryDirectory() as td:
+            remote, _, annotated_commit = self._create_upstream_tag_fixture(Path(td))
+            self.assertEqual(
+                fetch_upstream.resolve_remote_tag(str(remote), 'annotated'),
+                annotated_commit,
+            )
+
+    def test_upstream_tag_mismatch_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            remote, lightweight_commit, annotated_commit = self._create_upstream_tag_fixture(
+                Path(td)
+            )
+            self.assertNotEqual(lightweight_commit, annotated_commit)
+            lock = {
+                'repository': str(remote),
+                'tag': 'lightweight',
+                'commit': annotated_commit,
+            }
+            with self.assertRaisesRegex(fetch_upstream.BuildError, 'upstream tag mismatch'):
+                fetch_upstream.verify_tag_binding(lock)
+
+    def test_upstream_binding_is_validated_before_build(self):
+        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
+        self.assertIn('name: Upstream tag-to-commit binding', workflow)
+        self.assertIn('python3 scripts/fetch_upstream.py --verify-tag-only', workflow)
+
+        fetch_source = (ROOT / 'scripts/fetch_upstream.py').read_text()
+        self.assertIn('verify_tag_binding(lock)', fetch_source)
+        self.assertIn(
+            "run(['git', 'fetch', '--depth=1', 'origin', lock['commit']], cwd=dest)",
+            fetch_source,
+        )
+        self.assertIn("require(actual == lock['commit']", fetch_source)
 
     def test_renovate_updates_auto_merge_without_human_reviewer(self):
         config = json.loads((ROOT / 'renovate.json').read_text())
