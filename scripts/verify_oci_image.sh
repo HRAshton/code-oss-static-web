@@ -11,8 +11,9 @@ commit="$2"
 tag="$3"
 dist="$4"
 work=.work/oci-verify
+served_root=/srv/code-oss-static-web
 rm -rf "$work"
-mkdir -p "$work/image-dist"
+mkdir -p "$work"
 
 docker buildx imagetools inspect "$image" --format '{{json .Manifest}}' > "$work/manifest.json"
 jq -e '
@@ -20,38 +21,42 @@ jq -e '
   ([.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64")] | length) == 1
 ' "$work/manifest.json" >/dev/null
 
-docker pull --platform linux/amd64 "$image" >/dev/null
-labels="$(docker image inspect "$image" --format '{{json .Config.Labels}}')"
-jq -e --arg commit "$commit" --arg tag "$tag" '
-  .["org.opencontainers.image.revision"] == $commit and
-  .["org.opencontainers.image.version"] == $tag
-' <<<"$labels" >/dev/null
+containers=()
+cleanup() {
+  local container
+  for container in "${containers[@]}"; do
+    docker rm -f "$container" >/dev/null 2>&1 || true
+  done
+}
+trap cleanup EXIT
 
-container="$(docker create --platform linux/amd64 "$image")"
-trap 'docker rm -f "$container" >/dev/null 2>&1 || true' EXIT
-docker cp "$container:/usr/share/nginx/html/." "$work/image-dist/"
-PYTHONPATH=scripts python3 - "$dist" "$work/image-dist" <<'PY'
-from __future__ import annotations
+for arch in amd64 arm64; do
+  platform="linux/$arch"
+  digest="$(
+    jq -er --arg arch "$arch" '
+      [.manifests[]
+        | select(.platform.os == "linux" and .platform.architecture == $arch)
+        | .digest]
+      | if length == 1 then .[0] else error("expected exactly one platform child") end
+    ' "$work/manifest.json"
+  )"
+  child="$image@$digest"
 
-import os
-import sys
-from pathlib import Path
+  docker pull --platform "$platform" "$child" >/dev/null
+  image_id="$(docker image inspect "$child" --format '{{.Id}}')"
+  labels="$(docker image inspect "$image_id" --format '{{json .Config.Labels}}')"
+  jq -e --arg commit "$commit" --arg tag "$tag" '
+    .["org.opencontainers.image.revision"] == $commit and
+    .["org.opencontainers.image.version"] == $tag
+  ' <<<"$labels" >/dev/null
 
-from common import sha256_file
-from package_release import iter_files
+  platform_dist="$work/$arch/image-dist"
+  mkdir -p "$platform_dist"
+  container="$(docker create --platform "$platform" "$image_id")"
+  containers+=("$container")
+  docker cp "$container:$served_root/." "$platform_dist/"
 
-expected = Path(sys.argv[1])
-image_root = Path(sys.argv[2])
-for source in iter_files(expected):
-    relative = source.relative_to(expected)
-    target = image_root / relative
-    if not target.is_file():
-        raise SystemExit(f'OCI image is missing static file: {relative.as_posix()}')
-    if sha256_file(source) != sha256_file(target):
-        raise SystemExit(f'OCI static file digest mismatch: {relative.as_posix()}')
-    expected_executable = bool(source.stat().st_mode & 0o111)
-    actual_executable = bool(target.stat().st_mode & 0o111)
-    if actual_executable != expected_executable:
-        raise SystemExit(f'OCI static file mode mismatch: {relative.as_posix()}')
-PY
+  python3 scripts/compare_dist.py "$dist" "$platform_dist"
+done
+
 echo "GHCR publication complete: $image"

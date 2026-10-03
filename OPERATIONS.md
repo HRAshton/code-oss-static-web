@@ -32,7 +32,7 @@ RELEASE_RUN_ID=123456789
 | --- | --- | --- | --- |
 | GitHub Release | Published release has exactly the expected assets with matching SHA-256 digests | Matching published releases are verification-only; an interrupted draft may upload only its missing expected assets and is published only after the complete set verifies | Missing assets on an already-published release, unexpected assets, or mismatching bytes fail closed; published assets are never changed |
 | GitHub Pages | Pages deployment for the release commit reports `succeed` | Already-successful deployment is reused; otherwise the retained `release-static-dist` is deployed | A failed deployment can be retried independently without rebuilding the distribution |
-| GHCR | The release tag has amd64 and arm64 manifests, expected release labels, and every canonical static file matches `release-static-dist` | A matching existing tag is reused; a confirmed-missing tag is rebuilt only as channel packaging from retained `release-static-dist` and then verified | An existing tag that does not verify, or an indeterminate registry lookup, fails closed and is not overwritten |
+| GHCR | Both amd64 and arm64 child images have the expected release labels and their complete served file trees exactly match `release-static-dist` | A matching existing tag is reused; a confirmed-missing tag is rebuilt only as channel packaging from retained `release-static-dist` and then verified | An existing tag with missing, changed, or extra served files on either platform, or an indeterminate registry lookup, fails closed and is not overwritten |
 
 ### Recover one channel
 

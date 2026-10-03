@@ -12,6 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import check_policy
+import compare_dist
 import extension_lock
 import extensions_index
 import fetch_upstream
@@ -997,10 +998,17 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('unable to determine GHCR publication state', oci_action)
         self.assertIn("steps.state.outputs.exists == 'false'", oci_action)
         oci_verifier = (ROOT / 'scripts/verify_oci_image.sh').read_text()
-        self.assertIn('from package_release import iter_files', oci_verifier)
-        self.assertIn('sha256_file(source) != sha256_file(target)', oci_verifier)
-        self.assertIn('OCI image is missing static file', oci_verifier)
-        self.assertNotIn('scripts/compare_dist.py "$dist"', oci_verifier)
+        self.assertIn('for arch in amd64 arm64; do', oci_verifier)
+        self.assertIn('child="$image@$digest"', oci_verifier)
+        self.assertIn('docker pull --platform "$platform" "$child"', oci_verifier)
+        self.assertIn('docker image inspect "$image_id"', oci_verifier)
+        self.assertIn('scripts/compare_dist.py "$dist" "$platform_dist"', oci_verifier)
+        self.assertIn('served_root=/srv/code-oss-static-web', oci_verifier)
+        self.assertIn(
+            'COPY dist/ /srv/code-oss-static-web/',
+            (ROOT / 'deploy/Dockerfile').read_text(),
+        )
+        self.assertIn('root /srv/code-oss-static-web;', (ROOT / 'deploy/nginx.conf').read_text())
         self.assertIn('publication-status:', workflow)
         self.assertIn('needs: publication-status', workflow)
         self.assertIn('needs: authorize', workflow)
@@ -1047,6 +1055,23 @@ python-version: ${{ steps.versions.outputs.python }}
             r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
         )
         self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
+
+    def test_distribution_comparison_rejects_extra_served_files(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            reference = root / 'reference'
+            candidate = root / 'candidate'
+            reference.mkdir()
+            candidate.mkdir()
+            (reference / 'index.html').write_text('same')
+            (candidate / 'index.html').write_text('same')
+            (candidate / 'unexpected.txt').write_text('extra')
+
+            with self.assertRaisesRegex(
+                compare_dist.BuildError,
+                'distribution file count mismatch',
+            ):
+                compare_dist.compare_distributions(reference, candidate)
 
     def test_release_publication_recovery_is_artifact_only(self):
         workflow_path = ROOT / '.github/workflows/recover-release-publication.yml'

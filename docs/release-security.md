@@ -62,9 +62,9 @@ publication reconciles assets monotonically: matching published assets are verif
 only an interrupted draft may add missing expected assets before publication. Conflicting,
 unexpected, or incomplete published asset sets fail closed. Pages treats a successful deployment
 for the immutable release commit as complete before creating another deployment. GHCR verifies the
-existing release tag, release labels, multi-platform manifest, and every canonical static file; it
-publishes only after the registry explicitly reports that the tag is absent, while indeterminate
-registry failures abort without pushing.
+existing release tag, multi-platform manifest, release labels on both amd64 and arm64 children,
+and the exact served static file tree for both platform images; it publishes only after the registry
+explicitly reports that the tag is absent, while indeterminate registry failures abort without pushing.
 
 `Recover release publication` accepts the completed source Release workflow-run ID, verifies that
 all pre-publication preparation jobs succeeded, and downloads retained `release-static-dist`,

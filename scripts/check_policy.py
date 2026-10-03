@@ -623,12 +623,22 @@ def check_release_integrity_policy() -> None:
     )
     oci_verifier = (ROOT / 'scripts/verify_oci_image.sh').read_text(encoding='utf-8')
     require(
-        'from package_release import iter_files' in oci_verifier
-        and 'sha256_file(source) != sha256_file(target)' in oci_verifier,
-        'OCI publication must verify every canonical distribution file',
+        'for arch in amd64 arm64; do' in oci_verifier
+        and 'child="$image@$digest"' in oci_verifier
+        and 'scripts/compare_dist.py "$dist" "$platform_dist"' in oci_verifier,
+        'OCI publication must verify the complete static tree for both platform children',
     )
 
     dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding='utf-8')
+    require(
+        'COPY dist/ /srv/code-oss-static-web/' in dockerfile,
+        'OCI image must copy the static distribution into a dedicated served root',
+    )
+    nginx_config = (ROOT / 'deploy/nginx.conf').read_text(encoding='utf-8')
+    require(
+        'root /srv/code-oss-static-web;' in nginx_config,
+        'OCI nginx configuration must serve only the dedicated static distribution root',
+    )
     require(
         re.search(r'^\s*RUN(?:\s|$)', dockerfile, re.MULTILINE | re.IGNORECASE) is None,
         'multi-platform release Dockerfile must remain execution-free without QEMU',
