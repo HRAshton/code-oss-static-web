@@ -19,11 +19,15 @@ directly to a pull request when the expected behavior is clear.
 
 Changes involving webviews, CSP, sandboxing, workspace trust, extension loading, authentication,
 URI handlers, provenance, release publication, or other trust boundaries require explicit manual
-review.
+review. Automated approvals cannot satisfy that requirement.
 
-Pull requests require human review and the repository's required checks before merge. Stale
-approvals are dismissed when the pull request changes, and the last push must be approved by someone
-other than its author.
+The trusted Renovate auto-approval workflow is a narrow exception for dependency pull requests that
+change only `upstream.lock.json`. Changes under `.github/**`, `deploy/**`, or any other
+release/security trust boundary are outside that allowlist and require human approval.
+
+Pull requests otherwise require human review and the repository's required checks before merge.
+Stale approvals are dismissed when the pull request changes, and the last push must be approved by
+someone other than its author.
 
 Repository ownership and sensitive-path review expectations are defined in
 [Governance](GOVERNANCE.md). During the current personal-account phase, role-specific review is a

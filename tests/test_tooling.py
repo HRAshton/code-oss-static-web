@@ -128,7 +128,7 @@ class ToolingTests(unittest.TestCase):
         )
         self.assertIn("require(actual == lock['commit']", fetch_source)
 
-    def test_renovate_updates_auto_merge_without_human_reviewer(self):
+    def test_renovate_auto_approval_is_limited_to_upstream_lock(self):
         config = json.loads((ROOT / 'renovate.json').read_text())
         self.assertTrue(config['automerge'])
         self.assertEqual(config['automergeType'], 'pr')
@@ -158,6 +158,23 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('pull-requests: write', workflow)
         self.assertIn('event=APPROVE', workflow)
         self.assertNotIn('gh pr merge', workflow)
+
+        allowlist = workflow.split('case "$path" in', 1)[1].split('*)', 1)[0]
+        auto_approvable = {
+            line.strip().removesuffix(') ;;')
+            for line in allowlist.splitlines()
+            if line.strip().endswith(') ;;')
+        }
+        self.assertEqual(auto_approvable, {'upstream.lock.json'})
+        self.assertIn('upstream.lock.json', auto_approvable)
+        for denied in (
+            'deploy/Dockerfile',
+            '.github/workflows/ci.yml',
+            '.github/actions/setup-toolchain/action.yml',
+            'security/threat-model.md',
+        ):
+            with self.subTest(path=denied):
+                self.assertNotIn(denied, auto_approvable)
 
     def test_upstream_revision_change_dispatches_full_qualification(self):
         workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()
