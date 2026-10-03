@@ -21,6 +21,9 @@ jobs:
       actions: read
       contents: read
       pages: read
+    outputs:
+      qualified-tree-sha256: ${{ steps.binding.outputs.tree-sha256 }}
+      qualified-file-count: ${{ steps.binding.outputs.file-count }}
     steps:
       - name: Verify release qualification evidence
         env:
@@ -63,7 +66,20 @@ jobs:
           run-id: ${{ inputs.qualification_run_id }}
           github-token: ${{ github.token }}
 
+      - name: Verify qualification provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh attestation verify \
+            .work/release-qualification/artifact-manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --bundle .work/release-qualification/qualification-provenance.sigstore.json \
+            --source-ref refs/heads/master >/dev/null
+
       - name: Verify release qualification binding
+        id: binding
         env:
           GH_TOKEN: ${{ github.token }}
           QUALIFICATION_RUN_ID: ${{ inputs.qualification_run_id }}
@@ -74,6 +90,9 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/contents/.github/toolchain-versions.json?ref=$GITHUB_SHA" \
               --jq '.content' | base64 --decode | jq -c '{node, python}'
           )"
+          evidence=.work/release-qualification/release-qualification.json
+          manifest=.work/release-qualification/artifact-manifest.json
+
           jq -e \
             --arg commit "$GITHUB_SHA" \
             --arg tag "$GITHUB_REF_NAME" \
@@ -86,7 +105,38 @@ jobs:
               .toolchain == $toolchain and
               (.releaseMode == "upstream" or .releaseMode == "patch")
             ' \
-            .work/release-qualification/release-qualification.json >/dev/null
+            "$evidence" >/dev/null
+
+          qualified_tree_sha256="$(jq -r '.distribution.treeSha256' "$evidence")"
+          qualified_file_count="$(jq -r '.distribution.fileCount' "$evidence")"
+          if [[ ! "$qualified_tree_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "invalid qualified distribution tree digest: $qualified_tree_sha256" >&2
+            exit 1
+          fi
+          if [[ ! "$qualified_file_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "invalid qualified distribution file count: $qualified_file_count" >&2
+            exit 1
+          fi
+
+          jq -e \
+            --arg commit "$GITHUB_SHA" \
+            --argjson toolchain "$toolchain" \
+            --arg treeSha256 "$qualified_tree_sha256" \
+            --argjson fileCount "$qualified_file_count" \
+            '
+              .schemaVersion == 1 and
+              .project.commit == $commit and
+              .toolchain == $toolchain and
+              .distribution.treeSha256 == $treeSha256 and
+              .distribution.fileCount == $fileCount
+            ' \
+            "$manifest" >/dev/null
+
+          {
+            echo "tree-sha256=$qualified_tree_sha256"
+            echo "file-count=$qualified_file_count"
+          } >> "$GITHUB_OUTPUT"
+          echo "Qualified distribution identity: $qualified_tree_sha256 ($qualified_file_count files)"
 
       - name: Verify release commit is on protected default branch
         env:
@@ -145,6 +195,17 @@ jobs:
 
       - name: Structural artifact smoke test
         run: python3 scripts/smoke_static.py dist
+
+      - name: Verify qualified distribution identity
+        env:
+          QUALIFIED_TREE_SHA256: ${{ needs.authorize.outputs.qualified-tree-sha256 }}
+          QUALIFIED_FILE_COUNT: ${{ needs.authorize.outputs.qualified-file-count }}
+        shell: bash
+        run: >-
+          python3 scripts/verify_dist_identity.py
+          --expected-sha256 "$QUALIFIED_TREE_SHA256"
+          --expected-file-count "$QUALIFIED_FILE_COUNT"
+          dist
 
       - name: Capture runtime component metadata
         run: >-

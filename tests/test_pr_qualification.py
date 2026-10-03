@@ -44,6 +44,7 @@ class PullRequestQualificationTests(unittest.TestCase):
             'security/network-policy.json',
             'scripts/make_static.py',
             'scripts/run_e2e.py',
+            'scripts/verify_dist_identity.py',
             '.github/workflows/qualify.yml',
             '.github/actions/browser-qualification/action.yml',
         )

@@ -362,6 +362,7 @@ jobs:
           path: artifacts
 
       - name: Attest release provenance
+        id: provenance
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: artifacts/SHA256SUMS
@@ -374,6 +375,13 @@ jobs:
             artifacts/code-oss-static-web-*.zip
           sbom-path: artifacts/sbom.cdx.json
 
+      - name: Upload qualification provenance bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qualification-provenance
+          path: ${{ steps.provenance.outputs.bundle-path }}
+          if-no-files-found: error
+          retention-days: 7
 
   release:
     needs: [build, browser, package, attest]
@@ -391,6 +399,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download qualified candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: candidate
+          path: .work/qualified-candidate
+
+      - name: Download qualification provenance bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: qualification-provenance
+          path: .work/qualification-provenance
 
       - name: Record release qualification
         id: qualification
@@ -448,28 +468,66 @@ jobs:
           python3 scripts/check_release_tag.py "$tag"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
-          mkdir -p .work
           toolchain="$(jq -c '{node, python}' .github/toolchain-versions.json)"
+          manifest=.work/qualified-candidate/artifact-manifest.json
+          jq -e \
+            --arg commit "$GITHUB_SHA" \
+            --argjson toolchain "$toolchain" \
+            '
+              .schemaVersion == 1 and
+              .project.commit == $commit and
+              .toolchain == $toolchain
+            ' \
+            "$manifest" >/dev/null
+
+          distribution="$(jq -c '.distribution' "$manifest")"
+          tree_sha256="$(jq -r '.treeSha256' <<<"$distribution")"
+          file_count="$(jq -r '.fileCount' <<<"$distribution")"
+          if [[ ! "$tree_sha256" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "invalid qualified distribution tree digest: $tree_sha256" >&2
+            exit 1
+          fi
+          if [[ ! "$file_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "invalid qualified distribution file count: $file_count" >&2
+            exit 1
+          fi
+
+          mapfile -t provenance_bundles < <(
+            find .work/qualification-provenance -maxdepth 1 -type f -print
+          )
+          if (( ${#provenance_bundles[@]} != 1 )); then
+            echo "expected exactly one qualification provenance bundle, found ${#provenance_bundles[@]}" >&2
+            exit 1
+          fi
+
+          mkdir -p .work/release-qualification
+          cp "$manifest" .work/release-qualification/artifact-manifest.json
+          cp "${provenance_bundles[0]}" \
+            .work/release-qualification/qualification-provenance.sigstore.json
+
           jq -n \
             --arg commit "$GITHUB_SHA" \
             --arg tag "$tag" \
             --arg releaseMode "$mode" \
             --argjson workflowRunId "$GITHUB_RUN_ID" \
             --argjson toolchain "$toolchain" \
+            --argjson distribution "$distribution" \
             '{
               commit: $commit,
               tag: $tag,
               releaseMode: $releaseMode,
               workflowRunId: $workflowRunId,
-              toolchain: $toolchain
+              toolchain: $toolchain,
+              distribution: $distribution
             }' \
-            > .work/release-qualification.json
+            > .work/release-qualification/release-qualification.json
+          echo "Qualified distribution: $tree_sha256 ($file_count files)"
 
       - name: Upload release qualification evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-qualification
-          path: .work/release-qualification.json
+          path: .work/release-qualification/
           if-no-files-found: error
           retention-days: 30
 
