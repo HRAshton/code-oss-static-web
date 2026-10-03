@@ -460,6 +460,54 @@ def check_release_publication_boundaries(workflow: Path, text: str) -> None:
         )
 
 
+def check_qualification_source_binding() -> None:
+    qualify = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
+    for required in (
+        'expected_source_sha:',
+        'name: Verify expected source SHA',
+        'EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}',
+        'python3 scripts/verify_qualification_source.py "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"',
+        'expectedSourceSha: $expectedSourceSha',
+        'Expected source SHA:',
+    ):
+        require(required in qualify, f'qualification source binding missing: {required}')
+
+    require(
+        qualify.index('name: Verify expected source SHA')
+        < qualify.index('name: Select browser qualification plan'),
+        'qualification source binding must run before qualification planning',
+    )
+
+    upstream = (ROOT / '.github/workflows/upstream-qualification.yml').read_text(encoding='utf-8')
+    for required in (
+        'echo "source_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"',
+        'SOURCE_SHA: ${{ steps.upstream.outputs.source_sha }}',
+        '-f expected_source_sha="$SOURCE_SHA"',
+    ):
+        require(
+            required in upstream,
+            f'upstream qualification dispatch missing source binding: {required}',
+        )
+
+    patch = (ROOT / '.github/workflows/patch-release.yml').read_text(encoding='utf-8')
+    for required in (
+        'contents/upstream.lock.json?ref=$master_sha',
+        'echo "source_sha=$master_sha" >> "$GITHUB_OUTPUT"',
+        'SOURCE_SHA: ${{ steps.release.outputs.source_sha }}',
+        '-f expected_source_sha="$SOURCE_SHA"',
+    ):
+        require(
+            required in patch,
+            f'patch qualification dispatch missing source binding: {required}',
+        )
+
+    release = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+    require(
+        '.expectedSourceSha == $commit' in release,
+        'release authorization must verify the expected qualification source SHA',
+    )
+
+
 def check_qualification_release_retry_policy() -> None:
     workflow = ROOT / '.github/workflows/qualify.yml'
     text = workflow.read_text(encoding='utf-8')
@@ -889,6 +937,7 @@ def main() -> None:
     check_attestation_job_permissions()
     check_publication_job_permissions()
     check_codeowners_policy()
+    check_qualification_source_binding()
     check_qualification_release_retry_policy()
     check_recovery_publication_boundaries()
     check_promotion_boundaries()

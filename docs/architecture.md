@@ -189,8 +189,13 @@ qualification.
 
 Browser qualification serves the artifact as a static site under a non-root prefix and verifies boot,
 editor behavior, workspace trust, extension-host behavior, network policy, and fail-closed runtime
-defaults. Release-intent qualification records the normalized distribution tree digest and file count
-for the exact <code>static-dist</code> artifact consumed by the browser jobs.
+defaults. Automated upstream and patch dispatchers pass the exact project commit they inspected as
+<code>expected_source_sha</code>. Workflow-dispatch qualification verifies that the checked-out
+<code>GITHUB_SHA</code> equals that immutable expectation before planning or build work; branch
+movement therefore fails closed instead of silently qualifying a newer source revision.
+Release-intent qualification records that expected source SHA together with the normalized
+distribution tree digest and file count for the exact <code>static-dist</code> artifact consumed by
+the browser jobs.
 
 ### 5. Qualification evidence to independent release rebuild
 

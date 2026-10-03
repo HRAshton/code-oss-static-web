@@ -51,6 +51,12 @@ Immutable publication and mutable deployment are separate trust transitions. Aft
 the GitHub Release and release-tagged GHCR image cross the protected `release` environment boundary.
 They retain the immutable `v*-web.*` identity and never serve as mutable canary/stable aliases.
 
+The automated upstream and patch dispatchers bind qualification to the exact source commit they
+inspected. Qualification checks the dispatched `expected_source_sha` against its checked-out
+`GITHUB_SHA` before qualification planning proceeds, and release qualification evidence preserves
+that expected SHA. The independent Release workflow requires the preserved expectation to equal the
+immutable release commit.
+
 The qualification release job crosses the same `release` boundary before creating the immutable
 release tag and dispatching Release. Every immutable GitHub Release/GHCR publication path checks that
 the release-tag ruleset is active and that the release tag still resolves to the workflow's immutable
