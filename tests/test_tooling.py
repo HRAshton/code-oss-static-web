@@ -552,7 +552,9 @@ python-version: ${{ steps.versions.outputs.python }}
                     check_policy.check_forbidden_execution_patterns()
 
                 workflow.write_text('jobs:\n  test:\n    steps: []\n')
-                action.write_text('runs:\n  using: composite\n  steps:\n    - uses: example/action@main\n')
+                action.write_text(
+                    'runs:\n  using: composite\n  steps:\n    - uses: example/action@main\n'
+                )
                 with self.assertRaises(check_policy.BuildError):
                     check_policy.check_actions()
             finally:
