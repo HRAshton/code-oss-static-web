@@ -32,10 +32,13 @@ gh attestation verify code-oss-static-web-1.139.1-web.0.tar.gz \
   --repo HRAshton/code-oss-static-web
 ```
 
-Development qualification may reuse the content-addressed upstream web-build cache. Cache hits are
-an optimization, not provenance. Immutable release publication performs independent clean builds and compares their normalized
-distributions before publishing release assets. Promotion consumes those already-published immutable
-assets and never rebuilds or re-attests them.
+Development qualification may reuse the content-addressed upstream web-build cache. Cold builds may
+also reuse an npm package-download cache; `npm ci` still selects dependencies from the lockfile in
+the pinned upstream revision, so cached package tarballs are a transport optimization only. Cache
+hits are an optimization, not provenance. Immutable release publication performs independent clean
+builds without development caches and compares their normalized distributions before publishing
+release assets. Promotion consumes those already-published immutable assets and never rebuilds or
+re-attests them.
 
 Release tags matching `v*-web.*` must be protected by the repository ruleset represented in
 `.github/rulesets/immutable-release-tags.json`: active tag targeting, update restriction, deletion

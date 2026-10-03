@@ -1023,10 +1023,13 @@ python-version: ${{ steps.versions.outputs.python }}
                 bypass,
             )
 
-    def test_ci_validates_pr_titles_and_skips_default_branch_merge_messages(self):
+    def test_ci_validates_pr_titles_and_avoids_redundant_branch_work(self):
         workflow = (ROOT / '.github/workflows/ci.yml').read_text()
         self.assertIn('name: Pull request title policy', workflow)
         self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
+        self.assertIn('branches: [master, develop]', workflow)
+        self.assertIn('group: ci-', workflow)
+        self.assertIn('cancel-in-progress: true', workflow)
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn('github.event.pull_request.title', workflow)
         self.assertIn('name: Pull request commit message policy', workflow)
@@ -1042,6 +1045,8 @@ python-version: ${{ steps.versions.outputs.python }}
             'github.ref_name != github.event.repository.default_branch',
             workflow,
         )
+        self.assertNotIn('style-normalization', workflow)
+        self.assertNotIn('Export normalization workspace', workflow)
 
     def test_github_actions_yaml_checker_covers_actions_and_yaml_extensions(self):
         checker = (ROOT / 'scripts/check_workflow_yaml.rb').read_text()
