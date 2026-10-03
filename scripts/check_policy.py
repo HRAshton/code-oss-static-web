@@ -343,7 +343,9 @@ def publication_write_permissions(block: str) -> set[str]:
     return set(re.findall(r'^      ([A-Za-z0-9-]+):\s*write\s*$', block, re.MULTILINE))
 
 
-def check_publication_job_block(workflow: Path, job_name: str, block: str) -> None:
+def check_publication_job_block(
+    workflow: Path, job_name: str, block: str, evidence_job: str
+) -> None:
     write_permissions = publication_write_permissions(block)
     publication_permissions = write_permissions.intersection({'contents', 'packages', 'pages'})
     if not publication_permissions:
@@ -352,8 +354,8 @@ def check_publication_job_block(workflow: Path, job_name: str, block: str) -> No
     display = f'{workflow.relative_to(ROOT)}:{job_name}'
     needs = workflow_job_needs(block)
     require(
-        'attest' in needs,
-        f'{display}: publication job must depend on attestation',
+        evidence_job in needs,
+        f'{display}: publication job must depend on {evidence_job}',
     )
     require(
         './build.sh' not in block, f'{display}: publication job must not execute upstream builds'
@@ -385,7 +387,7 @@ def check_publication_job_block(workflow: Path, job_name: str, block: str) -> No
         )
 
 
-def check_pages_release_gate(workflow: Path, jobs: dict[str, str]) -> None:
+def check_pages_release_gate(workflow: Path, jobs: dict[str, str], evidence_job: str) -> None:
     gate = jobs.get('pages-release-gate')
     require(gate is not None, f'{workflow.relative_to(ROOT)}: missing pages-release-gate job')
     assert gate is not None
@@ -394,8 +396,8 @@ def check_pages_release_gate(workflow: Path, jobs: dict[str, str]) -> None:
         f'{workflow.relative_to(ROOT)}:pages-release-gate: must use release environment',
     )
     require(
-        workflow_job_needs(gate) == {'attest'},
-        f'{workflow.relative_to(ROOT)}:pages-release-gate: must depend only on attestation',
+        workflow_job_needs(gate) == {evidence_job},
+        f'{workflow.relative_to(ROOT)}:pages-release-gate: must depend only on {evidence_job}',
     )
     require(
         re.search(r'^    permissions:\s*\{\}\s*$', gate, re.MULTILINE) is not None,
@@ -419,6 +421,9 @@ def check_publication_job_permissions() -> None:
     for workflow in workflow_definition_paths():
         text = workflow.read_text(encoding='utf-8')
         jobs = dict(workflow_job_blocks(text))
+        evidence_job = (
+            'authorize-recovery' if workflow.name == 'recover-release-publication.yml' else 'attest'
+        )
         has_pages_publication = False
         for job_name, block in jobs.items():
             publication_permissions = publication_write_permissions(block).intersection(
@@ -426,9 +431,9 @@ def check_publication_job_permissions() -> None:
             )
             if 'pages' in publication_permissions:
                 has_pages_publication = True
-            check_publication_job_block(workflow, job_name, block)
+            check_publication_job_block(workflow, job_name, block, evidence_job)
         if has_pages_publication:
-            check_pages_release_gate(workflow, jobs)
+            check_pages_release_gate(workflow, jobs, evidence_job)
 
 
 def check_release_publication_boundaries(workflow: Path, text: str) -> None:
@@ -447,7 +452,7 @@ def check_release_publication_boundaries(workflow: Path, text: str) -> None:
             f'{workflow.relative_to(ROOT)}:{job_name}: publication must depend on attestation',
         )
 
-    check_pages_release_gate(workflow, jobs)
+    check_pages_release_gate(workflow, jobs, 'attest')
 
     pages = jobs.get('pages')
     require(pages is not None, f'{workflow.relative_to(ROOT)}: missing pages publication job')
@@ -460,6 +465,83 @@ def check_release_publication_boundaries(workflow: Path, text: str) -> None:
     require(
         {'attest', 'pages-release-gate'}.issubset(page_needs),
         f'{workflow.relative_to(ROOT)}:pages: must depend on attestation and release gate',
+    )
+
+
+def check_recovery_publication_boundaries() -> None:
+    workflow = ROOT / '.github/workflows/recover-release-publication.yml'
+    require(workflow.is_file(), 'release publication recovery workflow missing')
+    text = workflow.read_text(encoding='utf-8')
+    jobs = dict(workflow_job_blocks(text))
+
+    authorize = jobs.get('authorize-recovery')
+    require(authorize is not None, 'publication recovery must have an authorization job')
+    assert authorize is not None
+    require(
+        publication_write_permissions(authorize) == set(),
+        'publication recovery authorization must be read-only',
+    )
+    for required in (
+        'release_run_id:',
+        'channel:',
+        'repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID',
+        '.path == ".github/workflows/release.yml"',
+        '.head_sha == $sha',
+        'required preparation job did not succeed exactly once',
+        'release-static-dist',
+        'release-candidate',
+        'release-attestation',
+    ):
+        require(
+            required in authorize or required in text,
+            f'publication recovery missing guard: {required}',
+        )
+
+    for forbidden in ('./build.sh', 'package.sh', 'actions/attest@'):
+        require(
+            forbidden not in text,
+            f'publication recovery must not regenerate immutable release content: {forbidden}',
+        )
+
+    for job_name in ('github-release', 'oci'):
+        block = jobs.get(job_name)
+        require(block is not None, f'publication recovery missing {job_name} job')
+        assert block is not None
+        require(
+            workflow_job_environment(block) == 'release',
+            f'publication recovery {job_name} must use release environment',
+        )
+        require(
+            'authorize-recovery' in workflow_job_needs(block),
+            f'publication recovery {job_name} must depend on authorization',
+        )
+
+    check_pages_release_gate(workflow, jobs, 'authorize-recovery')
+    pages = jobs.get('pages')
+    require(pages is not None, 'publication recovery missing Pages job')
+    assert pages is not None
+    require(
+        workflow_job_environment(pages) == 'github-pages',
+        'publication recovery Pages job must use github-pages environment',
+    )
+    require(
+        {'authorize-recovery', 'pages-release-gate'}.issubset(workflow_job_needs(pages)),
+        'publication recovery Pages job must depend on authorization and release gate',
+    )
+
+    for required in (
+        'run-id: ${{ inputs.release_run_id }}',
+        'uses: ./.github/actions/publish-github-release',
+        'uses: ./.github/actions/publish-pages',
+        'uses: ./.github/actions/publish-oci',
+        'group: release-${{ github.ref }}',
+        'publication-status:',
+    ):
+        require(required in text, f'publication recovery missing: {required}')
+
+    require(
+        text.count('name: Verify immutable release ref') == 3,
+        'publication recovery must verify the immutable tag before every publication path',
     )
 
 
@@ -509,7 +591,14 @@ def check_release_integrity_policy() -> None:
     require(oci is not None, 'release workflow must have an OCI publication job')
     assert oci is not None
     require(
-        'docker/setup-qemu-action@' not in oci,
+        'uses: ./.github/actions/publish-oci' in oci,
+        'release OCI publication must use the shared publication action',
+    )
+    oci_action_path = ROOT / '.github/actions/publish-oci/action.yml'
+    require(oci_action_path.is_file(), 'shared OCI publication action missing')
+    oci_action = oci_action_path.read_text(encoding='utf-8')
+    require(
+        'docker/setup-qemu-action@' not in oci_action,
         'OCI publication must not execute mutable QEMU/binfmt helper images',
     )
     buildkit_image = (
@@ -517,15 +606,39 @@ def check_release_integrity_policy() -> None:
         'sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8'
     )
     require(
-        buildkit_image in oci,
+        buildkit_image in oci_action,
         'OCI publication must pin the BuildKit daemon image by digest',
     )
     require(
-        'platforms: linux/amd64,linux/arm64' in oci,
+        'platforms: linux/amd64,linux/arm64' in oci_action,
         'OCI publication must publish amd64 and arm64 images',
+    )
+    require(
+        'unable to determine GHCR publication state; refusing to publish' in oci_action,
+        'OCI publication must fail closed when registry state is unknown',
+    )
+    require(
+        "steps.state.outputs.exists == 'false'" in oci_action,
+        'OCI publication must publish only after confirmed absence',
+    )
+    oci_verifier = (ROOT / 'scripts/verify_oci_image.sh').read_text(encoding='utf-8')
+    require(
+        'for arch in amd64 arm64; do' in oci_verifier
+        and 'child="$image@$digest"' in oci_verifier
+        and 'scripts/compare_dist.py "$dist" "$platform_dist"' in oci_verifier,
+        'OCI publication must verify the complete static tree for both platform children',
     )
 
     dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding='utf-8')
+    require(
+        'COPY dist/ /srv/code-oss-static-web/' in dockerfile,
+        'OCI image must copy the static distribution into a dedicated served root',
+    )
+    nginx_config = (ROOT / 'deploy/nginx.conf').read_text(encoding='utf-8')
+    require(
+        'root /srv/code-oss-static-web;' in nginx_config,
+        'OCI nginx configuration must serve only the dedicated static distribution root',
+    )
     require(
         re.search(r'^\s*RUN(?:\s|$)', dockerfile, re.MULTILINE | re.IGNORECASE) is None,
         'multi-platform release Dockerfile must remain execution-free without QEMU',
@@ -590,6 +703,7 @@ def main() -> None:
     check_build_job_permissions()
     check_attestation_job_permissions()
     check_publication_job_permissions()
+    check_recovery_publication_boundaries()
     check_release_integrity_policy()
     print('repository policy: ok')
 

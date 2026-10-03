@@ -59,8 +59,21 @@ patch release is `v1.140.0-web.1`.
 ## Retry versus patch
 
 Do **not** increment the revision for a transient publication failure when the source commit has not
-changed. Retry the Release workflow for the existing immutable tag using the successful qualification
-workflow-run ID.
+changed. The initial Release workflow records GitHub Release, Pages, and GHCR as independent
+publication jobs and verifies all three before the run is considered complete.
+
+For a partial publication failure, do not rerun build, reproducibility, packaging, or attestation.
+Run **Recover release publication** on the existing immutable tag and provide the original Release
+workflow-run ID. Select `github-release`, `pages`, `ghcr`, or `all`. Recovery consumes only retained
+artifacts from the source Release run and verifies that its authorization, clean build,
+reproducibility, release-grade Chromium qualification, package, and attestation jobs succeeded.
+
+GitHub Release recovery treats a published release as verification-only; only an interrupted draft
+may fill missing expected assets before it is published, and existing assets are never clobbered.
+Pages reuses an already-successful deployment for the release commit. GHCR verifies an existing
+image before publishing and publishes only after a registry lookup confirms that the tag is absent.
+
+See [Operations](../OPERATIONS.md) for the channel-state table and recovery commands.
 
 Increment to the next `web.N` only when a source change was required after the previous tag was
 created. The Patch release workflow refuses to create another revision when the latest release tag

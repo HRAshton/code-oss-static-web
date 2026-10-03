@@ -1,0 +1,78 @@
+name: Publish GitHub Pages
+description: Idempotently deploy and verify the exact release commit on GitHub Pages
+inputs:
+  github-token:
+    description: GitHub token
+    required: true
+  repository:
+    description: owner/repository
+    required: true
+  commit:
+    description: Immutable release commit
+    required: true
+  dist-path:
+    description: Extracted canonical distribution
+    required: true
+outputs:
+  page-url:
+    description: Published Pages URL
+    value: ${{ steps.result.outputs.page-url }}
+runs:
+  using: composite
+  steps:
+    - name: Check existing Pages deployment
+      id: state
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        status="$(gh api "repos/${{ inputs.repository }}/pages/deployments/${{ inputs.commit }}" --jq '.status' 2>/dev/null || true)"
+        if [[ "$status" == succeed ]]; then
+          echo 'complete=true' >> "$GITHUB_OUTPUT"
+          echo 'Pages publication already complete for ${{ inputs.commit }}'
+        else
+          echo 'complete=false' >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Configure GitHub Pages
+      if: steps.state.outputs.complete != 'true'
+      uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
+
+    - name: Upload GitHub Pages artifact
+      if: steps.state.outputs.complete != 'true'
+      uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+      with:
+        path: ${{ inputs.dist-path }}
+
+    - name: Deploy GitHub Pages
+      if: steps.state.outputs.complete != 'true'
+      id: deployment
+      uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+
+    - name: Verify Pages publication
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        status="$(gh api "repos/${{ inputs.repository }}/pages/deployments/${{ inputs.commit }}" --jq '.status')"
+        if [[ "$status" != succeed ]]; then
+          echo "Pages deployment is not complete: $status" >&2
+          exit 1
+        fi
+        echo 'Pages publication complete for ${{ inputs.commit }}'
+
+    - name: Resolve Pages URL
+      id: result
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        page_url="$DEPLOYED_URL"
+        if [[ -z "$page_url" ]]; then
+          page_url="$(gh api "repos/${{ inputs.repository }}/pages" --jq '.html_url')"
+        fi
+        echo "page-url=$page_url" >> "$GITHUB_OUTPUT"

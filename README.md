@@ -83,6 +83,7 @@ configured to fail closed.
 - [Contributing](CONTRIBUTING.md) - contribution process, review requirements, and local checks.
 - [Security](SECURITY.md) - private vulnerability reporting and supported-version policy.
 - [Release security](docs/release-security.md) - provenance, SBOM, attestation, and publication boundaries.
+- [Operations](OPERATIONS.md) - release publication recovery and partial-failure procedures.
 
 ## Upstream
 

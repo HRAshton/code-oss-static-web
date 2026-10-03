@@ -1,0 +1,45 @@
+name: Publish GitHub Release
+description: Reconcile and verify immutable GitHub Release assets without clobbering existing content
+inputs:
+  github-token:
+    description: GitHub token
+    required: true
+  repository:
+    description: owner/repository
+    required: true
+  tag:
+    description: Immutable release tag
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Export signed provenance formats
+      shell: bash
+      run: >-
+        python3 scripts/export_release_provenance.py
+        --bundle-dir .work/release-attestation
+        --artifacts-dir artifacts
+
+    - name: Verify release provenance bundle
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        while read -r _ asset; do
+          asset="${asset#\*}"
+          gh attestation verify "artifacts/$asset" \
+            --repo "${{ inputs.repository }}" \
+            --bundle artifacts/release-provenance.sigstore.json \
+            --source-ref "$GITHUB_REF" >/dev/null
+        done < artifacts/SHA256SUMS
+
+    - name: Reconcile and verify GitHub Release
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      shell: bash
+      run: >-
+        python3 scripts/publish_github_release.py
+        --repository "${{ inputs.repository }}"
+        --tag "${{ inputs.tag }}"
+        --artifacts-dir artifacts

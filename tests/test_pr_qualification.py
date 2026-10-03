@@ -15,7 +15,12 @@ class PullRequestQualificationTests(unittest.TestCase):
     def test_documentation_only_changes_stay_lightweight(self):
         self.assertEqual(
             classify_pr.classify_paths(
-                ['README.md', 'docs/testing.md', '.github/ISSUE_TEMPLATE/bug.md']
+                [
+                    'README.md',
+                    'OPERATIONS.md',
+                    'docs/testing.md',
+                    '.github/ISSUE_TEMPLATE/bug.md',
+                ]
             ),
             'lightweight',
         )
@@ -47,6 +52,12 @@ class PullRequestQualificationTests(unittest.TestCase):
             'scripts/verify_dist_identity.py',
             '.github/workflows/qualify.yml',
             '.github/actions/browser-qualification/action.yml',
+            '.github/workflows/recover-release-publication.yml',
+            '.github/actions/publish-github-release/action.yml',
+            '.github/actions/publish-pages/action.yml',
+            '.github/actions/publish-oci/action.yml',
+            'scripts/publish_github_release.py',
+            'scripts/verify_oci_image.sh',
         )
         for path in paths:
             with self.subTest(path=path):

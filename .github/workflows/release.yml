@@ -225,7 +225,7 @@ jobs:
           name: release-static-dist
           path: .work/release-static-dist.tar
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
           compression-level: 6
 
       - name: Upload locked Playwright runtime
@@ -355,7 +355,7 @@ jobs:
           name: release-candidate
           path: artifacts/
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   attest:
     needs: package
@@ -392,7 +392,7 @@ jobs:
           name: release-attestation
           path: ${{ steps.provenance.outputs.bundle-path }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
 
   github-release:
     needs: attest
@@ -401,6 +401,15 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical Python
+        uses: ./.github/actions/setup-toolchain
+        with:
+          node: 'false'
+
       - name: Download verified candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -412,121 +421,6 @@ jobs:
         with:
           name: release-attestation
           path: .work/release-attestation
-
-      - name: Export signed provenance formats
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import base64
-          import copy
-          import json
-          import shutil
-          import ssl
-          from pathlib import Path
-
-          bundle_files = [
-              path
-              for path in Path('.work/release-attestation').iterdir()
-              if path.is_file()
-          ]
-          if len(bundle_files) != 1:
-              raise SystemExit(
-                  f'expected exactly one provenance bundle, found {len(bundle_files)}'
-              )
-
-          bundle_path = bundle_files[0]
-          bundle = json.loads(bundle_path.read_text(encoding='utf-8'))
-          media_type = bundle.get('mediaType', '')
-          if not media_type.startswith('application/vnd.dev.sigstore.bundle.'):
-              raise SystemExit(f'unexpected Sigstore bundle media type: {media_type!r}')
-
-          envelope = bundle.get('dsseEnvelope')
-          if not isinstance(envelope, dict):
-              raise SystemExit('provenance bundle is missing a DSSE envelope')
-          if envelope.get('payloadType') != 'application/vnd.in-toto+json':
-              raise SystemExit('provenance bundle has an unexpected DSSE payload type')
-
-          signatures = envelope.get('signatures')
-          if not isinstance(signatures, list) or len(signatures) != 1:
-              raise SystemExit('provenance bundle must contain exactly one DSSE signature')
-
-          try:
-              statement = json.loads(base64.b64decode(envelope['payload'], validate=True))
-          except (KeyError, ValueError, json.JSONDecodeError) as exc:
-              raise SystemExit(f'invalid in-toto statement payload: {exc}') from exc
-
-          if statement.get('_type') != 'https://in-toto.io/Statement/v1':
-              raise SystemExit('provenance payload is not an in-toto Statement v1')
-          if statement.get('predicateType') != 'https://slsa.dev/provenance/v1':
-              raise SystemExit('provenance payload is not SLSA provenance v1')
-
-          expected = {}
-          for line in Path('artifacts/SHA256SUMS').read_text(encoding='utf-8').splitlines():
-              if not line.strip():
-                  continue
-              digest, name = line.split(None, 1)
-              expected[name.strip().lstrip('*')] = digest
-
-          subjects = statement.get('subject')
-          if not isinstance(subjects, list):
-              raise SystemExit('provenance payload is missing subjects')
-          actual = {}
-          for subject in subjects:
-              if not isinstance(subject, dict):
-                  raise SystemExit('invalid provenance subject')
-              name = subject.get('name')
-              digest = subject.get('digest')
-              if not isinstance(name, str) or not isinstance(digest, dict):
-                  raise SystemExit('invalid provenance subject')
-              sha256 = digest.get('sha256')
-              if not isinstance(sha256, str):
-                  raise SystemExit(f'provenance subject has no SHA-256 digest: {name}')
-              actual[name] = sha256
-
-          if actual != expected:
-              raise SystemExit('provenance subjects do not exactly match SHA256SUMS')
-
-          verification = bundle.get('verificationMaterial')
-          if not isinstance(verification, dict):
-              raise SystemExit('provenance bundle is missing verification material')
-          certificate = verification.get('certificate')
-          if not isinstance(certificate, dict):
-              raise SystemExit('provenance bundle is missing its signing certificate')
-          raw_certificate = certificate.get('rawBytes')
-          if not isinstance(raw_certificate, str):
-              raise SystemExit('provenance bundle has an invalid signing certificate')
-
-          try:
-              pem_certificate = ssl.DER_cert_to_PEM_cert(
-                  base64.b64decode(raw_certificate, validate=True)
-              )
-          except (ValueError, ssl.SSLError) as exc:
-              raise SystemExit(f'invalid signing certificate: {exc}') from exc
-
-          shutil.copyfile(bundle_path, 'artifacts/release-provenance.sigstore.json')
-
-          legacy_envelope = copy.deepcopy(envelope)
-          legacy_envelope['signatures'][0]['cert'] = pem_certificate
-          Path('artifacts/release-provenance.intoto.jsonl').write_text(
-              json.dumps(legacy_envelope, separators=(',', ':')) + '\n',
-              encoding='utf-8',
-          )
-          PY
-
-      - name: Verify release provenance bundle
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          while read -r _ asset; do
-            asset="${asset#\*}"
-            gh attestation verify "artifacts/$asset" \
-              --repo "$GITHUB_REPOSITORY" \
-              --bundle artifacts/release-provenance.sigstore.json \
-              --source-ref "$GITHUB_REF" >/dev/null
-          done < artifacts/SHA256SUMS
 
       - name: Verify immutable release ref
         env:
@@ -573,19 +467,15 @@ jobs:
             exit 1
           fi
 
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "$GITHUB_REF_NAME"
-          artifacts/*
-          --repo "$GITHUB_REPOSITORY"
-          --verify-tag
-          --generate-notes
-          --title "$GITHUB_REF_NAME"
+      - name: Publish or verify GitHub Release
+        uses: ./.github/actions/publish-github-release
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          tag: ${{ github.ref_name }}
 
   scorecard-refresh:
-    needs: github-release
+    needs: publication-status
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -614,12 +504,16 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.publication.outputs.page-url }}
     permissions:
       contents: read
       pages: write
       id-token: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
       - name: Download qualified static distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -676,17 +570,14 @@ jobs:
             exit 1
           fi
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6
-
-      - name: Upload GitHub Pages artifact
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
+      - name: Publish or verify GitHub Pages
+        id: publication
+        uses: ./.github/actions/publish-pages
         with:
-          path: dist
-
-      - name: Deploy GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          commit: ${{ github.sha }}
+          dist-path: dist
 
   oci:
     needs: attest
@@ -756,30 +647,30 @@ jobs:
           mkdir -p dist
           tar -C dist -xf .work/release-static-dist/release-static-dist.tar
 
-      - name: Log in to GHCR
-        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+      - name: Publish or verify GHCR
+        uses: ./.github/actions/publish-oci
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ github.token }}
+          image: ghcr.io/hrashton/code-oss-static-web:${{ github.ref_name }}
+          commit: ${{ github.sha }}
+          tag: ${{ github.ref_name }}
+          dist-path: dist
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
-        with:
-          driver-opts: |
-            image=moby/buildkit@sha256:28a898719c18a33f4e8000685287fa36fd0dd9560c6440227d3a732d79bb41d8
-
-      - name: Build and push OCI image
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
-        with:
-          context: .
-          file: deploy/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ghcr.io/hrashton/code-oss-static-web:${{ github.ref_name }}
-          labels: |
-            org.opencontainers.image.source=https://github.com/HRAshton/code-oss-static-web
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ github.ref_name }}
-          provenance: mode=max
-          sbom: true
+  publication-status:
+    if: always()
+    needs: [github-release, pages, oci]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify publication channels
+        env:
+          GITHUB_RELEASE_RESULT: ${{ needs.github-release.result }}
+          PAGES_RESULT: ${{ needs.pages.result }}
+          OCI_RESULT: ${{ needs.oci.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_RELEASE_RESULT" == success ]]
+          [[ "$PAGES_RESULT" == success ]]
+          [[ "$OCI_RESULT" == success ]]
+          echo "All publication channels complete for $GITHUB_REF_NAME"
