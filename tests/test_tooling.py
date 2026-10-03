@@ -790,6 +790,7 @@ python-version: ${{ steps.versions.outputs.python }}
             self.assertNotIn('scripts/install_playwright_browser.py', workflow)
             self.assertNotIn('scripts/run_e2e.py', workflow)
             self.assertNotIn('scripts/add_test_extension.py', workflow)
+
     def test_release_workflow_uses_clean_qualified_artifact(self):
         workflow_path = ROOT / '.github/workflows/release.yml'
         workflow = workflow_path.read_text()

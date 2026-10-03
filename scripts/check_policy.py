@@ -162,6 +162,7 @@ def check_browser_qualification_topology() -> None:
                 f'{workflow.relative_to(ROOT)}: use the reusable browser qualification action',
             )
 
+
 def check_shell_scripts() -> None:
     for script in (ROOT / 'build.sh', ROOT / 'package.sh'):
         lines = script.read_text(encoding='utf-8').splitlines()
