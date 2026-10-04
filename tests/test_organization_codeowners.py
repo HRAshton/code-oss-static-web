@@ -35,6 +35,11 @@ class OrganizationCodeownersTests(unittest.TestCase):
             '/extensions/license-policy.json @example-company/legal @example-company/extension-policy',
             rendered,
         )
+        self.assertIn(
+            '/docs/extension-mirror.md '
+            '@example-company/extension-policy @example-company/security @example-company/platform',
+            rendered,
+        )
         self.assertNotIn('@HRAshton', rendered)
         self.assertNotIn('@vodyanica', rendered)
         self.assertNotIn('/upstream.lock.json', rendered)

@@ -1,10 +1,12 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "allowedOpenVsxRegistries": [
     "https://open-vsx.org"
   ],
   "allowedOpenVsxDownloadOrigins": [
     "https://open-vsx.org",
     "https://openvsx.eclipsecontent.org"
-  ]
+  ],
+  "allowedMirrorOrigins": [],
+  "requireMirrorForLockedExtensions": true
 }

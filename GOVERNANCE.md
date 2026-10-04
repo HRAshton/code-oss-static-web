@@ -279,3 +279,12 @@ script refuses collapsed role slugs and produces an exact `.github/governance-te
 that repository policy validates against CODEOWNERS. Until that mapping exists, the existing
 two-person interim ownership remains authoritative. Follow
 [the organization migration procedure](docs/organization-migration.md) for activation.
+
+## Extension mirror governance
+
+Extension Policy owns candidate approval and mirror admission; Legal owns license review where
+required; Platform owns the build-side mirror client and fail-closed source policy. A mirrored
+extension approval records reviewer, original source, digest, license, clean scan result, and
+approval date. The mirror storage service and retention policy are organization controls and must be
+audited before the first production extension is locked. See
+[the internal extension mirror procedure](docs/extension-mirror.md).

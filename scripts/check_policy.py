@@ -1132,6 +1132,7 @@ def check_codeowners_policy() -> None:
             '/docs/release-security.md',
             '/docs/releasing.md',
             '/docs/organization-migration.md',
+            '/docs/extension-mirror.md',
         }
         require(
             set(entries) == expected_patterns,
