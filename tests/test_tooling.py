@@ -651,9 +651,27 @@ class ToolingTests(unittest.TestCase):
                     }
                 )
             )
+            source_policy_path = root / 'source-policy.json'
+            source_policy_path.write_text(
+                json.dumps(
+                    {
+                        'schemaVersion': 1,
+                        'allowedOpenVsxRegistries': ['https://open-vsx.org'],
+                        'allowedOpenVsxDownloadOrigins': [
+                            'https://open-vsx.org',
+                            'https://openvsx.eclipsecontent.org',
+                        ],
+                    }
+                )
+            )
             dist = root / 'dist'
             dist.mkdir()
-            installed = extension_lock.install_locked_extensions(dist, lock_path, root=root)
+            installed = extension_lock.install_locked_extensions(
+                dist,
+                lock_path,
+                root=root,
+                source_policy_path=source_policy_path,
+            )
             self.assertEqual(installed[0]['id'], 'fixture.browser')
             self.assertTrue((dist / 'extensions/fixture.browser/extension.js').is_file())
             index = extensions_index.build_extension_index(dist)
