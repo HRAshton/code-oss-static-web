@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import datetime
 import gzip
 import hashlib
@@ -244,6 +245,10 @@ def package_version(lock: dict[str, Any], release_tag: str | None = None) -> str
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--playwright-runtime', type=Path)
+    args = parser.parse_args()
+
     require((DIST / 'index.html').is_file(), 'dist/ missing; run the build first')
     lock = load_json(ROOT / 'upstream.lock.json')
     epoch = int(lock['sourceDateEpoch'])
@@ -272,6 +277,20 @@ def main() -> None:
     zip_path = ARTIFACTS / f'code-oss-static-web-{version}.zip'
     build_tar(DIST, tar_path, epoch)
     build_zip(DIST, zip_path, epoch)
+
+    playwright_runtime_path: Path | None = None
+    if args.playwright_runtime is not None:
+        require(args.playwright_runtime.is_dir(), 'Playwright runtime directory missing')
+        require(
+            (args.playwright_runtime / 'node_modules/@playwright/test/cli.js').is_file(),
+            'Playwright test CLI missing from runtime',
+        )
+        require(
+            (args.playwright_runtime / 'node_modules/playwright/cli.js').is_file(),
+            'Playwright CLI missing from runtime',
+        )
+        playwright_runtime_path = ARTIFACTS / 'playwright-runtime.tar.gz'
+        build_tar(args.playwright_runtime, playwright_runtime_path, epoch)
 
     distribution_tree_sha256, _ = distribution_tree_digest(DIST)
     sbom_path = ARTIFACTS / 'sbom.cdx.json'
@@ -349,6 +368,7 @@ def main() -> None:
                 upstream_license_path,
                 upstream_notices_path,
                 project_notices_path,
+                *([playwright_runtime_path] if playwright_runtime_path is not None else []),
             ],
             distribution=DIST,
             runtime_metadata=runtime_metadata_path,

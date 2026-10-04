@@ -17,5 +17,10 @@ syft -c "$ROOT/security/syft.yaml" "dir:$ROOT/dist" -o "cyclonedx-json=$independ
 mv "$independent_sbom_tmp" "$independent_sbom"
 trap - EXIT
 
-python3 "$ROOT/scripts/package_release.py"
+package_args=()
+if [[ -n "${CODE_OSS_STATIC_WEB_PLAYWRIGHT_RUNTIME:-}" ]]; then
+  package_args+=(--playwright-runtime "$CODE_OSS_STATIC_WEB_PLAYWRIGHT_RUNTIME")
+fi
+
+python3 "$ROOT/scripts/package_release.py" "${package_args[@]}"
 python3 "$ROOT/scripts/verify_release.py" "$ROOT/artifacts"

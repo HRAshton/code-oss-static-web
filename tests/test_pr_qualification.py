@@ -159,11 +159,13 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn('uses: ./.github/actions/release-metadata-qualification', workflow)
         self.assertIn('name: Artifact qualification gate', workflow)
         self.assertIn(
-            'needs: [browser-plan, release-metadata, build, browser, package]',
+            'needs: [browser-plan, release-metadata, build, browser, production-serving, package]',
             workflow,
         )
         self.assertIn('required release metadata evidence missing', workflow)
+        self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', workflow)
         self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', workflow)
+        self.assertIn('name: OCI production-serving qualification', workflow)
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn("needs.browser-plan.outputs.level == 'artifact'", workflow)
         self.assertIn('required artifact evidence missing', workflow)

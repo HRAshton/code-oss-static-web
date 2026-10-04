@@ -127,6 +127,9 @@ def check_browser_qualification_topology() -> None:
         '--grep-invert @extension',
         'scripts/add_test_extension.py',
         '--grep @extension',
+        'Verify locked Playwright runtime',
+        'CODE_OSS_STATIC_WEB_EXTERNAL_BASE_URL',
+        "inputs.scope != 'serving'",
     ):
         require(required in action, f'browser qualification action missing: {required}')
 
@@ -147,11 +150,20 @@ def check_browser_qualification_topology() -> None:
 
     qualify_path = ROOT / '.github/workflows/qualify.yml'
     release_path = ROOT / '.github/workflows/release.yml'
+    promote_path = ROOT / '.github/workflows/promote.yml'
     qualify = qualify_path.read_text(encoding='utf-8')
     release = release_path.read_text(encoding='utf-8')
+    promote = promote_path.read_text(encoding='utf-8')
     shared_action = 'uses: ./.github/actions/browser-qualification'
-    require(qualify.count(shared_action) == 1, 'qualification must use one shared browser action')
+    require(
+        qualify.count(shared_action) == 2,
+        'qualification must use browser action for browser and OCI serving gates',
+    )
     require(release.count(shared_action) == 1, 'release must use one shared browser action')
+    require(
+        promote.count(shared_action) == 1,
+        'promotion must use browser action for live Pages qualification',
+    )
     require('secondary-browsers:' not in qualify, 'duplicate secondary browser job is forbidden')
     require('browsers=\'["chromium"]\'' in qualify, 'pull requests must plan Chromium-only smoke')
     require(
@@ -173,8 +185,9 @@ def check_browser_qualification_topology() -> None:
     for required in (
         "needs.browser-plan.outputs.level == 'release'",
         'uses: ./.github/actions/release-metadata-qualification',
-        'needs: [browser-plan, release-metadata, build, browser, package]',
+        'needs: [browser-plan, release-metadata, build, browser, production-serving, package]',
         'required release metadata evidence missing',
+        'SERVING_RESULT: ${{ needs.production-serving.result }}',
         'PACKAGE_RESULT: ${{ needs.package.result }}',
         "github.event_name != 'pull_request' ||",
         "needs.browser-plan.outputs.level == 'artifact' ||",

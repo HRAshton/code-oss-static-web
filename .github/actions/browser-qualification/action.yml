@@ -6,14 +6,20 @@ inputs:
     required: true
   distribution-artifact:
     description: Workflow artifact containing <name>.tar for the canonical distribution.
-    required: true
+    required: false
+    default: ''
   playwright-runtime-artifact:
-    description: Workflow artifact containing the locked Playwright runtime.
-    required: true
+    description: Optional workflow artifact containing the locked Playwright runtime.
+    required: false
+    default: ''
   scope:
-    description: Qualification scope (smoke or full).
+    description: Qualification scope (smoke, full, or serving).
     required: false
     default: full
+  base-url:
+    description: Optional already-running serving URL. Empty uses the local static harness.
+    required: false
+    default: ''
   diagnostics-artifact:
     description: Artifact name for Playwright diagnostics.
     required: true
@@ -32,7 +38,7 @@ runs:
             ;;
         esac
         case "${{ inputs.scope }}" in
-          smoke|full) ;;
+          smoke|full|serving) ;;
           *)
             echo "Unsupported qualification scope: ${{ inputs.scope }}" >&2
             exit 2
@@ -43,12 +49,14 @@ runs:
       uses: ./.github/actions/setup-toolchain
 
     - name: Download canonical static distribution
+      if: inputs.distribution-artifact != ''
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: ${{ inputs.distribution-artifact }}
         path: .work/browser-dist
 
     - name: Extract canonical static distribution
+      if: inputs.distribution-artifact != ''
       shell: bash
       run: |
         rm -rf dist
@@ -56,10 +64,18 @@ runs:
         tar -C dist -xf ".work/browser-dist/${{ inputs.distribution-artifact }}.tar"
 
     - name: Download locked Playwright runtime
+      if: inputs.playwright-runtime-artifact != ''
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
       with:
         name: ${{ inputs.playwright-runtime-artifact }}
         path: .work/playwright-runtime
+
+    - name: Verify locked Playwright runtime
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -f .work/playwright-runtime/node_modules/@playwright/test/cli.js
+        test -f .work/playwright-runtime/node_modules/playwright/cli.js
 
     - name: Install locked browser runtime
       env:
@@ -72,6 +88,7 @@ runs:
         PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
         CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/boot
         CODE_OSS_STATIC_WEB_PLAYWRIGHT_RESULTS: test-results/boot
+        CODE_OSS_STATIC_WEB_EXTERNAL_BASE_URL: ${{ inputs.base-url }}
       shell: bash
       run: >-
         python3 scripts/run_e2e.py
@@ -82,7 +99,7 @@ runs:
         --retries=0
 
     - name: Quality baseline
-      if: inputs.browser == 'chromium'
+      if: inputs.browser == 'chromium' && inputs.scope != 'serving'
       env:
         PLAYWRIGHT_BROWSERS_PATH: .work/playwright-browsers
         CODE_OSS_STATIC_WEB_PLAYWRIGHT_REPORT: playwright-report/quality

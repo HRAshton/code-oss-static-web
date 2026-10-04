@@ -336,6 +336,12 @@ jobs:
           name: release-build-metadata
           path: .work
 
+      - name: Download locked Playwright runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-playwright-runtime
+          path: .work/playwright-runtime
+
       - name: Generate independent final-distribution SBOM
         uses: ./.github/actions/independent-sbom
         with:
@@ -345,6 +351,7 @@ jobs:
       - name: Package and verify canonical release
         env:
           CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RUNTIME: .work/playwright-runtime
         run: ./package.sh
 
       - name: Upload verified candidate

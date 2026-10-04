@@ -38,6 +38,7 @@ jobs:
       release-commit: ${{ steps.release.outputs.release-commit }}
       archive-name: ${{ steps.identity.outputs.archive-name }}
       tree-sha256: ${{ steps.identity.outputs.tree-sha256 }}
+      playwright-runtime-available: ${{ steps.release-assets.outputs.playwright-runtime-available }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -143,7 +144,9 @@ jobs:
             echo "release-commit=$release_commit"
           } >> "$GITHUB_OUTPUT"
 
+
       - name: Download immutable release identity
+        id: release-assets
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -155,11 +158,32 @@ jobs:
 
           archive_name="$(
             jq -r '
-              [.artifacts[].name | select(endswith(".tar.gz"))]
-              | if length == 1 then .[0] else error("expected exactly one release tar.gz") end
+              [.artifacts[].name | select(startswith("code-oss-static-web-") and endswith(".tar.gz"))]
+              | if length == 1 then .[0] else error("expected exactly one distribution tar.gz") end
             ' .work/promotion/artifact-manifest.json
           )"
           gh release download "$RELEASE_TAG"             --repo "$GITHUB_REPOSITORY"             --dir .work/promotion             --pattern "$archive_name"
+
+          runtime_available=false
+          if gh release download "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir .work/promotion \
+            --pattern playwright-runtime.tar.gz; then
+            expected_runtime="$(
+              awk '$2 == "playwright-runtime.tar.gz" { print $1 }' .work/promotion/SHA256SUMS
+            )"
+            if [[ ! "$expected_runtime" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "playwright-runtime.tar.gz is missing from SHA256SUMS" >&2
+              exit 1
+            fi
+            actual_runtime="$(sha256sum .work/promotion/playwright-runtime.tar.gz | awk '{print $1}')"
+            if [[ "$actual_runtime" != "$expected_runtime" ]]; then
+              echo "playwright-runtime.tar.gz checksum mismatch" >&2
+              exit 1
+            fi
+            runtime_available=true
+          fi
+          echo "playwright-runtime-available=$runtime_available" >> "$GITHUB_OUTPUT"
 
       - name: Verify immutable release attestations
         env:
@@ -170,11 +194,15 @@ jobs:
           set -euo pipefail
           archive_name="$(
             jq -r '
-              [.artifacts[].name | select(endswith(".tar.gz"))]
-              | if length == 1 then .[0] else error("expected exactly one release tar.gz") end
+              [.artifacts[].name | select(startswith("code-oss-static-web-") and endswith(".tar.gz"))]
+              | if length == 1 then .[0] else error("expected exactly one distribution tar.gz") end
             ' .work/promotion/artifact-manifest.json
           )"
-          for asset in artifact-manifest.json "$archive_name"; do
+          assets=(artifact-manifest.json "$archive_name")
+          if [[ -f .work/promotion/playwright-runtime.tar.gz ]]; then
+            assets+=(playwright-runtime.tar.gz)
+          fi
+          for asset in "${assets[@]}"; do
             gh attestation verify ".work/promotion/$asset"               --repo "$GITHUB_REPOSITORY"               --source-ref "refs/tags/$RELEASE_TAG" >/dev/null
           done
 
@@ -189,8 +217,8 @@ jobs:
           set -euo pipefail
           archive_name="$(
             jq -r '
-              [.artifacts[].name | select(endswith(".tar.gz"))]
-              | if length == 1 then .[0] else error("expected exactly one release tar.gz") end
+              [.artifacts[].name | select(startswith("code-oss-static-web-") and endswith(".tar.gz"))]
+              | if length == 1 then .[0] else error("expected exactly one distribution tar.gz") end
             ' .work/promotion/artifact-manifest.json
           )"
           python3 scripts/promotion.py             --release-tag "$RELEASE_TAG"             --release-commit "$RELEASE_COMMIT"             --release-id "$RELEASE_ID"             --manifest .work/promotion/artifact-manifest.json             --checksums .work/promotion/SHA256SUMS             --archive ".work/promotion/$archive_name"             --policy config/promotion-policy.json             --output .work/promotion/promotion-identity.json
@@ -212,10 +240,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: promotion-input
-          path: |
-            .work/promotion/promotion-identity.json
-            .work/promotion/pages-deployment-identity.json
-            .work/promotion/${{ steps.identity.outputs.archive-name }}
+          path: .work/promotion/
           if-no-files-found: error
           retention-days: 1
           compression-level: 6
@@ -394,6 +419,9 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up canonical toolchain
+        uses: ./.github/actions/setup-toolchain
+
       - name: Download promotion input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -401,6 +429,7 @@ jobs:
           path: .work/promotion
 
       - name: Verify stable transition
+        id: transition
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -480,6 +509,12 @@ jobs:
             echo "stable promotion requires successful canary or previous stable deployment history" >&2
             exit 1
           fi
+
+          previously_stable=false
+          if [[ "$historical_stable" == true || "$legacy_pages_stable" == true ]]; then
+            previously_stable=true
+          fi
+          echo "previously-stable=$previously_stable" >> "$GITHUB_OUTPUT"
 
           current_stable=''
           while IFS= read -r deployment_id; do
@@ -586,6 +621,41 @@ jobs:
           commit: ${{ needs.authorize.outputs.release-commit }}
           dist-path: dist
           identity-path: .work/promotion/pages-deployment-identity.json
+
+
+      - name: Assert live Pages hosting contract
+        env:
+          PAGE_URL: ${{ steps.publication.outputs.page-url }}
+        run: >-
+          python3 scripts/check_hosting_contract.py
+          --target pages
+          --url "$PAGE_URL"
+
+      - name: Require durable browser runtime for new stable releases
+        if: >-
+          needs.authorize.outputs.playwright-runtime-available != 'true' &&
+          steps.transition.outputs.previously-stable != 'true'
+        shell: bash
+        run: |
+          echo "immutable release is missing playwright-runtime.tar.gz" >&2
+          exit 1
+
+      - name: Extract durable Playwright runtime
+        if: needs.authorize.outputs.playwright-runtime-available == 'true'
+        shell: bash
+        run: |
+          rm -rf .work/playwright-runtime
+          mkdir -p .work/playwright-runtime
+          tar -C .work/playwright-runtime -xzf .work/promotion/playwright-runtime.tar.gz
+
+      - name: Browser smoke against live Pages deployment
+        if: needs.authorize.outputs.playwright-runtime-available == 'true'
+        uses: ./.github/actions/browser-qualification
+        with:
+          browser: chromium
+          scope: serving
+          base-url: ${{ steps.publication.outputs.page-url }}
+          diagnostics-artifact: pages-serving-diagnostics
 
       - name: Mark stable successful
         env:
