@@ -1393,7 +1393,18 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertEqual(quality_baseline['source']['qualificationRunId'], 37136030149)
         baselines = [metric['baseline'] for metric in quality_baseline['metrics'].values()]
         self.assertNotIn(None, baselines)
-        self.assertEqual(quality_baseline['metrics']['consoleErrors']['baseline'], 10)
+        self.assertNotIn('consoleErrors', quality_baseline['metrics'])
+        console_policy = quality_baseline['consoleErrorPolicy']
+        self.assertEqual(console_policy['normalization'], 'strip-console-style-prefix')
+        self.assertTrue(console_policy['requireAllToleratedObserved'])
+        tolerated = console_policy['toleratedFingerprints']
+        self.assertEqual(len(tolerated), 10)
+        self.assertEqual(len(tolerated), len(set(tolerated)))
+        self.assertTrue(all(item and item == item.strip() for item in tolerated))
+        quality_console_policy = (ROOT / 'tests/e2e/quality-console-policy.cjs').read_text()
+        self.assertIn('validateConsoleErrorPolicy(policy)', quality_console_policy)
+        self.assertIn('must be unique', quality_console_policy)
+        self.assertIn('unsupported console error normalization', quality_console_policy)
         self.assertEqual(
             quality_baseline['metrics']['distributionBytes']['baseline'],
             190626870,
