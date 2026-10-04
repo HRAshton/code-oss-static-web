@@ -1,31 +1,34 @@
 # Remotish host compatibility
 
-Code OSS Static Web (COSW) grants the separately distributed extension
-`hrashton.remotish` permission to use the `scmHistoryProvider` and `timeline` proposed APIs on
-qualified COSW releases.
+The generic `company-standard` deployment profile grants no proposed APIs. Remotish compatibility is
+an explicit opt-in through the `remotish-compat` deployment profile.
 
-This is a product-level host compatibility grant only. COSW does not bundle, preinstall, download,
-or otherwise distribute Remotish, and Remotish is not a runtime dependency of COSW. Users who do
-not install Remotish get the normal COSW experience with no additional extension code or providers.
+That profile grants the separately distributed extension `hrashton.remotish` permission to use only
+the `scmHistoryProvider` and `timeline` proposed APIs. The grant remains host compatibility only:
+COSW does not bundle, preinstall, download, or otherwise distribute Remotish.
 
-The grant is intentionally scoped to the single extension ID:
+The exception lives in `config/policies/proposed-api/remotish.json` and carries review metadata:
+extension ID, reviewer role, reason, and expiry. Because the extension is not present in the extension
+lock, there is no approved VSIX version or digest to bind yet. If Remotish is ever bundled, its
+proposed-API approval must be revised to bind the admitted extension artifact metadata before release.
+
+During Code-OSS source preparation, COSW verifies that every proposal named by the selected profile
+still has a matching `src/vscode-dts/vscode.proposed.<proposal>.d.ts` definition in the pinned
+upstream revision. A removed or renamed proposal therefore fails the qualified build.
+
+Select `remotish-compat` only for deployments that explicitly need this unstable compatibility
+surface. Normal company deployments continue to select `company-standard`.
+
+
+To opt in for a qualified deployment, change the deployment selector to:
 
 ```json
 {
-  "extensionEnabledApiProposals": {
-    "hrashton.remotish": [
-      "scmHistoryProvider",
-      "timeline"
-    ]
-  }
+  "schemaVersion": 1,
+  "profile": "remotish-compat"
 }
 ```
 
-Proposed APIs are not enabled globally. During Code-OSS source preparation, COSW verifies that every
-proposal named by `extensionEnabledApiProposals` still has a matching
-`src/vscode-dts/vscode.proposed.<proposal>.d.ts` definition in the pinned upstream revision. A
-removed or renamed proposal therefore fails the qualified build before release.
-
-Because Remotish itself is not shipped in the static distribution, the compatibility grant does not
-make Remotish a COSW SBOM or license-inventory component. If Remotish is installed separately, its
-distribution and licensing remain outside the COSW release artifact boundary.
+That selector change is itself a release input and changes the deployment-profile digest recorded in
+qualification, release metadata, and promotion identity. Switching profiles therefore requires the
+normal qualification/release path; it is not a runtime toggle.

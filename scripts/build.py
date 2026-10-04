@@ -13,6 +13,8 @@ def main() -> None:
     parser.add_argument('--reuse-upstream-build', action='store_true')
     args = parser.parse_args()
 
+    run([ROOT / 'scripts/validate_config.py'])
+
     independent_sbom = WORK / 'independent-sbom.cdx.json'
     independent_sbom_tmp = WORK / 'independent-sbom.cdx.json.tmp'
     independent_sbom.unlink(missing_ok=True)

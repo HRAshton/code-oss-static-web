@@ -17,20 +17,25 @@ extension is not bundled by this project.
 ## Decision
 
 Proposed APIs may be enabled only through an explicit extension-ID-to-proposal list in
-[config/product-transform.json](../../config/product-transform.json).
+[config/policies/proposed-api/remotish.json](../../config/policies/proposed-api/remotish.json).
 
 A grant:
 
-- is scoped to a concrete extension ID;
+- is scoped to a concrete extension ID and an explicit opt-in deployment profile;
 - lists individual proposal names rather than enabling all proposals;
 - does not imply that the extension is bundled, downloaded, trusted, or added to the release SBOM;
-- must have a documented compatibility rationale;
+- must have a documented compatibility rationale, reviewer, and expiry;
 - must be validated against the pinned upstream revision before build.
 
 [scripts/prepare_upstream.py](../../scripts/prepare_upstream.py) requires every configured proposal to
 have a matching <code>src/vscode-dts/vscode.proposed.&lt;name&gt;.d.ts</code> definition in the pinned
 Code - OSS source. A removed or renamed proposal therefore fails the build rather than silently
 falling back.
+
+The generic `company-standard` profile binds the empty proposed-API policy. Remotish grants are
+available only through `remotish-compat`. Configuration validation loads every checked-in
+deployment profile, not only the selected one, so an expired dormant compatibility approval fails CI
+before it can later be selected.
 
 ## Consequences
 
@@ -44,7 +49,8 @@ still require qualification and, when relevant, manual compatibility review.
 
 ## Enforcement and verification
 
-- [config/product-transform.json](../../config/product-transform.json)
+- [config/policies/proposed-api/remotish.json](../../config/policies/proposed-api/remotish.json)
+- [config/profiles/remotish-compat.json](../../config/profiles/remotish-compat.json)
 - [scripts/prepare_upstream.py](../../scripts/prepare_upstream.py)
 - [tests/test_proposed_api_grants.py](../../tests/test_proposed_api_grants.py)
 - [docs/remotish-compatibility.md](../remotish-compatibility.md)
