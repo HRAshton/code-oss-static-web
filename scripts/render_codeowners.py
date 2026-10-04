@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import re
 from pathlib import Path
+from typing import cast
 
 from common import BuildError, require, write_json
 
@@ -34,8 +35,8 @@ def team_owner(config: dict[str, object], role: str) -> str:
     teams = config['teams']
     assert isinstance(organization, str)
     assert isinstance(teams, dict)
-    slug = teams[role]
-    assert isinstance(slug, str)
+    typed_teams = cast(dict[str, str], teams)
+    slug = typed_teams[role]
     return f'@{organization}/{slug}'
 
 

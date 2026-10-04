@@ -1153,6 +1153,8 @@ def check_codeowners_policy() -> None:
     teams = config.get('teams')
     require(isinstance(organization, str), 'governance organization missing')
     require(isinstance(teams, dict), 'governance teams missing')
+    assert isinstance(organization, str)
+    assert isinstance(teams, dict)
     normalized = render_codeowners.mapping(organization, cast(dict[str, str], teams))
     expected = render_codeowners.render_codeowners(normalized)
     require(
