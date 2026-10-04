@@ -62,6 +62,7 @@ def render_codeowners(config: dict[str, object]) -> str:
         ('/docs/release-security.md', ('security', 'release')),
         ('/docs/releasing.md', ('release', 'platform')),
         ('/docs/organization-migration.md', ('platform', 'security', 'release')),
+        ('/docs/extension-mirror.md', ('extensionPolicy', 'security', 'platform')),
     ]
     lines = [
         '# Organization team-backed sensitive-path ownership.',

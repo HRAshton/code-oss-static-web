@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import shutil
 import tempfile
@@ -16,7 +17,7 @@ from common import ROOT, WORK, BuildError, load_json, require, sha256_file
 SUPPORTED_SCHEMA_VERSION = 1
 OPEN_VSX_DEFAULT_REGISTRY = 'https://open-vsx.org'
 OPEN_VSX_USER_AGENT = 'code-oss-static-web/1'
-SOURCE_POLICY_SCHEMA_VERSION = 1
+SOURCE_POLICY_SCHEMA_VERSION = 2
 
 MAX_ARCHIVE_ENTRIES = 4096
 MAX_ARCHIVE_FILE_SIZE = 64 * 1024 * 1024
@@ -54,6 +55,10 @@ def _url_origin(value: str, field: str) -> str:
     return f'https://{host}'
 
 
+def url_origin(value: str, field: str) -> str:
+    return _url_origin(value, field)
+
+
 def _normalize_open_vsx_registry(value: Any, field: str) -> str:
     registry = _require_string(value, field).strip()
     try:
@@ -68,14 +73,53 @@ def _normalize_open_vsx_registry(value: Any, field: str) -> str:
 
 def load_source_policy(path: Path) -> dict[str, Any]:
     data = load_json(path)
+    version = data.get('schemaVersion')
     require(
-        data.get('schemaVersion') == SOURCE_POLICY_SCHEMA_VERSION,
+        version in (1, SOURCE_POLICY_SCHEMA_VERSION),
         'unsupported extension source policy schemaVersion',
     )
-    require(
-        set(data) == {'schemaVersion', 'allowedOpenVsxRegistries', 'allowedOpenVsxDownloadOrigins'},
-        'extension source policy keys mismatch',
-    )
+
+    if version == 1:
+        require(
+            set(data)
+            == {
+                'schemaVersion',
+                'allowedOpenVsxRegistries',
+                'allowedOpenVsxDownloadOrigins',
+            },
+            'extension source policy keys mismatch',
+        )
+        mirror_origins_raw: list[object] = []
+        require_mirror = False
+    else:
+        require(
+            set(data)
+            == {
+                'schemaVersion',
+                'allowedOpenVsxRegistries',
+                'allowedOpenVsxDownloadOrigins',
+                'allowedMirrorOrigins',
+                'requireMirrorForLockedExtensions',
+            },
+            'extension source policy keys mismatch',
+        )
+        raw_mirrors = data.get('allowedMirrorOrigins')
+        require(
+            isinstance(raw_mirrors, list),
+            'extension source policy allowedMirrorOrigins must be an array',
+        )
+        mirror_origins_raw = cast(list[object], raw_mirrors)
+        require(
+            all(isinstance(item, str) for item in mirror_origins_raw),
+            'extension source policy allowedMirrorOrigins must be a string array',
+        )
+        require_mirror_value = data.get('requireMirrorForLockedExtensions')
+        require(
+            isinstance(require_mirror_value, bool),
+            'extension source policy requireMirrorForLockedExtensions must be boolean',
+        )
+        require_mirror = require_mirror_value
+
     registries_value = data.get('allowedOpenVsxRegistries')
     require(
         isinstance(registries_value, list), 'extension source policy registries must be an array'
@@ -117,21 +161,48 @@ def load_source_policy(path: Path) -> dict[str, Any]:
         set(registries).issubset(download_origins),
         'extension source policy download origins must include all registry origins',
     )
+
+    mirror_origins = [
+        _normalize_open_vsx_registry(item, 'extension source policy mirror origin')
+        for item in mirror_origins_raw
+    ]
+    require(
+        len(set(mirror_origins)) == len(mirror_origins),
+        'extension source policy allowedMirrorOrigins must be unique',
+    )
     return {
         'schemaVersion': SOURCE_POLICY_SCHEMA_VERSION,
         'allowedOpenVsxRegistries': registries,
         'allowedOpenVsxDownloadOrigins': download_origins,
+        'allowedMirrorOrigins': mirror_origins,
+        'requireMirrorForLockedExtensions': require_mirror,
     }
 
 
 def enforce_source_policy(entry: dict[str, Any], policy: dict[str, Any]) -> None:
-    if entry['source']['type'] != 'open-vsx':
+    source_type = entry['source']['type']
+    if policy.get('requireMirrorForLockedExtensions', False):
+        require(
+            source_type == 'mirror-vsix',
+            f'production extension source must use the internal mirror: {entry["id"]}',
+        )
+
+    if source_type == 'open-vsx':
+        registry = entry['source']['registry']
+        require(
+            registry in policy['allowedOpenVsxRegistries'],
+            f'Open VSX registry is not allowed by production source policy: {registry}',
+        )
         return
-    registry = entry['source']['registry']
-    require(
-        registry in policy['allowedOpenVsxRegistries'],
-        f'Open VSX registry is not allowed by production source policy: {registry}',
-    )
+
+    if source_type == 'mirror-vsix':
+        mirror_url = entry['source']['url']
+        origin = _url_origin(mirror_url, 'extension mirror URL')
+        allowed = set(cast(list[str], policy.get('allowedMirrorOrigins', [])))
+        require(
+            origin in allowed,
+            f'extension mirror origin is not allowed by production source policy: {origin}',
+        )
 
 
 def _copy_download_bounded(source: Any, destination: Any) -> int:
@@ -212,6 +283,23 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
                 f'{prefix}.source.registry',
             )
             normalized_source = {'type': source_type, 'registry': registry}
+        elif source_type == 'mirror-vsix':
+            mirror_url = _require_string(source.get('url'), f'{prefix}.source.url').strip()
+            try:
+                parsed_mirror = urlsplit(mirror_url)
+            except ValueError as exc:
+                raise BuildError(f'{prefix}.source.url is not a valid URL') from exc
+            _url_origin(mirror_url, f'{prefix}.source.url')
+            require(parsed_mirror.query == '', f'{prefix}.source.url must not include a query')
+            require(
+                parsed_mirror.fragment == '',
+                f'{prefix}.source.url must not include a fragment',
+            )
+            require(
+                digest in parsed_mirror.path.lower(),
+                f'{prefix}.source.url must include the locked SHA-256 in its path',
+            )
+            normalized_source = {'type': source_type, 'url': mirror_url}
         else:
             raise BuildError(f'unsupported extension source type: {source_type}')
 
@@ -219,15 +307,54 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
         if license_value is not None:
             _require_string(license_value, f'{prefix}.license')
 
-        normalized.append(
-            {
-                'id': extension_id,
-                'version': version,
-                'sha256': digest,
-                'license': license_value,
-                'source': normalized_source,
+        approval_value = raw.get('approval')
+        normalized_approval: dict[str, str] | None = None
+        if source_type == 'mirror-vsix':
+            require(
+                isinstance(license_value, str) and bool(license_value),
+                f'{prefix}.license is required for mirrored extensions',
+            )
+            require(isinstance(approval_value, dict), f'{prefix}.approval must be an object')
+            approval = cast(dict[str, Any], approval_value)
+            require(
+                set(approval) == {'reviewer', 'source', 'scanResult', 'approvedAt'},
+                f'{prefix}.approval keys mismatch',
+            )
+            reviewer = _require_string(approval.get('reviewer'), f'{prefix}.approval.reviewer')
+            original_source = _require_string(approval.get('source'), f'{prefix}.approval.source')
+            scan_result = _require_string(
+                approval.get('scanResult'), f'{prefix}.approval.scanResult'
+            )
+            require(scan_result == 'clean', f'{prefix}.approval.scanResult must be clean')
+            approved_at = _require_string(
+                approval.get('approvedAt'), f'{prefix}.approval.approvedAt'
+            )
+            try:
+                datetime.date.fromisoformat(approved_at)
+            except ValueError as exc:
+                raise BuildError(f'{prefix}.approval.approvedAt must be YYYY-MM-DD') from exc
+            normalized_approval = {
+                'reviewer': reviewer,
+                'source': original_source,
+                'scanResult': scan_result,
+                'approvedAt': approved_at,
             }
-        )
+        else:
+            require(
+                approval_value is None,
+                f'{prefix}.approval is only valid for mirror-vsix sources',
+            )
+
+        normalized_entry: dict[str, Any] = {
+            'id': extension_id,
+            'version': version,
+            'sha256': digest,
+            'license': license_value,
+            'source': normalized_source,
+        }
+        if normalized_approval is not None:
+            normalized_entry['approval'] = normalized_approval
+        normalized.append(normalized_entry)
 
     return {'schemaVersion': SUPPORTED_SCHEMA_VERSION, 'extensions': normalized}
 
@@ -467,6 +594,63 @@ def download_open_vsx(
     return target
 
 
+def download_mirror_vsix(
+    entry: dict[str, Any],
+    *,
+    cache_root: Path = WORK / 'extensions-cache',
+    source_policy: dict[str, Any] | None = None,
+) -> Path:
+    if source_policy is None:
+        source_policy = load_source_policy(ROOT / 'extensions/source-policy.json')
+    enforce_source_policy(entry, source_policy)
+    allowed_origins = set(cast(list[str], source_policy['allowedMirrorOrigins']))
+
+    cache_root.mkdir(parents=True, exist_ok=True)
+    target = cache_root / f'{entry["id"]}-{entry["version"]}.vsix'
+    if target.is_file():
+        if target.stat().st_size > MAX_VSIX_ARCHIVE_SIZE:
+            target.unlink()
+            raise BuildError(f'cached VSIX archive exceeds size limit: {entry["id"]}')
+        if sha256_file(target) == entry['sha256']:
+            return target
+        target.unlink()
+
+    request = urllib.request.Request(
+        entry['source']['url'],
+        headers={
+            'Accept': 'application/octet-stream',
+            'User-Agent': OPEN_VSX_USER_AGENT,
+        },
+    )
+    opener = urllib.request.build_opener(_SourcePolicyRedirectHandler(allowed_origins))
+    with tempfile.NamedTemporaryFile(
+        prefix='mirror-vsix-',
+        suffix='.vsix',
+        dir=cache_root,
+        delete=False,
+    ) as temporary:
+        temporary_path = Path(temporary.name)
+        try:
+            with opener.open(request, timeout=60) as response:
+                response_origin = _url_origin(response.geturl(), 'extension mirror response URL')
+                require(
+                    response_origin in allowed_origins,
+                    f'extension mirror response URL is not allowed by production source policy: '
+                    f'{response_origin}',
+                )
+                _copy_download_bounded(response, temporary)
+        except Exception:
+            temporary_path.unlink(missing_ok=True)
+            raise
+
+    actual = sha256_file(temporary_path)
+    if actual != entry['sha256']:
+        temporary_path.unlink(missing_ok=True)
+        raise BuildError(f'VSIX SHA-256 mismatch: {entry["id"]}')
+    temporary_path.replace(target)
+    return target
+
+
 def materialize_vsix(
     entry: dict[str, Any],
     *,
@@ -494,6 +678,8 @@ def materialize_vsix(
         return source_path
     if source_type == 'open-vsx':
         return download_open_vsx(entry, source_policy=source_policy)
+    if source_type == 'mirror-vsix':
+        return download_mirror_vsix(entry, source_policy=source_policy)
     raise BuildError(f'unsupported extension source type: {source_type}')
 
 
@@ -559,6 +745,7 @@ def install_locked_extensions(
             existing_ids.add(f'{publisher}.{name}')
 
     for entry in lock['extensions']:
+        enforce_source_policy(entry, source_policy)
         require(
             entry['id'] not in existing_ids,
             f'extension id already exists in distribution: {entry["id"]}',
@@ -578,15 +765,16 @@ def install_locked_extensions(
             require(extracted.is_dir(), f'VSIX extension directory missing: {vsix}')
             shutil.copytree(extracted, destination, symlinks=False)
 
-        installed.append(
-            {
-                'id': entry['id'],
-                'version': entry['version'],
-                'sha256': entry['sha256'],
-                'license': effective_license,
-                'source': entry['source'],
-            }
-        )
+        installed_entry: dict[str, Any] = {
+            'id': entry['id'],
+            'version': entry['version'],
+            'sha256': entry['sha256'],
+            'license': effective_license,
+            'source': entry['source'],
+        }
+        if 'approval' in entry:
+            installed_entry['approval'] = entry['approval']
+        installed.append(installed_entry)
         existing_ids.add(entry['id'])
 
     return installed
@@ -608,6 +796,7 @@ def main() -> None:
     source_policy = load_source_policy(args.source_policy)
     if args.dist is None:
         for entry in lock['extensions']:
+            enforce_source_policy(entry, source_policy)
             vsix = materialize_vsix(entry, source_policy=source_policy)
             manifest = validate_vsix(entry, vsix)
             enforce_license_policy(entry, manifest, policy)

@@ -80,3 +80,10 @@ Production Open VSX sources are default-deny. `extensions/source-policy.json` se
 registry origins and file-download origins. A registry must be explicitly approved, while its
 reviewed CDN/file host may be approved only for redirects and final responses. Adding a mirror,
 registry, or delivery origin is therefore an explicit repository policy change.
+
+## Internal mirror
+
+Production lock entries must use the `mirror-vsix` source type. The public Open VSX source remains
+available for candidate intake, but `extensions/source-policy.json` sets
+`requireMirrorForLockedExtensions` so released builds cannot depend on Open VSX availability once
+an extension is approved. See [the internal extension mirror procedure](../docs/extension-mirror.md).
