@@ -467,7 +467,7 @@ jobs:
   artifact-gate:
     name: Artifact qualification gate
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [browser-plan, release-metadata, build, browser]
+    needs: [browser-plan, release-metadata, build, browser, package]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -478,6 +478,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           RELEASE_METADATA_RESULT: ${{ needs.release-metadata.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
         shell: bash
         run: |
           set -euo pipefail
@@ -497,8 +498,10 @@ jobs:
               fi
               ;;
             artifact|full)
-              if [[ "$BUILD_RESULT" != success || "$BROWSER_RESULT" != success ]]; then
-                echo "required artifact evidence missing: build=$BUILD_RESULT browser=$BROWSER_RESULT" >&2
+              if [[ "$BUILD_RESULT" != success ||
+                    "$BROWSER_RESULT" != success ||
+                    "$PACKAGE_RESULT" != success ]]; then
+                echo "required artifact evidence missing: build=$BUILD_RESULT browser=$BROWSER_RESULT package=$PACKAGE_RESULT" >&2
                 exit 1
               fi
               ;;
@@ -510,7 +513,11 @@ jobs:
 
   package:
     needs: [browser-plan, browser]
-    if: github.event_name != 'pull_request' && needs.browser-plan.outputs.retry_tag == ''
+    if: >-
+      needs.browser-plan.outputs.retry_tag == '' &&
+      (github.event_name != 'pull_request' ||
+       needs.browser-plan.outputs.level == 'artifact' ||
+       needs.browser-plan.outputs.level == 'full')
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -27,35 +27,55 @@ class PullRequestQualificationTests(unittest.TestCase):
 
     def test_release_only_changes_use_release_qualification(self):
         paths = (
+            'scripts/promotion.py',
+            'scripts/pages_identity.py',
+            'scripts/publish_github_release.py',
+            '.github/workflows/promote.yml',
+            '.github/workflows/recover-release-publication.yml',
+            '.github/actions/publish-pages/action.yml',
+            '.github/actions/publish-github-release/action.yml',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(classify_pr.classify_paths([path]), 'release')
+
+    def test_distribution_dependent_release_paths_require_artifact_integration(self):
+        paths = (
             'package.sh',
+            'pyproject.toml',
             'scripts/package_release.py',
             'scripts/generate_sbom.py',
+            'scripts/generate_license_inventory.py',
+            'scripts/generate_runtime_metadata.py',
+            'scripts/compare_sbom_inventory.py',
             'scripts/verify_release.py',
-            'scripts/promotion.py',
-            '.github/workflows/release.yml',
-            '.github/workflows/promote.yml',
+            'scripts/verify_oci_image.sh',
             '.github/actions/independent-sbom/action.yml',
+            '.github/actions/publish-oci/action.yml',
             'security/sbom-comparison-policy.json',
             'schemas/sbom-comparison-policy.schema.json',
             'tests/test_independent_sbom.py',
         )
         for path in paths:
             with self.subTest(path=path):
-                self.assertEqual(classify_pr.classify_paths([path]), 'release')
+                self.assertEqual(classify_pr.classify_paths([path]), 'artifact')
+
+    def test_release_workflow_keeps_full_qualification(self):
+        self.assertEqual(classify_pr.classify_paths(['.github/workflows/release.yml']), 'full')
 
     def test_release_and_documentation_changes_stay_release_only(self):
         self.assertEqual(
-            classify_pr.classify_paths(['scripts/generate_sbom.py', 'docs/release-security.md']),
+            classify_pr.classify_paths(['scripts/promotion.py', 'docs/release-security.md']),
             'release',
         )
 
     def test_release_changes_mixed_with_runtime_changes_escalate(self):
         self.assertEqual(
-            classify_pr.classify_paths(['scripts/generate_sbom.py', 'scripts/make_static.py']),
+            classify_pr.classify_paths(['scripts/promotion.py', 'scripts/make_static.py']),
             'full',
         )
         self.assertEqual(
-            classify_pr.classify_paths(['scripts/generate_sbom.py', 'deploy/nginx.conf']),
+            classify_pr.classify_paths(['scripts/promotion.py', 'deploy/nginx.conf']),
             'artifact',
         )
 
@@ -122,8 +142,14 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn('name: Release metadata qualification', workflow)
         self.assertIn('uses: ./.github/actions/release-metadata-qualification', workflow)
         self.assertIn('name: Artifact qualification gate', workflow)
-        self.assertIn('needs: [browser-plan, release-metadata, build, browser]', workflow)
+        self.assertIn(
+            'needs: [browser-plan, release-metadata, build, browser, package]',
+            workflow,
+        )
         self.assertIn('required release metadata evidence missing', workflow)
+        self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', workflow)
+        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertIn("needs.browser-plan.outputs.level == 'artifact'", workflow)
         self.assertIn('required artifact evidence missing', workflow)
 
     def test_qualification_caches_separate_build_outputs_from_package_downloads(self):

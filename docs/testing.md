@@ -21,8 +21,9 @@ The expensive upstream Code-OSS web bundle is cached by immutable build inputs: 
 the canonical Node and Python versions from `.github/toolchain-versions.json`, product transform,
 patch manifest/files and the scripts that drive the upstream build. Changes limited to browser tests
 can therefore reuse the same upstream bundle while still regenerating the current static wrapper.
-Release/package/publication-only pull requests do not rebuild that bundle at all; they use the
-release-metadata qualification lane below.
+Publication/promotion control-plane-only pull requests do not rebuild that bundle at all; they use
+the release-metadata qualification lane below. Distribution-dependent packaging, SBOM, and OCI
+changes still build a real `dist/` and package that exact artifact.
 
 ## Current browser policy
 

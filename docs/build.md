@@ -49,11 +49,12 @@ packaging, Pages, and OCI publication.
 ## Pull-request qualification cost
 
 Pull requests are path-classified before expensive artifact work. Documentation-only changes use the
-lightweight gate. Release/package/publication-only changes use the read-only release-metadata
+lightweight gate. Publication/promotion control-plane-only changes use the read-only release-metadata
 qualification lane, which runs repository policy and unit/tooling tests without rebuilding Code - OSS
-or starting the browser matrix. That allowlist is explicit; mixed changes that touch runtime/build
-inputs escalate to artifact or full qualification, and unknown paths fail closed to artifact
-qualification.
+or starting the browser matrix. Distribution-dependent packaging/SBOM/OCI changes remain artifact
+qualification: they build the canonical static distribution, run Chromium smoke qualification, and
+run packaging against that exact `dist/`. The fast-lane allowlist is explicit; mixed changes that
+touch runtime/build inputs escalate to artifact or full qualification, and unknown paths fail closed
+to artifact qualification.
 
-Artifact changes continue to build the canonical static distribution and run Chromium smoke
-qualification. Full changes continue to run Chromium, Firefox, and WebKit qualification.
+Full changes continue to run Chromium, Firefox, and WebKit qualification.

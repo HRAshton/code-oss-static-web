@@ -173,8 +173,12 @@ def check_browser_qualification_topology() -> None:
     for required in (
         "needs.browser-plan.outputs.level == 'release'",
         'uses: ./.github/actions/release-metadata-qualification',
-        'needs: [browser-plan, release-metadata, build, browser]',
+        'needs: [browser-plan, release-metadata, build, browser, package]',
         'required release metadata evidence missing',
+        'PACKAGE_RESULT: ${{ needs.package.result }}',
+        "github.event_name != 'pull_request' ||",
+        "needs.browser-plan.outputs.level == 'artifact' ||",
+        'required artifact evidence missing:',
         "needs.browser-plan.outputs.level == 'artifact' ||",
         "needs.browser-plan.outputs.level == 'full'",
     ):

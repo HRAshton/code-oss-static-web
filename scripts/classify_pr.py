@@ -24,43 +24,38 @@ DOCUMENTATION_ONLY_PREFIXES = (
 )
 
 RELEASE_ONLY_FILES = {
-    '.github/actions/independent-sbom/action.yml',
     '.github/actions/publish-github-release/action.yml',
-    '.github/actions/publish-oci/action.yml',
     '.github/actions/publish-pages/action.yml',
     '.github/workflows/promote.yml',
     '.github/workflows/recover-release-publication.yml',
-    '.github/workflows/release.yml',
-    'package.sh',
-    'pyproject.toml',
-    'schemas/sbom-comparison-policy.schema.json',
     'scripts/check_policy.py',
     'scripts/check_release_tag.py',
-    'scripts/compare_sbom_inventory.py',
     'scripts/export_release_provenance.py',
-    'scripts/generate_license_inventory.py',
-    'scripts/generate_runtime_metadata.py',
-    'scripts/generate_sbom.py',
-    'scripts/package_release.py',
     'scripts/pages_identity.py',
     'scripts/promotion.py',
     'scripts/publish_github_release.py',
     'scripts/validate_json_schema.py',
-    'scripts/verify_oci_image.sh',
-    'scripts/verify_release.py',
-    'security/sbom-comparison-policy.json',
 }
-RELEASE_ONLY_PREFIXES = (
-    '.github/actions/release-metadata-qualification/',
-    'tests/test_',
-)
+RELEASE_ONLY_PREFIXES = ('.github/actions/release-metadata-qualification/',)
 
 ARTIFACT_FILES = {
     '.dockerignore',
+    '.github/actions/independent-sbom/action.yml',
+    '.github/actions/publish-oci/action.yml',
     '.github/toolchain-versions.json',
     'Makefile',
     'build.sh',
     'package.sh',
+    'pyproject.toml',
+    'schemas/sbom-comparison-policy.schema.json',
+    'scripts/compare_sbom_inventory.py',
+    'scripts/generate_license_inventory.py',
+    'scripts/generate_runtime_metadata.py',
+    'scripts/generate_sbom.py',
+    'scripts/package_release.py',
+    'scripts/verify_oci_image.sh',
+    'scripts/verify_release.py',
+    'security/sbom-comparison-policy.json',
     'upstream.lock.json',
 }
 ARTIFACT_PREFIXES = (
@@ -76,6 +71,7 @@ ARTIFACT_PREFIXES = (
 FULL_FILES = {
     '.github/toolchain-versions.json',
     '.github/workflows/qualify.yml',
+    '.github/workflows/release.yml',
     '.github/workflows/upstream-qualification.yml',
     'scripts/add_test_extension.py',
     'scripts/apply_patches.py',
