@@ -35,7 +35,7 @@ design choices are recorded in the [ADR index](adr/README.md).
 | Static assembler | Copies the optimized upstream web build, writes the static bootstrap and CSP, applies fail-closed runtime defaults, and adds locked browser extensions. | [scripts/make_static.py](../scripts/make_static.py), [config/runtime.json](../config/runtime.json), [config/network-policy.json](../config/network-policy.json) |
 | Extension ingestion | Acquires only exact locked VSIX bytes, verifies hashes/source/license/archive policy, and installs browser-compatible extensions into the distribution. | [scripts/extension_lock.py](../scripts/extension_lock.py), [extensions/README.md](../extensions/README.md), [extensions/extensions.lock.json](../extensions/extensions.lock.json), [extensions/source-policy.json](../extensions/source-policy.json), [extensions/license-policy.json](../extensions/license-policy.json) |
 | Qualification | Classifies pull-request risk, runs a read-only release/tooling lane for publication/promotion control-plane changes, requires real <code>dist/</code> plus packaging integration for distribution-dependent release changes, boots artifact changes as a static site, and for high-risk runtime changes runs multi-browser behavioral/security qualification. | [.github/workflows/qualify.yml](../.github/workflows/qualify.yml), [.github/actions/release-metadata-qualification/action.yml](../.github/actions/release-metadata-qualification/action.yml), [.github/actions/browser-qualification/action.yml](../.github/actions/browser-qualification/action.yml), [scripts/classify_pr.py](../scripts/classify_pr.py), [tests/e2e](../tests/e2e) |
-| Packaging and metadata | Produces deterministic archives, checksums, artifact manifest, SBOM, license inventory, and distribution tree identity. | [scripts/package_release.py](../scripts/package_release.py), [scripts/generate_sbom.py](../scripts/generate_sbom.py), [scripts/generate_license_inventory.py](../scripts/generate_license_inventory.py), [scripts/verify_release.py](../scripts/verify_release.py) |
+| Packaging and metadata | Produces deterministic archives, checksums, artifact manifest, native SBOM, independent Syft component inventory/comparison, license inventory, and distribution tree identity. | [scripts/package_release.py](../scripts/package_release.py), [scripts/generate_sbom.py](../scripts/generate_sbom.py), [scripts/compare_sbom_inventory.py](../scripts/compare_sbom_inventory.py), [security/sbom-comparison-policy.json](../security/sbom-comparison-policy.json), [scripts/generate_license_inventory.py](../scripts/generate_license_inventory.py), [scripts/verify_release.py](../scripts/verify_release.py) |
 | Attestation | Consumes the verified release candidate in an isolated job with OIDC/attestation permission and no source build. | [.github/workflows/release.yml](../.github/workflows/release.yml), [scripts/check_policy.py](../scripts/check_policy.py), [docs/release-security.md](release-security.md) |
 | Immutable publication | After attestation, publishes the immutable GitHub Release and immutable GHCR image. GitHub Release consumes `release-candidate` plus attestation evidence; GHCR consumes the canonical `release-static-dist`. | [.github/workflows/release.yml](../.github/workflows/release.yml), [.github/actions/publish-github-release/action.yml](../.github/actions/publish-github-release/action.yml), [.github/actions/publish-oci/action.yml](../.github/actions/publish-oci/action.yml) |
 | Promotion | Resolves a published immutable release, verifies its attestations and policy-bound identity, records canary/stable state as GitHub Deployments, and deploys stable Pages without rebuilding. | [.github/workflows/promote.yml](../.github/workflows/promote.yml), [config/promotion-policy.json](../config/promotion-policy.json), [scripts/promotion.py](../scripts/promotion.py), [.github/actions/publish-pages/action.yml](../.github/actions/publish-pages/action.yml) |
@@ -104,7 +104,8 @@ Release workflow on immutable v*-web.* tag
                      |               | TB6: qualified static dist -> packaged release candidate
                      |               v
                      |         release-candidate
-                     |         archives + checksums + manifest + SBOM + license inventory
+                     |         archives + checksums + manifest + native SBOM
+                     |         + independent inventory/comparison + license inventory
                      |               |
                      |               | TB7: untrusted build/package jobs -> isolated attestation authority
                      |               v
@@ -210,11 +211,33 @@ reproducibility proves two clean release builds normalize to the same distributi
 
 ### 6. Release candidate to attestations
 
-Packaging creates deterministic archives and metadata from the rebuilt <code>dist/</code>. The
-attestation job is intentionally downstream of build/package work. Repository policy requires the
+Packaging creates deterministic archives and metadata from the rebuilt <code>dist/</code>. Before
+packaging is accepted, a SHA-pinned Anchore action runs Syft against that final distribution with an
+explicit JavaScript package cataloger selected by <code>security/syft.yaml</code>.
+[scripts/compare_sbom_inventory.py](../scripts/compare_sbom_inventory.py) normalizes the scanner
+findings and compares package identity plus artifact location with the project-generated CycloneDX
+SBOM. VS Code extensions are matched to Syft's npm-style package representation by their installed
+path/name/version rather than ignored. CycloneDX file components are scanner evidence rather than
+software components and are excluded from the set comparison. Syft's root
+<code>Code - OSS</code> npm package is normalized to the native upstream application identity rather
+than excepted. Nested <code>extensions/*/server/package.json</code> components discovered by Syft are
+included in the native runtime metadata and SBOM.
+
+The comparison emits <code>independent-component-inventory.json</code> and
+<code>sbom-comparison.json</code>. Any independent package not represented by the native SBOM, any
+native package not represented independently, or an empty independent software inventory fails
+packaging unless a narrow reviewed exception in
+[security/sbom-comparison-policy.json](../security/sbom-comparison-policy.json) explains the
+representation difference. Current exceptions are exact purl+path identities for optimized runtime
+package directories that omit <code>package.json</code> from the final distribution; their native
+records remain bound to the pinned upstream package lock. The comparison rejects stale exceptions,
+so version/path drift requires review.
+
+The attestation job is intentionally downstream of build/package work. Repository policy requires the
 attestation job to have the required OIDC/attestation permissions while prohibiting source checkout,
-shell build steps, or upstream build execution. The security design is documented in
-[docs/release-security.md](release-security.md).
+shell build steps, or upstream build execution. Pull-request composition validation runs in the
+read-only package job; attestation remains disabled for pull requests. The security design is
+documented in [docs/release-security.md](release-security.md).
 
 ### 7. Attestation to immutable publication
 

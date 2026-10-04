@@ -306,6 +306,59 @@ class ToolingTests(unittest.TestCase):
         self.assertLess(identity_gate, archive)
         self.assertLess(archive, reproducibility)
 
+    def test_independent_sbom_cross_check_is_release_gating(self):
+        action = (ROOT / '.github/actions/independent-sbom/action.yml').read_text()
+        self.assertIn(
+            'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+            action,
+        )
+        self.assertIn('syft-version: v1.48.0', action)
+        self.assertIn('config: security/syft.yaml', action)
+        self.assertIn("upload-artifact: 'false'", action)
+        self.assertIn("upload-release-assets: 'false'", action)
+
+        syft_config = (ROOT / 'security/syft.yaml').read_text()
+        self.assertIn('- +javascript-package-cataloger', syft_config)
+
+        policy = json.loads((ROOT / 'security/sbom-comparison-policy.json').read_text())
+        self.assertEqual(policy['scanner'], {'name': 'syft', 'version': '1.48.0'})
+        exceptions = policy['exceptions']
+        self.assertEqual(len(exceptions), 26)
+        self.assertTrue(
+            all(
+                item['direction'] == 'missingFromIndependent'
+                and set(item['match']) == {'purl', 'path'}
+                for item in exceptions
+            )
+        )
+
+        qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        for workflow in (qualify, release):
+            self.assertIn('uses: ./.github/actions/independent-sbom', workflow)
+            self.assertIn('output-file: .work/independent-sbom.cdx.json', workflow)
+
+        self.assertIn("needs.browser-plan.outputs.level == 'artifact' ||", qualify)
+        self.assertIn(
+            'needs: [browser-plan, release-metadata, build, browser, package]',
+            qualify,
+        )
+        self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', qualify)
+        self.assertIn('"$PACKAGE_RESULT" != success', qualify)
+
+        attest_block = qualify.split('  attest:\n', 1)[1].split('  release:\n', 1)[0]
+        self.assertIn("if: github.event_name != 'pull_request'", attest_block)
+
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('compare_sbom_inventory.compare_files(', package_source)
+        self.assertIn("'independent-component-inventory.json'", package_source)
+        self.assertIn("'sbom-comparison.json'", package_source)
+
+        verifier = (ROOT / 'scripts/verify_release.py').read_text()
+        self.assertIn('verify_independent_sbom_evidence(directory)', verifier)
+        self.assertIn("comparison.get('status') == 'pass'", verifier)
+        check_policy.check_independent_sbom_policy()
+
     def test_scorecard_sensitive_permissions_are_job_scoped(self):
         for path in (
             '.github/workflows/patch-release.yml',
@@ -448,6 +501,18 @@ class ToolingTests(unittest.TestCase):
                     }
                 )
             )
+            server = extension / 'server'
+            server.mkdir()
+            (server / 'server.js').write_text('module.exports = {};\n')
+            (server / 'package.json').write_text(
+                json.dumps(
+                    {
+                        'name': 'fixture-language-server',
+                        'version': '2.3.4',
+                        'license': 'BSD-3-Clause',
+                    }
+                )
+            )
             lock = {
                 'lockfileVersion': 3,
                 'packages': {
@@ -465,8 +530,13 @@ class ToolingTests(unittest.TestCase):
             }
 
             metadata = generate_runtime_metadata.build_runtime_metadata(dist, lock, upstream)
-            self.assertEqual(metadata['npm'][0]['name'], '@scope/pkg')
-            self.assertEqual(metadata['npm'][0]['version'], '4.5.6')
+            npm_metadata = {item['name']: item for item in metadata['npm']}
+            self.assertEqual(npm_metadata['@scope/pkg']['version'], '4.5.6')
+            self.assertEqual(npm_metadata['fixture-language-server']['version'], '2.3.4')
+            self.assertEqual(
+                npm_metadata['fixture-language-server']['source'],
+                'extension-package-json',
+            )
             self.assertEqual(metadata['extensions'][0]['id'], 'demo.fixture')
 
             bom = generate_sbom.build_sbom(
@@ -490,6 +560,7 @@ class ToolingTests(unittest.TestCase):
             self.assertEqual(bom['specVersion'], '1.7')
             refs = {component['bom-ref'] for component in bom['components']}
             self.assertIn('pkg:npm/%40scope/pkg@4.5.6', refs)
+            self.assertIn('pkg:npm/fixture-language-server@2.3.4', refs)
             self.assertIn('vscode-extension:demo.fixture@1.2.3', refs)
             self.assertNotIn('timestamp', bom['metadata'])
 
@@ -510,6 +581,10 @@ class ToolingTests(unittest.TestCase):
                 for component in inventory['components']
             }
             self.assertEqual(licenses['pkg:npm/%40scope/pkg@4.5.6'], 'Apache-2.0')
+            self.assertEqual(
+                licenses['pkg:npm/fixture-language-server@2.3.4'],
+                'BSD-3-Clause',
+            )
             self.assertEqual(licenses['vscode-extension:demo.fixture@1.2.3'], 'MIT')
             self.assertEqual(inventory['summary']['noAssertion'], 0)
             self.assertEqual(generate_license_inventory.declared_license(None), 'NOASSERTION')

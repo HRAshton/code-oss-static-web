@@ -550,6 +550,12 @@ jobs:
           name: build-metadata
           path: .work
 
+      - name: Generate independent final-distribution SBOM
+        uses: ./.github/actions/independent-sbom
+        with:
+          path: dist
+          output-file: .work/independent-sbom.cdx.json
+
       - name: Package canonical candidate
         run: ./package.sh
 

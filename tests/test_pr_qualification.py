@@ -151,6 +151,8 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn("needs.browser-plan.outputs.level == 'artifact'", workflow)
         self.assertIn('required artifact evidence missing', workflow)
+        self.assertIn('uses: ./.github/actions/independent-sbom', workflow)
+        self.assertIn('output-file: .work/independent-sbom.cdx.json', workflow)
 
         attest_block = workflow.split('  attest:\n', 1)[1].split('  release:\n', 1)[0]
         self.assertIn("if: github.event_name != 'pull_request'", attest_block)

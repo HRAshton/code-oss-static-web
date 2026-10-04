@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, cast
 
-from common import BuildError, load_json, require, sha256_file
+from common import ROOT, BuildError, load_json, require, sha256_file
 
 COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 DIGEST_RE = re.compile(r'^[0-9a-f]{64}$')
@@ -102,6 +102,14 @@ def verify_artifact_manifest(directory: Path) -> None:
     }
     require('sbom.cdx.json' in artifact_names, 'artifact manifest must include sbom.cdx.json')
     require(
+        'independent-component-inventory.json' in artifact_names,
+        'artifact manifest must include independent component inventory',
+    )
+    require(
+        'sbom-comparison.json' in artifact_names,
+        'artifact manifest must include independent SBOM comparison',
+    )
+    require(
         'license-inventory.json' in artifact_names,
         'artifact manifest must include license-inventory.json',
     )
@@ -171,6 +179,59 @@ def verify_sbom(directory: Path) -> None:
                 dependency_ref in known_refs,
                 f'SBOM dependsOn contains unknown refs: {ref}',
             )
+
+
+def verify_independent_sbom_evidence(directory: Path) -> None:
+    inventory_path = directory / 'independent-component-inventory.json'
+    comparison_path = directory / 'sbom-comparison.json'
+    require(inventory_path.is_file(), f'missing {inventory_path}')
+    require(comparison_path.is_file(), f'missing {comparison_path}')
+
+    inventory = _object(load_json(inventory_path), 'independent component inventory')
+    require(inventory.get('schemaVersion') == 1, 'independent component inventory schema must be 1')
+    scanner = _object(inventory.get('scanner'), 'independent component inventory scanner')
+    scanner_name = _string(scanner.get('name'), 'independent component inventory scanner name')
+    scanner_version = _string(
+        scanner.get('version'),
+        'independent component inventory scanner version',
+    )
+    components = _array(
+        inventory.get('components'),
+        'independent component inventory components missing',
+    )
+    require(len(components) > 0, 'independent component inventory must not be empty')
+
+    policy = _object(
+        load_json(ROOT / 'security/sbom-comparison-policy.json'),
+        'SBOM comparison policy',
+    )
+    expected_scanner = _object(policy.get('scanner'), 'SBOM comparison policy scanner')
+    require(
+        scanner_name == expected_scanner.get('name')
+        and scanner_version == expected_scanner.get('version'),
+        'independent component inventory scanner does not match repository policy',
+    )
+
+    comparison = _object(load_json(comparison_path), 'independent SBOM comparison')
+    require(comparison.get('schemaVersion') == 1, 'independent SBOM comparison schema must be 1')
+    require(comparison.get('status') == 'pass', 'independent SBOM comparison must pass')
+    require(comparison.get('scanner') == scanner, 'independent SBOM comparison scanner mismatch')
+    require(
+        _array(
+            comparison.get('unexplainedMissingFromNative'),
+            'independent SBOM unexplained native gaps missing',
+        )
+        == [],
+        'independent SBOM comparison has unexplained components missing from native SBOM',
+    )
+    require(
+        _array(
+            comparison.get('unexplainedMissingFromIndependent'),
+            'independent SBOM unexplained scanner gaps missing',
+        )
+        == [],
+        'independent SBOM comparison has unexplained components missing from independent inventory',
+    )
 
 
 def verify_license_inventory(directory: Path) -> None:
@@ -251,9 +312,10 @@ def main() -> None:
     count = verify_checksums(directory)
     verify_artifact_manifest(directory)
     verify_sbom(directory)
+    verify_independent_sbom_evidence(directory)
     verify_license_inventory(directory)
     print(
-        f'verified {count} release files, artifact manifest, CycloneDX SBOM and license inventory'
+        f'verified {count} release files, artifact manifest, native/independent SBOM evidence and license inventory'
     )
 
 

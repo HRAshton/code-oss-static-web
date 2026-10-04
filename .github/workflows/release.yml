@@ -333,6 +333,12 @@ jobs:
           name: release-build-metadata
           path: .work
 
+      - name: Generate independent final-distribution SBOM
+        uses: ./.github/actions/independent-sbom
+        with:
+          path: dist
+          output-file: .work/independent-sbom.cdx.json
+
       - name: Package and verify canonical release
         env:
           CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}
