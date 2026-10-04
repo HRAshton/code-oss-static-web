@@ -385,3 +385,13 @@ present in the jobs that execute upstream build code.
 - [ADR-0004: Scope proposed API grants to documented extension IDs](adr/0004-proposed-api-policy.md)
 - [ADR-0005: Separate qualification, release rebuild, attestation, and promotion](adr/0005-release-promotion.md)
 - [ADR-0006: Keep gallery and runtime network access disabled by default](adr/0006-gallery-network-policy.md)
+
+## Immutable builder boundary
+
+Release-authorizing qualification builds and both independent Release rebuilds run inside the
+digest-pinned Linux builder recorded in
+[`.github/builder-image.json`](../.github/builder-image.json), then install the repository-pinned
+Node/Python toolchain. The fast builder-environment policy requires the workflow container literals,
+qualification cache key, release authorization binding, and recorded artifact-manifest identity to
+remain synchronized with that lock. GitHub's hosted runner is orchestration rather than the sole
+build-environment identity.

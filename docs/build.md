@@ -61,3 +61,32 @@ touch runtime/build inputs escalate to artifact or full qualification, and unkno
 to artifact qualification.
 
 Full changes continue to run Chromium, Firefox, and WebKit qualification.
+
+## Pinned release builder
+
+Qualification builds that can authorize a release, the independent release rebuild, and the second
+reproducibility rebuild run inside the immutable OCI image recorded in
+[`.github/builder-image.json`](../.github/builder-image.json). Workflows reference the image by
+digest rather than by a mutable tag. The qualification cache key includes both the builder lock and
+the qualification workflow itself, which binds its bootstrap and native-package prerequisite
+definition. A builder or prerequisite change therefore cannot reuse an upstream web bundle built
+under an older environment.
+
+Release `artifact-manifest.json` records the builder image, digest, platform, and SHA-256 of the
+builder lock alongside the canonical Node/Python toolchain. Qualification evidence records the same
+builder identity, and `release.yml` re-fetches the lock from the immutable release commit and
+requires both evidence and manifest to match it before a clean rebuild starts.
+
+The hosted runner still provides the outer GitHub Actions executor, and Ubuntu package repositories
+used by the prerequisite bootstrap remain external mutable infrastructure. Those are explicit
+residual rebuild dependencies, not hidden guarantees. If a historical rebuild can no longer resolve
+those dependencies, treat that as a rebuildability incident rather than silently substituting newer
+inputs.
+
+## Historical rebuild exercise
+
+For an older immutable release, check out its release tag, inspect the tag's
+`.github/builder-image.json`, and run the build in that exact image digest with the tag's canonical
+toolchain, upstream lock, patch set, deployment profiles, and extension lock. Compare the normalized
+distribution tree with the release's `artifact-manifest.json`. The manifest's `builder` and
+`inputs.builderImage` fields provide the durable builder identity and lock digest for that exercise.

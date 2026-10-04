@@ -159,3 +159,15 @@ immutable artifact/OCI identities, durable Playwright-runtime digest, rollback t
 canary/stable deployment identities before and after rollback. It also binds distinct executor and
 reviewer GitHub identities and the reviewer's durable GitHub sign-off permalink. The record is an
 index into GitHub's durable audit trail, not a substitute for workflow/release/deployment evidence.
+
+## Builder identity
+
+Release builds do not rely solely on the mutable `ubuntu-latest` filesystem. Release-authorizing
+qualification and both Release rebuilds execute inside the digest-pinned builder recorded in
+[`.github/builder-image.json`](../.github/builder-image.json). The qualification cache is bound to
+that lock, the artifact manifest records its identity and lock digest, and release authorization
+rejects qualification evidence whose builder identity does not match the immutable release commit.
+
+Apt mirrors and upstream package availability remain explicit residual dependencies. Historical
+rebuilds must fail visibly when those inputs are unavailable rather than silently moving to a
+different builder identity.

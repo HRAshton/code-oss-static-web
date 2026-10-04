@@ -186,6 +186,33 @@ def build_artifact_manifest(
         'invalid deployment profile metadata',
     )
     toolchain = load_json(ROOT / '.github/toolchain-versions.json')
+    builder = load_json(ROOT / '.github/builder-image.json')
+    require(
+        set(builder) == {'schemaVersion', 'image', 'digest', 'platform'},
+        'builder image manifest keys invalid',
+    )
+    require(builder.get('schemaVersion') == 1, 'builder image schemaVersion must be 1')
+    builder_image = builder.get('image')
+    builder_digest = builder.get('digest')
+    builder_platform = builder.get('platform')
+    require(
+        isinstance(builder_image, str) and bool(builder_image) and '@' not in builder_image,
+        'builder image name invalid',
+    )
+    require(
+        isinstance(builder_digest, str)
+        and re.fullmatch(r'sha256:[0-9a-f]{64}', builder_digest) is not None,
+        'builder image digest invalid',
+    )
+    require(builder_platform == 'linux/amd64', 'builder platform must be linux/amd64')
+    assert isinstance(builder_image, str)
+    assert isinstance(builder_digest, str)
+    assert isinstance(builder_platform, str)
+    builder_identity = {
+        'image': builder_image,
+        'digest': builder_digest,
+        'platform': builder_platform,
+    }
     node_version = toolchain.get('node')
     python_version = toolchain.get('python')
     require(isinstance(node_version, str) and bool(node_version), 'toolchain Node version missing')
@@ -212,6 +239,7 @@ def build_artifact_manifest(
             'node': node_version,
             'python': python_version,
         },
+        'builder': builder_identity,
         'distribution': {
             'treeSha256': tree_digest,
             'fileCount': file_count,
@@ -219,6 +247,7 @@ def build_artifact_manifest(
         'deploymentProfile': deployment_profile,
         'inputs': {
             'toolchainVersions': input_digest(ROOT / '.github/toolchain-versions.json'),
+            'builderImage': input_digest(ROOT / '.github/builder-image.json'),
             'upstreamLock': input_digest(ROOT / 'upstream.lock.json'),
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
             'deploymentProfileMetadata': input_digest(deployment_profile_path),
