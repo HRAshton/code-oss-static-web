@@ -13,6 +13,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
+import check_commit_message
 import check_policy
 import compare_dist
 import extension_lock
@@ -117,9 +118,13 @@ class ToolingTests(unittest.TestCase):
                 fetch_upstream.verify_tag_binding(lock)
 
     def test_upstream_binding_is_validated_before_build(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertIn('name: Upstream tag-to-commit binding', workflow)
-        self.assertIn('python3 scripts/fetch_upstream.py --verify-tag-only', workflow)
+        ci = (ROOT / '.github/workflows/ci.yml').read_text()
+        qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+        self.assertIn('uses: ./.github/actions/tooling-checks', ci)
+        self.assertIn('uses: ./.github/actions/tooling-checks', qualify)
+        self.assertIn('name: Upstream tag-to-commit binding', tooling)
+        self.assertIn('python3 scripts/fetch_upstream.py --verify-tag-only', tooling)
 
         fetch_source = (ROOT / 'scripts/fetch_upstream.py').read_text()
         self.assertIn('verify_tag_binding(lock)', fetch_source)
@@ -306,6 +311,60 @@ class ToolingTests(unittest.TestCase):
         self.assertLess(identity_gate, archive)
         self.assertLess(archive, reproducibility)
 
+    def test_independent_sbom_cross_check_is_release_gating(self):
+        action = (ROOT / '.github/actions/independent-sbom/action.yml').read_text()
+        self.assertIn(
+            'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+            action,
+        )
+        self.assertIn('syft-version: v1.48.0', action)
+        self.assertIn('config: security/syft.yaml', action)
+        self.assertIn("upload-artifact: 'false'", action)
+        self.assertIn("upload-release-assets: 'false'", action)
+
+        syft_config = (ROOT / 'security/syft.yaml').read_text()
+        self.assertIn('- +javascript-package-cataloger', syft_config)
+
+        policy = json.loads((ROOT / 'security/sbom-comparison-policy.json').read_text())
+        self.assertEqual(policy['scanner'], {'name': 'syft', 'version': '1.48.0'})
+        exceptions = policy['exceptions']
+        self.assertEqual(len(exceptions), 26)
+        self.assertTrue(
+            all(
+                item['direction'] == 'missingFromIndependent'
+                and set(item['match']) == {'purl', 'path'}
+                for item in exceptions
+            )
+        )
+
+        qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        for workflow in (qualify, release):
+            self.assertIn('uses: ./.github/actions/independent-sbom', workflow)
+            self.assertIn('output-file: .work/independent-sbom.cdx.json', workflow)
+
+        self.assertIn("needs.browser-plan.outputs.level == 'artifact' ||", qualify)
+        self.assertIn(
+            'needs: [browser-plan, release-metadata, build, browser, production-serving, package]',
+            qualify,
+        )
+        self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', qualify)
+        self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', qualify)
+        self.assertIn('"$PACKAGE_RESULT" != success', qualify)
+
+        attest_block = qualify.split('  attest:\n', 1)[1].split('  release:\n', 1)[0]
+        self.assertIn("if: github.event_name != 'pull_request'", attest_block)
+
+        package_source = (ROOT / 'scripts/package_release.py').read_text()
+        self.assertIn('compare_sbom_inventory.compare_files(', package_source)
+        self.assertIn("'independent-component-inventory.json'", package_source)
+        self.assertIn("'sbom-comparison.json'", package_source)
+
+        verifier = (ROOT / 'scripts/verify_release.py').read_text()
+        self.assertIn('verify_independent_sbom_evidence(directory)', verifier)
+        self.assertIn("comparison.get('status') == 'pass'", verifier)
+        check_policy.check_independent_sbom_policy()
+
     def test_scorecard_sensitive_permissions_are_job_scoped(self):
         for path in (
             '.github/workflows/patch-release.yml',
@@ -318,12 +377,12 @@ class ToolingTests(unittest.TestCase):
             self.assertIn('permissions:\n      actions: write\n      contents: read', jobs)
 
     def test_reuse_ci_dependency_is_digest_pinned(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertNotIn("pip install --disable-pip-version-check 'reuse==", workflow)
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+        self.assertNotIn("pip install --disable-pip-version-check 'reuse==", tooling)
         self.assertIn(
             'docker://fsfe/reuse:6.2.0@sha256:'
             '85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e',
-            workflow,
+            tooling,
         )
 
     def test_repository_configuration_is_valid(self):
@@ -448,6 +507,18 @@ class ToolingTests(unittest.TestCase):
                     }
                 )
             )
+            server = extension / 'server'
+            server.mkdir()
+            (server / 'server.js').write_text('module.exports = {};\n')
+            (server / 'package.json').write_text(
+                json.dumps(
+                    {
+                        'name': 'fixture-language-server',
+                        'version': '2.3.4',
+                        'license': 'BSD-3-Clause',
+                    }
+                )
+            )
             lock = {
                 'lockfileVersion': 3,
                 'packages': {
@@ -465,8 +536,13 @@ class ToolingTests(unittest.TestCase):
             }
 
             metadata = generate_runtime_metadata.build_runtime_metadata(dist, lock, upstream)
-            self.assertEqual(metadata['npm'][0]['name'], '@scope/pkg')
-            self.assertEqual(metadata['npm'][0]['version'], '4.5.6')
+            npm_metadata = {item['name']: item for item in metadata['npm']}
+            self.assertEqual(npm_metadata['@scope/pkg']['version'], '4.5.6')
+            self.assertEqual(npm_metadata['fixture-language-server']['version'], '2.3.4')
+            self.assertEqual(
+                npm_metadata['fixture-language-server']['source'],
+                'extension-package-json',
+            )
             self.assertEqual(metadata['extensions'][0]['id'], 'demo.fixture')
 
             bom = generate_sbom.build_sbom(
@@ -490,6 +566,7 @@ class ToolingTests(unittest.TestCase):
             self.assertEqual(bom['specVersion'], '1.7')
             refs = {component['bom-ref'] for component in bom['components']}
             self.assertIn('pkg:npm/%40scope/pkg@4.5.6', refs)
+            self.assertIn('pkg:npm/fixture-language-server@2.3.4', refs)
             self.assertIn('vscode-extension:demo.fixture@1.2.3', refs)
             self.assertNotIn('timestamp', bom['metadata'])
 
@@ -510,6 +587,10 @@ class ToolingTests(unittest.TestCase):
                 for component in inventory['components']
             }
             self.assertEqual(licenses['pkg:npm/%40scope/pkg@4.5.6'], 'Apache-2.0')
+            self.assertEqual(
+                licenses['pkg:npm/fixture-language-server@2.3.4'],
+                'BSD-3-Clause',
+            )
             self.assertEqual(licenses['vscode-extension:demo.fixture@1.2.3'], 'MIT')
             self.assertEqual(inventory['summary']['noAssertion'], 0)
             self.assertEqual(generate_license_inventory.declared_license(None), 'NOASSERTION')
@@ -571,9 +652,27 @@ class ToolingTests(unittest.TestCase):
                     }
                 )
             )
+            source_policy_path = root / 'source-policy.json'
+            source_policy_path.write_text(
+                json.dumps(
+                    {
+                        'schemaVersion': 1,
+                        'allowedOpenVsxRegistries': ['https://open-vsx.org'],
+                        'allowedOpenVsxDownloadOrigins': [
+                            'https://open-vsx.org',
+                            'https://openvsx.eclipsecontent.org',
+                        ],
+                    }
+                )
+            )
             dist = root / 'dist'
             dist.mkdir()
-            installed = extension_lock.install_locked_extensions(dist, lock_path, root=root)
+            installed = extension_lock.install_locked_extensions(
+                dist,
+                lock_path,
+                root=root,
+                source_policy_path=source_policy_path,
+            )
             self.assertEqual(installed[0]['id'], 'fixture.browser')
             self.assertTrue((dist / 'extensions/fixture.browser/extension.js').is_file())
             index = extensions_index.build_extension_index(dist)
@@ -1120,30 +1219,78 @@ python-version: ${{ steps.versions.outputs.python }}
                 bypass,
             )
 
+    def test_commit_message_policy_allows_only_github_merges_when_explicit(self):
+        valid_merge = (
+            'Merge pull request #64 from HRAshton/security/independent-sbom-validation\n\n'
+            'feat(security): Add independent SBOM validation'
+        )
+        check_commit_message.validate_message(valid_merge, allow_github_merge=True)
+
+        with self.assertRaisesRegex(ValueError, 'single line'):
+            check_commit_message.validate_message(valid_merge)
+
+        invalid_title = (
+            'Merge pull request #64 from HRAshton/security/independent-sbom-validation\n\n'
+            'Merge security work'
+        )
+        with self.assertRaisesRegex(ValueError, 'Conventional Commits'):
+            check_commit_message.validate_message(
+                invalid_title,
+                allow_github_merge=True,
+            )
+
+        non_github_merge = "Merge branch 'develop' into master"
+        with self.assertRaisesRegex(ValueError, 'Conventional Commits'):
+            check_commit_message.validate_message(
+                non_github_merge,
+                allow_github_merge=True,
+            )
+
     def test_ci_validates_pr_titles_and_avoids_redundant_branch_work(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertIn('name: Pull request title policy', workflow)
-        self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
-        self.assertIn('branches: [master, develop]', workflow)
-        self.assertIn('group: ci-', workflow)
-        self.assertIn('cancel-in-progress: true', workflow)
-        self.assertIn("github.event_name == 'pull_request'", workflow)
-        self.assertIn('github.event.pull_request.title', workflow)
-        self.assertIn('name: Pull request commit message policy', workflow)
-        self.assertIn('pulls/$PR_NUMBER/commits', workflow)
-        self.assertIn('@base64', workflow)
-        self.assertIn('encoded_messages="$(', workflow)
-        self.assertIn('No pull request commits returned by GitHub API', workflow)
-        self.assertIn('done <<< "$encoded_messages"', workflow)
-        self.assertNotIn('done < <(', workflow)
-        self.assertIn("github.event_name == 'push' &&", workflow)
-        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
+        ci = (ROOT / '.github/workflows/ci.yml').read_text()
+        qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+
+        ci_triggers = ci.split('on:\n', 1)[1].split('\nconcurrency:', 1)[0]
+        qualify_triggers = qualify.split('on:\n', 1)[1].split('\nconcurrency:', 1)[0]
+        self.assertNotIn('pull_request:', ci_triggers)
+        self.assertIn('branches: [master, develop]', ci_triggers)
+        self.assertIn('pull_request:', qualify_triggers)
+        self.assertIn('types: [opened, synchronize, reopened, edited]', qualify_triggers)
+
+        self.assertIn('uses: ./.github/actions/tooling-checks', ci)
+        self.assertIn('uses: ./.github/actions/tooling-checks', qualify)
+        self.assertIn('group: ci-', ci)
+        self.assertIn('cancel-in-progress: true', ci)
+
+        self.assertIn('name: Pull request title policy', tooling)
+        self.assertIn("github.event_name == 'pull_request'", tooling)
+        self.assertIn('github.event.pull_request.title', tooling)
+        self.assertIn('name: Pull request commit message policy', tooling)
+        self.assertIn('pulls/$PR_NUMBER/commits', tooling)
+        self.assertIn('@base64', tooling)
+        self.assertIn('encoded_commits="$(', tooling)
+        self.assertIn('(.parents | length | tostring)', tooling)
+        self.assertIn('PR_BASE_REF: ${{ github.event.pull_request.base.ref }}', tooling)
+        self.assertIn('PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}', tooling)
+        self.assertIn('PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}', tooling)
+        self.assertIn('"$PR_BASE_REF" == master', tooling)
+        self.assertIn('"$PR_HEAD_REF" == develop', tooling)
+        self.assertIn('"$PR_HEAD_REPO" == "$GITHUB_REPOSITORY"', tooling)
+        self.assertIn('"$parent_count" == 2', tooling)
+        self.assertIn('--allow-github-merge', tooling)
+        self.assertIn('No pull request commits returned by GitHub API', tooling)
+        self.assertIn('done <<< "$encoded_commits"', tooling)
+        self.assertNotIn('done < <(', tooling)
+        self.assertIn("github.event_name == 'push' &&", tooling)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", tooling)
         self.assertIn(
             'github.ref_name != github.event.repository.default_branch',
-            workflow,
+            tooling,
         )
-        self.assertNotIn('style-normalization', workflow)
-        self.assertNotIn('Export normalization workspace', workflow)
+        self.assertIn("github.ref_name != 'develop'", tooling)
+        self.assertNotIn('style-normalization', tooling)
+        self.assertNotIn('Export normalization workspace', tooling)
 
     def test_github_actions_yaml_checker_covers_actions_and_yaml_extensions(self):
         checker = (ROOT / 'scripts/check_workflow_yaml.rb').read_text()
@@ -1190,6 +1337,51 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn(
             'tar -C dist -xf ".work/browser-dist/${{ inputs.distribution-artifact }}.tar"',
             browser_action,
+        )
+
+    def test_build_entrypoint_validates_configuration_before_build_work(self):
+        build = (ROOT / 'scripts/build.py').read_text()
+
+        self.assertIn("run([ROOT / 'scripts/validate_config.py'])", build)
+        self.assertLess(
+            build.index("run([ROOT / 'scripts/validate_config.py'])"),
+            build.index("run([ROOT / 'scripts/fetch_upstream.py']"),
+        )
+
+    def test_independent_sbom_scan_is_fresh_for_current_distribution(self):
+        package = (ROOT / 'package.sh').read_text()
+        build = (ROOT / 'scripts/build.py').read_text()
+
+        self.assertNotIn('if [[ ! -f "$independent_sbom" ]]', package)
+        self.assertIn(
+            'rm -f "$independent_sbom" "$independent_sbom_tmp"',
+            package,
+        )
+        self.assertIn(
+            'syft -c "$ROOT/security/syft.yaml" "dir:$ROOT/dist" '
+            '-o "cyclonedx-json=$independent_sbom_tmp"',
+            package,
+        )
+        self.assertIn(
+            'mv "$independent_sbom_tmp" "$independent_sbom"',
+            package,
+        )
+        self.assertLess(
+            package.index('syft -c "$ROOT/security/syft.yaml"'),
+            package.index('python3 "$ROOT/scripts/package_release.py"'),
+        )
+
+        self.assertIn(
+            'independent_sbom.unlink(missing_ok=True)',
+            build,
+        )
+        self.assertIn(
+            'independent_sbom_tmp.unlink(missing_ok=True)',
+            build,
+        )
+        self.assertLess(
+            build.index('independent_sbom.unlink(missing_ok=True)'),
+            build.index("run([ROOT / 'scripts/make_static.py'"),
         )
 
     def test_qualification_workflow_reuses_browser_action(self):
@@ -1257,7 +1449,18 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertEqual(quality_baseline['source']['qualificationRunId'], 37136030149)
         baselines = [metric['baseline'] for metric in quality_baseline['metrics'].values()]
         self.assertNotIn(None, baselines)
-        self.assertEqual(quality_baseline['metrics']['consoleErrors']['baseline'], 10)
+        self.assertNotIn('consoleErrors', quality_baseline['metrics'])
+        console_policy = quality_baseline['consoleErrorPolicy']
+        self.assertEqual(console_policy['normalization'], 'strip-console-style-prefix')
+        self.assertTrue(console_policy['requireAllToleratedObserved'])
+        tolerated = console_policy['toleratedFingerprints']
+        self.assertEqual(len(tolerated), 10)
+        self.assertEqual(len(tolerated), len(set(tolerated)))
+        self.assertTrue(all(item and item == item.strip() for item in tolerated))
+        quality_console_policy = (ROOT / 'tests/e2e/quality-console-policy.cjs').read_text()
+        self.assertIn('validateConsoleErrorPolicy(policy)', quality_console_policy)
+        self.assertIn('must be unique', quality_console_policy)
+        self.assertIn('unsupported console error normalization', quality_console_policy)
         self.assertEqual(
             quality_baseline['metrics']['distributionBytes']['baseline'],
             190626870,
@@ -1269,6 +1472,8 @@ python-version: ${{ steps.versions.outputs.python }}
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn('playwright-runtime', runner)
+        self.assertIn('--base-url', runner)
+        self.assertIn('CODE_OSS_STATIC_WEB_EXTERNAL_BASE_URL', runner)
         exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
         self.assertIn("Path('@playwright/test')", exporter)
 
@@ -1278,16 +1483,49 @@ python-version: ${{ steps.versions.outputs.python }}
 
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
         release = (ROOT / '.github/workflows/release.yml').read_text()
+        promote = (ROOT / '.github/workflows/promote.yml').read_text()
         self.assertEqual(
             qualification.count('uses: ./.github/actions/browser-qualification'),
-            1,
+            2,
         )
         self.assertEqual(release.count('uses: ./.github/actions/browser-qualification'), 1)
+        self.assertEqual(promote.count('uses: ./.github/actions/browser-qualification'), 2)
         self.assertIn('browser: [chromium]', release)
-        for workflow in (qualification, release):
+        self.assertIn('name: OCI production-serving qualification', qualification)
+        self.assertIn('Browser synthetic against live canary', promote)
+        self.assertIn('Browser smoke against live Pages deployment', promote)
+        for workflow in (qualification, release, promote):
             self.assertNotIn('scripts/install_playwright_browser.py', workflow)
             self.assertNotIn('scripts/run_e2e.py', workflow)
             self.assertNotIn('scripts/add_test_extension.py', workflow)
+
+    def test_production_serving_qualification_is_release_gating(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        promotion = (ROOT / '.github/workflows/promote.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        nginx = (ROOT / 'deploy/nginx.conf').read_text()
+
+        self.assertIn('name: OCI production-serving qualification', qualification)
+        self.assertIn('docker build --tag code-oss-static-web:qualification', qualification)
+        self.assertIn('scripts/check_hosting_contract.py', qualification)
+        self.assertIn('scope: serving', qualification)
+        self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', qualification)
+        self.assertIn('"$SERVING_RESULT" != success', qualification)
+        self.assertIn('playwright-runtime.tar.gz', promotion)
+        self.assertIn('Publish real canary to GitHub Pages', promotion)
+        self.assertIn('deployments?environment=github-pages&per_page=100', promotion)
+        self.assertIn('legacy-pages-identity.json', promotion)
+        self.assertIn('identity-url-path: __canary/', promotion)
+        self.assertIn('Browser synthetic against live canary', promotion)
+        self.assertIn('Browser smoke against live Pages deployment', promotion)
+        self.assertNotIn('playwright-runtime-run-id:', promotion)
+        self.assertNotIn('actions/runs/$run_id/artifacts', promotion)
+        self.assertIn('CODE_OSS_STATIC_WEB_PLAYWRIGHT_RUNTIME', release)
+        self.assertIn('retention-days: 7', release)
+        self.assertIn('Cross-Origin-Opener-Policy "same-origin"', nginx)
+        self.assertIn('Cache-Control "no-cache"', nginx)
+        self.assertIn('default_type application/javascript;', nginx)
+        self.assertIn('try_files $uri $uri/ =404;', nginx)
 
     def test_release_workflow_uses_clean_qualified_artifact(self):
         workflow_path = ROOT / '.github/workflows/release.yml'

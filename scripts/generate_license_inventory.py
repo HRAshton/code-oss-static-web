@@ -91,6 +91,11 @@ def build_license_inventory(
             f'runtime npm version missing: {name}',
         )
         require(isinstance(path, str) and bool(path), f'runtime npm artifact path missing: {name}')
+        source_value = raw.get('source', 'upstream-package-lock')
+        require(
+            isinstance(source_value, str) and bool(source_value),
+            f'runtime npm source missing: {name}',
+        )
         components.append(
             component_entry(
                 bom_ref=generate_sbom.npm_purl(name, version_value),
@@ -99,7 +104,7 @@ def build_license_inventory(
                 version=version_value,
                 license_value=raw.get('license'),
                 artifact_path=path,
-                source='upstream-package-lock',
+                source=source_value,
             )
         )
 

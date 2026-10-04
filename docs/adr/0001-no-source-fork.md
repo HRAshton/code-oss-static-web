@@ -26,7 +26,7 @@ Instead:
    including annotated-tag peeling, requires it to identify the pinned commit, fetches the commit
    directly into a disposable checkout, and verifies detached <code>HEAD</code>.
 3. Project behavior is expressed through deterministic repository-owned configuration and tooling,
-   principally [config/product-transform.json](../../config/product-transform.json),
+   principally [config/policies/product/static.json](../../config/policies/product/static.json),
    [scripts/prepare_upstream.py](../../scripts/prepare_upstream.py), and the explicit
    [patch manifest](../../patches/manifest.json).
 4. The disposable checkout is reset and cleaned before the product transform and patch set are

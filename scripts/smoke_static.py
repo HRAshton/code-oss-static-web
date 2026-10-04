@@ -5,7 +5,14 @@ import json
 import sys
 from pathlib import Path
 
+from common import BuildError, assert_no_symlinks
+
 root = Path(sys.argv[1] if len(sys.argv) > 1 else 'dist')
+try:
+    assert_no_symlinks(root, label='static distribution')
+except BuildError as exc:
+    raise SystemExit(str(exc)) from None
+
 required = [
     'index.html',
     'static-bootstrap.mjs',

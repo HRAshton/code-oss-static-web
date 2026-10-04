@@ -89,20 +89,30 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/contents/.github/toolchain-versions.json?ref=$GITHUB_SHA" \
               --jq '.content' | base64 --decode | jq -c '{node, python}'
           )"
+          builder_lock=.work/release-qualification/builder-image.json
+          gh api "repos/$GITHUB_REPOSITORY/contents/.github/builder-image.json?ref=$GITHUB_SHA" \
+            --jq '.content' | base64 --decode > "$builder_lock"
+          builder="$(jq -c '{image, digest, platform}' "$builder_lock")"
+          builder_input_sha256="$(sha256sum "$builder_lock" | awk '{print $1}')"
           evidence=.work/release-qualification/release-qualification.json
           manifest=.work/release-qualification/artifact-manifest.json
+          admission=.work/release-qualification/vulnerability-admission.json
+
+          jq -e '.schemaVersion == 1 and .passed == true' "$admission" >/dev/null
 
           jq -e \
             --arg commit "$GITHUB_SHA" \
             --arg tag "$GITHUB_REF_NAME" \
             --argjson workflowRunId "$QUALIFICATION_RUN_ID" \
             --argjson toolchain "$toolchain" \
+            --argjson builder "$builder" \
             '
               .commit == $commit and
               .expectedSourceSha == $commit and
               .tag == $tag and
               .workflowRunId == $workflowRunId and
               .toolchain == $toolchain and
+              .builder == $builder and
               (.releaseMode == "upstream" or .releaseMode == "patch")
             ' \
             "$evidence" >/dev/null
@@ -121,12 +131,17 @@ jobs:
           jq -e \
             --arg commit "$GITHUB_SHA" \
             --argjson toolchain "$toolchain" \
+            --argjson builder "$builder" \
+            --arg builderInputSha256 "$builder_input_sha256" \
             --arg treeSha256 "$qualified_tree_sha256" \
             --argjson fileCount "$qualified_file_count" \
             '
               .schemaVersion == 1 and
               .project.commit == $commit and
               .toolchain == $toolchain and
+              .builder == $builder and
+              .inputs.builderImage.path == ".github/builder-image.json" and
+              .inputs.builderImage.sha256 == $builderInputSha256 and
               .distribution.treeSha256 == $treeSha256 and
               .distribution.fileCount == $fileCount
             ' \
@@ -156,9 +171,17 @@ jobs:
   build:
     needs: authorize
     runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
     permissions:
       contents: read
     steps:
+      - name: Bootstrap pinned builder packages
+        run: >-
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          ca-certificates curl git jq tar unzip xz-utils
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -172,9 +195,9 @@ jobs:
 
       - name: Install Code-OSS web build prerequisites
         run: >-
-          sudo apt-get update &&
-          sudo apt-get install -y --no-install-recommends
-          pkg-config libx11-dev libxkbfile-dev libkrb5-dev
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          build-essential pkg-config libx11-dev libxkbfile-dev libkrb5-dev
 
       - name: Clean release build
         env:
@@ -238,9 +261,17 @@ jobs:
   reproducibility:
     needs: build
     runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
     permissions:
       contents: read
     steps:
+      - name: Bootstrap pinned builder packages
+        run: >-
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          ca-certificates curl git jq tar unzip xz-utils
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -263,9 +294,9 @@ jobs:
 
       - name: Install Code-OSS web build prerequisites
         run: >-
-          sudo apt-get update &&
-          sudo apt-get install -y --no-install-recommends
-          pkg-config libx11-dev libxkbfile-dev libkrb5-dev
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          build-essential pkg-config libx11-dev libxkbfile-dev libkrb5-dev
 
       - name: Independent clean rebuild
         env:
@@ -333,9 +364,22 @@ jobs:
           name: release-build-metadata
           path: .work
 
+      - name: Download locked Playwright runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-playwright-runtime
+          path: .work/playwright-runtime
+
+      - name: Generate independent final-distribution SBOM
+        uses: ./.github/actions/independent-sbom
+        with:
+          path: dist
+          output-file: .work/independent-sbom.cdx.json
+
       - name: Package and verify canonical release
         env:
           CODE_OSS_STATIC_WEB_RELEASE_TAG: ${{ github.ref_name }}
+          CODE_OSS_STATIC_WEB_PLAYWRIGHT_RUNTIME: .work/playwright-runtime
         run: ./package.sh
 
       - name: Upload verified candidate

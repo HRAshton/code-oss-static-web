@@ -23,10 +23,7 @@ class DeploymentProfileTests(unittest.TestCase):
         self.assertEqual(profile['documents']['runtime']['telemetry'], False)
         self.assertEqual(profile['documents']['network']['allowedOrigins'], ['self'])
         self.assertEqual(profile['documents']['webview']['mode'], 'disabled')
-        self.assertEqual(
-            profile['documents']['proposedApi']['grants'],
-            {'hrashton.remotish': ['scmHistoryProvider', 'timeline']},
-        )
+        self.assertEqual(profile['documents']['proposedApi']['grants'], {})
 
     def test_baseline_static_has_no_proposed_api_exceptions(self):
         profile = deployment_profile.load_profile('baseline-static')
@@ -48,7 +45,7 @@ class DeploymentProfileTests(unittest.TestCase):
                 'config/policies/runtime/static.json',
                 'config/policies/network/static.json',
                 'config/policies/product/static.json',
-                'config/policies/proposed-api/company-standard.json',
+                'config/policies/proposed-api/none.json',
                 'config/policies/webview/disabled.json',
                 'config/policies/branding/default.json',
                 'config/policies/support/default.json',

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/HRAshton/code-oss-static-web/schemas/sbom-comparison-policy.schema.json",
+  "title": "Independent SBOM comparison policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "scanner", "exceptions"],
+  "properties": {
+    "schemaVersion": {"const": 1},
+    "scanner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": {
+        "name": {"const": "syft"},
+        "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "direction", "match", "reason"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "direction": {"enum": ["missingFromNative", "missingFromIndependent"]},
+          "match": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "type": {"type": "string", "minLength": 1},
+              "name": {"type": "string", "minLength": 1},
+              "version": {"type": "string", "minLength": 1},
+              "purl": {"type": "string", "minLength": 1},
+              "path": {"type": "string"},
+              "bomRef": {"type": "string", "minLength": 1}
+            }
+          },
+          "reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

@@ -62,7 +62,12 @@ class PromotionIdentityTests(unittest.TestCase):
                             'name': archive.name,
                             'sha256': archive_digest,
                             'size': archive.stat().st_size,
-                        }
+                        },
+                        {
+                            'name': 'playwright-runtime.tar.gz',
+                            'sha256': 'd' * 64,
+                            'size': 123,
+                        },
                     ],
                 }
             )
@@ -98,6 +103,13 @@ class PromotionIdentityTests(unittest.TestCase):
             self.assertEqual(identity['artifact']['deploymentProfile']['configSha256'], 'c' * 64)
             self.assertEqual(identity['policy']['profile'], 'automatic-default-v1')
             self.assertRegex(identity['policy']['sha256'], r'^[0-9a-f]{64}$')
+
+    def test_release_archive_ignores_playwright_runtime_tarball(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            _, manifest, _, archive = self.write_fixture(Path(td))
+            data = json.loads(manifest.read_text(encoding='utf-8'))
+            selected = promotion.release_archive(data)
+            self.assertEqual(selected['name'], archive.name)
 
     def test_build_identity_records_legacy_unprofiled_release(self) -> None:
         with tempfile.TemporaryDirectory() as td:
@@ -327,6 +339,16 @@ class PromotionWorkflowTests(unittest.TestCase):
             'identity-path: .work/promotion/pages-deployment-identity.json',
             workflow,
         )
+        self.assertIn('identity-url-path: __canary/${{ inputs.release_tag }}', workflow)
+        self.assertIn('needs: [authorize, pages-release-gate]', workflow)
+        self.assertIn('Build real canary Pages bundle', workflow)
+        self.assertIn('deployments?environment=github-pages&per_page=100', workflow)
+        self.assertIn('legacy-pages-identity.json', workflow)
+        self.assertIn('pages_identity.py verify', workflow)
+        self.assertIn('legacy Pages release tag no longer resolves to deployed commit', workflow)
+        self.assertNotIn('deployment_commit="$(jq -r', workflow)
+        self.assertIn('for asset in artifact-manifest.json "$stable_archive"', workflow)
+        self.assertIn('Browser synthetic against live canary', workflow)
         self.assertIn('commit: ${{ needs.authorize.outputs.release-commit }}', workflow)
 
         self.assertNotIn('uses: ./.github/actions/publish-pages', release)
@@ -338,7 +360,8 @@ class PromotionWorkflowTests(unittest.TestCase):
         self.assertNotIn('uses: ./.github/actions/publish-pages', recovery)
         self.assertIn('pages/deployments/$GITHUB_SHA', pages_action)
         self.assertIn('DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}', pages_action)
-        self.assertIn('deployment-identity.json?promotion_run=$GITHUB_RUN_ID', pages_action)
+        self.assertIn('identity-url-path:', pages_action)
+        self.assertIn('${identity_path#/}?promotion_run=$GITHUB_RUN_ID', pages_action)
         self.assertIn('Cache-Control: no-cache', pages_action)
         self.assertIn('scripts/pages_identity.py verify', pages_action)
         self.assertNotIn('deployments?environment=github-pages', pages_action)

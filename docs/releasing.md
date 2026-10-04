@@ -87,6 +87,18 @@ Rollback also uses `promote.yml`: promoting a previously successful stable relea
 stable deployment record pointing to that older immutable identity. Release tags and assets are not
 moved.
 
+### Canary deployment
+
+The canary stage publishes a reachable candidate under the repository Pages site at
+`__canary/<release-tag>/` while retaining the previous stable release at the root. It reconstructs
+that stable root only from its verified immutable release archive; during migration it can recover
+the exact prior production release from a successful legacy `github-pages` deployment plus the
+live root deployment identity. It then verifies the candidate's release-bound identity at the
+canary path and runs a Chromium boot synthetic against the served URL.
+Only that successful canary deployment record is accepted by automatic stable promotion. A
+canary-only dispatch leaves the candidate reachable for operator inspection without advancing the
+stable channel.
+
 See [Operations](../OPERATIONS.md) for promotion, rollback, audit, and both recovery procedures.
 
 ## Qualification evidence
@@ -139,3 +151,12 @@ After publication:
   commit, distribution tree digest, and deployment-profile digest.
 
 Do not publish or move a mutable `latest` tag as part of the immutable release contract.
+
+## Recovery game day
+
+For the controlled release/recovery exercise, follow
+[the release game-day runbook](release-game-day.md). The exercise deliberately distinguishes the
+short-lived retained-artifact publication-recovery path from durable rollback/promotion, which
+re-resolves immutable GitHub Release assets. Commit a validated game-day evidence record only after
+the real workflows and deployments have completed and a distinct reviewer has published the durable
+GitHub sign-off permalink recorded in that evidence.

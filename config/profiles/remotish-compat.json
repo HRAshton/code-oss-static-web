@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "remotish-compat",
+  "bindings": {
+    "runtime": "config/policies/runtime/static.json",
+    "network": "config/policies/network/static.json",
+    "productTransform": "config/policies/product/static.json",
+    "proposedApi": "config/policies/proposed-api/remotish.json",
+    "webview": "config/policies/webview/disabled.json",
+    "branding": "config/policies/branding/default.json",
+    "support": "config/policies/support/default.json",
+    "extensionLock": "extensions/extensions.lock.json",
+    "extensionLicensePolicy": "extensions/license-policy.json",
+    "extensionSourcePolicy": "extensions/source-policy.json"
+  }
+}

@@ -5,7 +5,7 @@
     "runtime": "config/policies/runtime/static.json",
     "network": "config/policies/network/static.json",
     "productTransform": "config/policies/product/static.json",
-    "proposedApi": "config/policies/proposed-api/company-standard.json",
+    "proposedApi": "config/policies/proposed-api/none.json",
     "webview": "config/policies/webview/disabled.json",
     "branding": "config/policies/branding/default.json",
     "support": "config/policies/support/default.json",

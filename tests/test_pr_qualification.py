@@ -127,12 +127,28 @@ class PullRequestQualificationTests(unittest.TestCase):
 
     def test_workflow_reports_one_stable_artifact_gate_for_every_pull_request(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
+        ci = (ROOT / '.github/workflows/ci.yml').read_text(encoding='utf-8')
         pull_request = workflow.split('  pull_request:\n', 1)[1].split(
             '  workflow_dispatch:\n',
             1,
         )[0]
 
         self.assertNotIn('paths:', pull_request)
+        self.assertIn('edited', pull_request)
+        ci_triggers = ci.split('on:\n', 1)[1].split('\nconcurrency:', 1)[0]
+        self.assertNotIn('pull_request:', ci_triggers)
+        tooling_block = workflow.split('  tooling:\n', 1)[1].split(
+            '\n  browser-plan:\n',
+            1,
+        )[0]
+        self.assertIn("if: github.event_name == 'pull_request'", tooling_block)
+        self.assertIn('uses: ./.github/actions/tooling-checks', tooling_block)
+        browser_plan_block = workflow.split('  browser-plan:\n', 1)[1].split(
+            '\n  recover-publication:\n',
+            1,
+        )[0]
+        self.assertIn('needs: tooling', browser_plan_block)
+        self.assertIn("needs.tooling.result == 'success'", browser_plan_block)
         self.assertIn('python3 scripts/classify_pr.py', workflow)
         self.assertIn('.previous_filename // empty', workflow)
         self.assertIn("release)\n                  browsers='[]'", workflow)
@@ -143,14 +159,18 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn('uses: ./.github/actions/release-metadata-qualification', workflow)
         self.assertIn('name: Artifact qualification gate', workflow)
         self.assertIn(
-            'needs: [browser-plan, release-metadata, build, browser, package]',
+            'needs: [browser-plan, release-metadata, build, browser, production-serving, package]',
             workflow,
         )
         self.assertIn('required release metadata evidence missing', workflow)
+        self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', workflow)
         self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', workflow)
+        self.assertIn('name: OCI production-serving qualification', workflow)
         self.assertIn("github.event_name == 'pull_request'", workflow)
         self.assertIn("needs.browser-plan.outputs.level == 'artifact'", workflow)
         self.assertIn('required artifact evidence missing', workflow)
+        self.assertIn('uses: ./.github/actions/independent-sbom', workflow)
+        self.assertIn('output-file: .work/independent-sbom.cdx.json', workflow)
 
         attest_block = workflow.split('  attest:\n', 1)[1].split('  release:\n', 1)[0]
         self.assertIn("if: github.event_name != 'pull_request'", attest_block)

@@ -19,7 +19,7 @@ Secure webviews are unsupported in the generic static deployment and must fail c
 
 [scripts/make_static.py](../../scripts/make_static.py) configures the webview endpoint templates under
 the reserved <code>invalid.invalid</code> domain, while
-[config/runtime.json](../../config/runtime.json) records webviews as disabled. The project will not
+[config/policies/runtime/static.json](../../config/policies/runtime/static.json) records webviews as disabled. The project will not
 patch out or weaken upstream origin, hostname, CSP, or sandbox checks merely to make webview content
 render.
 
@@ -40,7 +40,7 @@ webview isolation that the deployment cannot provide.
 ## Enforcement and verification
 
 - [scripts/make_static.py](../../scripts/make_static.py)
-- [config/runtime.json](../../config/runtime.json)
+- [config/policies/runtime/static.json](../../config/policies/runtime/static.json)
 - [scripts/validate_config.py](../../scripts/validate_config.py)
 - [scripts/smoke_static.py](../../scripts/smoke_static.py)
 - [tests/e2e/security.spec.cjs](../../tests/e2e/security.spec.cjs)

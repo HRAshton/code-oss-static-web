@@ -132,6 +132,21 @@ deployment does not match the rollback commit, even if that older commit was dep
 Canary is not implicitly rolled back when stable is rolled back. Move canary separately if the
 operational intent is for both channel pointers to reference the same previous release.
 
+### Canary failure handling
+
+A successful `canary` deployment means the immutable candidate was actually served by GitHub Pages
+under `__canary/<release-tag>/`, its release-bound identity converged at that URL, and the live
+Chromium synthetic booted. While publishing canary, the workflow reconstructs the previous stable
+root from its immutable release asset, verifies its digest and attestation, and restores its root
+deployment identity before adding the candidate subpath. During migration, if no `stable`
+deployment record exists yet, the workflow recovers the exact legacy production identity from the
+live root `deployment-identity.json`, binds it to the successful legacy `github-pages` deployment,
+and reconstructs that immutable release instead of replacing production with an empty placeholder.
+
+If canary publication, identity verification, or browser boot fails, the canary deployment is marked
+failed and automatic stable promotion does not run. Re-run promotion for the same immutable release
+after correcting promotion infrastructure; do not move or rebuild the release tag.
+
 ### Recover a failed promotion
 
 Promotion is retry-safe because it always re-resolves immutable GitHub Release assets and records a
@@ -154,6 +169,35 @@ new deployment attempt.
 Human intervention is required only when the automated checks cannot prove a safe transition, for an
 explicit rollback, or for a deliberate promotion-policy change. Routine Microsoft upstream release
 promotion remains automatic.
+
+## Independent SBOM cross-check failures
+
+Release-intent qualification and the independent Release workflow both scan the extracted final
+distribution with pinned Syft before `package.sh` accepts a candidate. Successful candidates contain
+`independent-component-inventory.json` and `sbom-comparison.json` alongside the native
+`sbom.cdx.json`.
+
+If packaging reports a component missing from the native SBOM, treat it as a release blocker: either
+fix native component discovery or add a narrowly matched exception to
+`security/sbom-comparison-policy.json` with a reviewable reason. Do not add broad path/ecosystem
+ignores. Components missing from Syft are also blockers unless the representation difference is
+explicitly documented. Unused exceptions fail packaging, so remove an exception when the scanner and
+native model converge.
+
+The baseline exceptions are exact purl+path entries for runtime package directories whose optimized
+release form omits `package.json`; Syft cannot recover their package identity from those final bytes.
+They remain represented by the native inventory using the pinned upstream package lock. Any version
+or path change makes an exception stale and blocks packaging until reviewed. The root
+`Code - OSS` package is normalized to the native upstream application identity rather than
+excepted. Syft file records are not software components and are ignored by the comparison. Extensions
+are not ignored: the comparison maps their native `vscode-extension:` identity to Syft's npm package
+identity at the installed extension path, and nested extension language-server manifests are included
+in the native component inventory.
+
+For local `./package.sh`, install the Syft version recorded in
+`security/sbom-comparison-policy.json`. CI installs the reviewed version automatically. A scanner
+version change is a security-policy change and must update the policy and regression baseline
+together.
 
 ## Qualification source binding
 
@@ -249,3 +293,17 @@ gh workflow run promote.yml \
   -f source_release_run_id="$RELEASE_RUN_ID" \
   -f target=auto
 ```
+
+## Release recovery game day
+
+The controlled end-to-end recovery exercise is defined in
+[the release game-day runbook](docs/release-game-day.md). The exercise covers immutable-publication
+retry/recovery, real canary qualification, stable rollback, and forward promotion without moving or
+rebuilding release identities. Completed evidence belongs under
+[`release-evidence/game-days/`](release-evidence/game-days/README.md) and is structurally validated
+by the repository test suite.
+
+
+Organization ownership changes must follow [the organization migration procedure](docs/organization-migration.md).
+At least two approved Release operators must be able to execute the recovery procedures in this
+document before a personal maintainer is removed from operational coverage.

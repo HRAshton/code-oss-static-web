@@ -1,0 +1,134 @@
+name: Tooling checks
+description: Run the fast repository policy, lint, syntax, and unit-test gate
+runs:
+  using: composite
+  steps:
+    - name: Set up canonical toolchain
+      id: toolchain
+      uses: ./.github/actions/setup-toolchain
+
+    - name: Pull request title policy
+      if: github.event_name == 'pull_request'
+      env:
+        COMMIT_MESSAGE: ${{ github.event.pull_request.title }}
+      shell: bash
+      run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
+
+    - name: Pull request commit message policy
+      if: github.event_name == 'pull_request'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        encoded_commits="$(
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
+            --jq '.[] | [(.commit.message | @base64), (.parents | length | tostring)] | join("|")'
+        )"
+        if [[ -z "$encoded_commits" ]]; then
+          echo "No pull request commits returned by GitHub API" >&2
+          exit 1
+        fi
+
+        allow_develop_promotion_merges=false
+        if [[ "$PR_BASE_REF" == master &&
+              "$PR_HEAD_REF" == develop &&
+              "$PR_HEAD_REPO" == "$GITHUB_REPOSITORY" ]]; then
+          allow_develop_promotion_merges=true
+        fi
+
+        while IFS='|' read -r encoded parent_count; do
+          message="$(printf '%s' "$encoded" | base64 --decode)"
+          if [[ "$allow_develop_promotion_merges" == true && "$parent_count" == 2 ]]; then
+            python3 scripts/check_commit_message.py --allow-github-merge "$message"
+          else
+            python3 scripts/check_commit_message.py "$message"
+          fi
+        done <<< "$encoded_commits"
+
+    - name: Commit message policy
+      if: >-
+        github.event_name == 'push' &&
+        startsWith(github.ref, 'refs/heads/') &&
+        github.ref_name != github.event.repository.default_branch &&
+        github.ref_name != 'develop'
+      env:
+        COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+      shell: bash
+      run: python3 scripts/check_commit_message.py "$COMMIT_MESSAGE"
+
+    - name: REUSE compliance
+      uses: docker://fsfe/reuse:6.2.0@sha256:85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e
+      with:
+        args: lint
+
+    - name: JSON schema validation
+      shell: bash
+      run: python3 scripts/validate_json_schema.py
+
+    - name: Configuration validation
+      shell: bash
+      run: python3 scripts/validate_config.py
+
+    - name: Repository Markdown links
+      shell: bash
+      run: python3 scripts/check_markdown_links.py
+
+    - name: Builder environment policy
+      shell: bash
+      run: python3 scripts/builder_environment.py
+
+    - name: Upstream tag-to-commit binding
+      shell: bash
+      run: python3 scripts/fetch_upstream.py --verify-tag-only
+
+    - name: Workflow YAML syntax
+      shell: bash
+      run: ruby scripts/check_workflow_yaml.rb
+
+    - name: Repository policy
+      shell: bash
+      run: python3 scripts/check_policy.py
+
+    - name: Ruff lint
+      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+      with:
+        version: '0.16.10'
+        args: 'check'
+
+    - name: Ruff format check
+      uses: astral-sh/ruff-action@278981a28ce3188b1e39527901f38254bf3aac89 # v4.1.0
+      with:
+        version: '0.16.10'
+        args: 'format --check'
+
+    - name: Pyright
+      uses: jakebailey/pyright-action@8ec14b5cfe41f26e5f41686a31eb6012758217ef # v3.0.2
+      with:
+        version: '1.1.414'
+        project: pyproject.toml
+        annotate: errors
+
+    - name: ShellCheck
+      uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+      with:
+        version: v0.11.0
+
+    - name: Python syntax
+      shell: bash
+      run: python3 -m compileall -q scripts tests
+
+    - name: JavaScript syntax
+      shell: bash
+      run: |
+        for file in tests/e2e/*.cjs tests/fixtures/web-extension/*.js; do
+          node --check "$file"
+        done
+
+    - name: Tooling and policy tests
+      shell: bash
+      run: python3 -m unittest discover -s tests -v

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import datetime
 import gzip
 import hashlib
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import check_release_tag
+import compare_sbom_inventory
 import generate_license_inventory
 import generate_runtime_metadata as runtime_metadata_generator
 import generate_sbom
@@ -24,6 +26,7 @@ from common import (
     ROOT,
     WORK,
     BuildError,
+    assert_no_symlinks,
     load_json,
     require,
     sha256_file,
@@ -42,6 +45,7 @@ def iter_files(root: Path) -> list[Path]:
 
 
 def distribution_tree_digest(root: Path) -> tuple[str, int]:
+    assert_no_symlinks(root, label='distribution identity')
     digest = hashlib.sha256()
     count = 0
     for path in iter_files(root):
@@ -182,6 +186,33 @@ def build_artifact_manifest(
         'invalid deployment profile metadata',
     )
     toolchain = load_json(ROOT / '.github/toolchain-versions.json')
+    builder = load_json(ROOT / '.github/builder-image.json')
+    require(
+        set(builder) == {'schemaVersion', 'image', 'digest', 'platform'},
+        'builder image manifest keys invalid',
+    )
+    require(builder.get('schemaVersion') == 1, 'builder image schemaVersion must be 1')
+    builder_image = builder.get('image')
+    builder_digest = builder.get('digest')
+    builder_platform = builder.get('platform')
+    require(
+        isinstance(builder_image, str) and bool(builder_image) and '@' not in builder_image,
+        'builder image name invalid',
+    )
+    require(
+        isinstance(builder_digest, str)
+        and re.fullmatch(r'sha256:[0-9a-f]{64}', builder_digest) is not None,
+        'builder image digest invalid',
+    )
+    require(builder_platform == 'linux/amd64', 'builder platform must be linux/amd64')
+    assert isinstance(builder_image, str)
+    assert isinstance(builder_digest, str)
+    assert isinstance(builder_platform, str)
+    builder_identity = {
+        'image': builder_image,
+        'digest': builder_digest,
+        'platform': builder_platform,
+    }
     node_version = toolchain.get('node')
     python_version = toolchain.get('python')
     require(isinstance(node_version, str) and bool(node_version), 'toolchain Node version missing')
@@ -208,6 +239,7 @@ def build_artifact_manifest(
             'node': node_version,
             'python': python_version,
         },
+        'builder': builder_identity,
         'distribution': {
             'treeSha256': tree_digest,
             'fileCount': file_count,
@@ -215,10 +247,13 @@ def build_artifact_manifest(
         'deploymentProfile': deployment_profile,
         'inputs': {
             'toolchainVersions': input_digest(ROOT / '.github/toolchain-versions.json'),
+            'builderImage': input_digest(ROOT / '.github/builder-image.json'),
             'upstreamLock': input_digest(ROOT / 'upstream.lock.json'),
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
             'deploymentProfileMetadata': input_digest(deployment_profile_path),
             'runtimeComponents': input_digest(runtime_metadata),
+            'sbomComparisonPolicy': input_digest(ROOT / 'security/sbom-comparison-policy.json'),
+            'sbomScannerConfig': input_digest(ROOT / 'security/syft.yaml'),
         },
         'patches': patch_inventory(),
         'artifacts': [
@@ -241,7 +276,12 @@ def package_version(lock: dict[str, Any], release_tag: str | None = None) -> str
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--playwright-runtime', type=Path)
+    args = parser.parse_args()
+
     require((DIST / 'index.html').is_file(), 'dist/ missing; run the build first')
+    assert_no_symlinks(DIST, label='release distribution')
     lock = load_json(ROOT / 'upstream.lock.json')
     epoch = int(lock['sourceDateEpoch'])
     ARTIFACTS.mkdir(exist_ok=True)
@@ -270,6 +310,20 @@ def main() -> None:
     build_tar(DIST, tar_path, epoch)
     build_zip(DIST, zip_path, epoch)
 
+    playwright_runtime_path: Path | None = None
+    if args.playwright_runtime is not None:
+        require(args.playwright_runtime.is_dir(), 'Playwright runtime directory missing')
+        require(
+            (args.playwright_runtime / 'node_modules/@playwright/test/cli.js').is_file(),
+            'Playwright test CLI missing from runtime',
+        )
+        require(
+            (args.playwright_runtime / 'node_modules/playwright/cli.js').is_file(),
+            'Playwright CLI missing from runtime',
+        )
+        playwright_runtime_path = ARTIFACTS / 'playwright-runtime.tar.gz'
+        build_tar(args.playwright_runtime, playwright_runtime_path, epoch)
+
     distribution_tree_sha256, _ = distribution_tree_digest(DIST)
     sbom_path = ARTIFACTS / 'sbom.cdx.json'
     generate_sbom.write_sbom(
@@ -280,6 +334,21 @@ def main() -> None:
         project_commit=project_commit,
         upstream=lock,
         distribution_tree_sha256=distribution_tree_sha256,
+    )
+
+    independent_sbom_path = WORK / 'independent-sbom.cdx.json'
+    require(
+        independent_sbom_path.is_file(),
+        'independent Syft SBOM missing; run the independent final-distribution scan first',
+    )
+    independent_inventory_path = ARTIFACTS / 'independent-component-inventory.json'
+    sbom_comparison_path = ARTIFACTS / 'sbom-comparison.json'
+    compare_sbom_inventory.compare_files(
+        sbom_path,
+        independent_sbom_path,
+        ROOT / 'security/sbom-comparison-policy.json',
+        independent_inventory_path,
+        sbom_comparison_path,
     )
 
     license_inventory_path = ARTIFACTS / 'license-inventory.json'
@@ -324,11 +393,14 @@ def main() -> None:
                 tar_path,
                 zip_path,
                 sbom_path,
+                independent_inventory_path,
+                sbom_comparison_path,
                 license_inventory_path,
                 project_license_path,
                 upstream_license_path,
                 upstream_notices_path,
                 project_notices_path,
+                *([playwright_runtime_path] if playwright_runtime_path is not None else []),
             ],
             distribution=DIST,
             runtime_metadata=runtime_metadata_path,

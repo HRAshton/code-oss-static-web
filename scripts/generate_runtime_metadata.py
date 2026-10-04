@@ -28,6 +28,46 @@ def shipped_npm_packages(dist: Path) -> list[tuple[str, str]]:
     return packages
 
 
+def embedded_extension_npm_components(dist: Path) -> list[dict[str, Any]]:
+    extensions_root = dist / 'extensions'
+    if not extensions_root.is_dir():
+        return []
+
+    components: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for package_json in sorted(extensions_root.glob('*/server/package.json')):
+        package = load_json(package_json)
+        name = package.get('name')
+        version = package.get('version')
+        require(
+            isinstance(name, str) and bool(name),
+            f'embedded extension npm name missing: {package_json}',
+        )
+        require(
+            isinstance(version, str) and bool(version),
+            f'embedded extension npm version missing: {package_json}',
+        )
+        assert isinstance(name, str)
+        assert isinstance(version, str)
+        path = package_json.parent.relative_to(dist).as_posix()
+        key = (name, path)
+        require(key not in seen, f'duplicate embedded extension npm component: {name} at {path}')
+        seen.add(key)
+
+        component: dict[str, Any] = {
+            'name': name,
+            'version': version,
+            'path': path,
+            'source': 'extension-package-json',
+        }
+        license_value = package.get('license')
+        if isinstance(license_value, str) and license_value:
+            component['license'] = license_value
+        components.append(component)
+
+    return components
+
+
 def extension_components(dist: Path) -> list[dict[str, Any]]:
     extensions_root = dist / 'extensions'
     if not extensions_root.is_dir():
@@ -100,6 +140,8 @@ def build_runtime_metadata(
         if isinstance(integrity, str) and integrity:
             component['integrity'] = integrity
         npm_components.append(component)
+
+    npm_components.extend(embedded_extension_npm_components(dist))
 
     return {
         'schemaVersion': 1,

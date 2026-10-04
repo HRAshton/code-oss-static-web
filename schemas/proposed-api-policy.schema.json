@@ -5,6 +5,17 @@
   "required": ["schemaVersion", "grants"],
   "properties": {
     "schemaVersion": {"const": 1},
-    "grants": {"type": "object"}
+    "grants": {"type": "object"},
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extensionId", "reviewer", "reason", "expires"],
+      "properties": {
+        "extensionId": {"type": "string", "minLength": 1},
+        "reviewer": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "expires": {"type": "string", "format": "date"}
+      }
+    }
   }
 }

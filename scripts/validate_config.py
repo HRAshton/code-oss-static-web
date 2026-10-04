@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import datetime
 import json
 import re
 from pathlib import Path
@@ -148,7 +149,9 @@ def validate_json_syntax() -> None:
 
 
 def validate_proposed_api_policy(data: dict[str, Any]) -> None:
-    require_exact_keys(data, {'schemaVersion', 'grants'}, 'proposed API policy')
+    allowed_keys = {'schemaVersion', 'grants', 'approval'}
+    require(set(data) <= allowed_keys, 'proposed API policy contains unknown keys')
+    require({'schemaVersion', 'grants'} <= set(data), 'proposed API policy required keys missing')
     require(data['schemaVersion'] == 1, 'proposed API policy schemaVersion must be 1')
     grants = require_object(data['grants'], 'proposed API grants')
     for extension_id, raw_proposals in grants.items():
@@ -159,6 +162,38 @@ def validate_proposed_api_policy(data: dict[str, Any]) -> None:
                 isinstance(item, str) and bool(item) for item in cast(list[object], raw_proposals)
             ),
             f'proposed API grants must be string arrays: {extension_id}',
+        )
+        proposals = cast(list[str], raw_proposals)
+        require(
+            len(proposals) == len(set(proposals)),
+            f'proposed API grants must not contain duplicates: {extension_id}',
+        )
+
+    if grants:
+        approval = require_object(data.get('approval'), 'proposed API approval')
+        require_exact_keys(
+            approval,
+            {'extensionId', 'reviewer', 'reason', 'expires'},
+            'proposed API approval',
+        )
+        require(
+            approval['extensionId'] in grants and len(grants) == 1,
+            'proposed API approval must bind the single granted extension id',
+        )
+        for key in ('reviewer', 'reason', 'expires'):
+            require(
+                isinstance(approval[key], str) and bool(approval[key]),
+                f'proposed API approval {key} must be non-empty',
+            )
+        try:
+            expiry = datetime.date.fromisoformat(cast(str, approval['expires']))
+        except ValueError as exc:
+            raise BuildError('proposed API approval expires must be YYYY-MM-DD') from exc
+        require(expiry >= datetime.date.today(), 'proposed API approval has expired')
+    else:
+        require(
+            'approval' not in data,
+            'empty proposed API policy must not carry approval metadata',
         )
 
 
@@ -248,10 +283,21 @@ def validate_all() -> None:
     validate_upstream_lock(ROOT / 'upstream.lock.json')
     validate_patch_manifest(ROOT / 'patches/manifest.json')
     load_promotion_policy(ROOT / 'config/promotion-policy.json')
-    selected = load_selected_profile()
-    validate_profile_documents(selected)
-    baseline = load_profile('baseline-static')
-    validate_profile_documents(baseline, baseline=True)
+    load_selected_profile()
+
+    profiles: dict[str, dict[str, Any]] = {}
+    for path in sorted((ROOT / 'config/profiles').glob('*.json')):
+        profile_id = path.stem
+        profile = load_profile(profile_id)
+        validate_profile_documents(profile, baseline=profile_id == 'baseline-static')
+        profiles[profile_id] = profile
+
+    require('company-standard' in profiles, 'company-standard deployment profile missing')
+    require(
+        profiles['company-standard']['documents']['proposedApi']['grants'] == {},
+        'company-standard must not grant proposed APIs',
+    )
+    require('remotish-compat' in profiles, 'remotish-compat deployment profile missing')
 
 
 def main() -> None:

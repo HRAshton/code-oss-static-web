@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from common import ROOT, WORK, BuildError, require, run
+from common import ROOT, WORK, BuildError, assert_no_symlinks, require, run
 
 
 def main() -> None:
@@ -13,13 +13,20 @@ def main() -> None:
     parser.add_argument('--reuse-upstream-build', action='store_true')
     args = parser.parse_args()
 
+    run([ROOT / 'scripts/validate_config.py'])
+
+    independent_sbom = WORK / 'independent-sbom.cdx.json'
+    independent_sbom_tmp = WORK / 'independent-sbom.cdx.json.tmp'
+    independent_sbom.unlink(missing_ok=True)
+    independent_sbom_tmp.unlink(missing_ok=True)
+
     run([ROOT / 'scripts/fetch_upstream.py'] + (['--clean'] if args.clean_upstream else []))
     source = WORK / 'vscode'
     built = WORK / 'vscode-web'
     runtime = WORK / 'playwright-runtime' / 'node_modules'
 
     if args.reuse_upstream_build:
-        require(built.is_dir(), f'cached upstream web build missing: {built}')
+        assert_no_symlinks(built, label='cached upstream web build')
         require(
             (runtime / '@playwright/test/cli.js').is_file(),
             'cached Playwright runtime missing',

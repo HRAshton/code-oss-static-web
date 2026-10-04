@@ -143,6 +143,14 @@ promise.
 Private/incognito browsing and managed profiles configured to clear site data on exit are
 unsupported because persistence is intentionally not guaranteed in those modes.
 
+## Automated hosting targets
+
+The OCI image is an explicitly qualified hosting target: qualification builds the shipped Nginx
+image, checks its response-header contract, and boots the workbench through Chromium against the
+running container. GitHub Pages is qualified after stable publication through live
+deployment-identity verification and a Chromium browser boot. Pages CDN/cache headers remain
+controlled by GitHub rather than this repository.
+
 ## Static hosting and CSP
 
 Company deployments must use HTTPS except for loopback-only development/qualification servers. The

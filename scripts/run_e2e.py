@@ -30,6 +30,7 @@ def main() -> None:
     )
     parser.add_argument('--project', default='chromium')
     parser.add_argument('--dist', type=Path, default=ROOT / 'dist')
+    parser.add_argument('--base-url')
     parser.add_argument('--headed', action='store_true')
     args, extra = parser.parse_known_args()
 
@@ -46,6 +47,8 @@ def main() -> None:
         'CODE_OSS_STATIC_WEB_BASE_PATH',
         '/code-oss-web/',
     )
+    if args.base_url:
+        env['CODE_OSS_STATIC_WEB_EXTERNAL_BASE_URL'] = args.base_url
     env['NODE_PATH'] = str(node_modules) + (
         os.pathsep + env['NODE_PATH'] if env.get('NODE_PATH') else ''
     )

@@ -59,10 +59,15 @@ lane.
 
 ## Commit messages
 
-Every commit, including commits created by bots and automation, must use a
+Every author-controlled commit, including commits created by bots and automation, must use a
 single-line Conventional Commit subject. Keep the type and optional scope lowercase, and begin the
 description after `: ` with an uppercase letter, for example
 `fix(ci): Decouple release tag test from upstream lock`.
+
+The sole history-validation exception is a same-repository `develop` → `master` promotion pull
+request: GitHub-generated two-parent `Merge pull request #…` commits already accumulated on
+`develop` are accepted there, while their embedded reviewed pull request title must still satisfy
+the Conventional Commit subject policy. Other multiline or non-GitHub merge messages remain invalid.
 
 Examples:
 
@@ -95,3 +100,8 @@ checked against [Releasing](docs/releasing.md) and [Release security](docs/relea
 
 Use GitHub Issues for public bugs and enhancement requests. Security vulnerabilities must follow
 the private process in [SECURITY.md](SECURITY.md).
+
+
+After organization migration, sensitive-path ownership is generated from the approved team mapping;
+contributors should not replace team owners with personal accounts. See
+[organization migration](docs/organization-migration.md).
