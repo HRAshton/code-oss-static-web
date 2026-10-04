@@ -293,3 +293,12 @@ gh workflow run promote.yml \
   -f source_release_run_id="$RELEASE_RUN_ID" \
   -f target=auto
 ```
+
+## Release recovery game day
+
+The controlled end-to-end recovery exercise is defined in
+[the release game-day runbook](docs/release-game-day.md). The exercise covers immutable-publication
+retry/recovery, real canary qualification, stable rollback, and forward promotion without moving or
+rebuilding release identities. Completed evidence belongs under
+[`release-evidence/game-days/`](release-evidence/game-days/README.md) and is structurally validated
+by the repository test suite.

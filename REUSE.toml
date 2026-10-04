@@ -28,6 +28,7 @@ path = [
   "docs/**",
   "extensions/**",
   "patches/**",
+  "release-evidence/**",
   "schemas/**",
   "scripts/**",
   "security/**",
