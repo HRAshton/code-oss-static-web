@@ -13,6 +13,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
+import check_commit_message
 import check_policy
 import compare_dist
 import extension_lock
@@ -1218,6 +1219,33 @@ python-version: ${{ steps.versions.outputs.python }}
                 bypass,
             )
 
+    def test_commit_message_policy_allows_only_github_merges_when_explicit(self):
+        valid_merge = (
+            'Merge pull request #64 from HRAshton/security/independent-sbom-validation\n\n'
+            'feat(security): Add independent SBOM validation'
+        )
+        check_commit_message.validate_message(valid_merge, allow_github_merge=True)
+
+        with self.assertRaisesRegex(ValueError, 'single line'):
+            check_commit_message.validate_message(valid_merge)
+
+        invalid_title = (
+            'Merge pull request #64 from HRAshton/security/independent-sbom-validation\n\n'
+            'Merge security work'
+        )
+        with self.assertRaisesRegex(ValueError, 'Conventional Commits'):
+            check_commit_message.validate_message(
+                invalid_title,
+                allow_github_merge=True,
+            )
+
+        non_github_merge = "Merge branch 'develop' into master"
+        with self.assertRaisesRegex(ValueError, 'Conventional Commits'):
+            check_commit_message.validate_message(
+                non_github_merge,
+                allow_github_merge=True,
+            )
+
     def test_ci_validates_pr_titles_and_avoids_redundant_branch_work(self):
         ci = (ROOT / '.github/workflows/ci.yml').read_text()
         qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
@@ -1241,9 +1269,18 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('name: Pull request commit message policy', tooling)
         self.assertIn('pulls/$PR_NUMBER/commits', tooling)
         self.assertIn('@base64', tooling)
-        self.assertIn('encoded_messages="$(', tooling)
+        self.assertIn('encoded_commits="$(', tooling)
+        self.assertIn('(.parents | length | tostring)', tooling)
+        self.assertIn('PR_BASE_REF: ${{ github.event.pull_request.base.ref }}', tooling)
+        self.assertIn('PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}', tooling)
+        self.assertIn('PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}', tooling)
+        self.assertIn('"$PR_BASE_REF" == master', tooling)
+        self.assertIn('"$PR_HEAD_REF" == develop', tooling)
+        self.assertIn('"$PR_HEAD_REPO" == "$GITHUB_REPOSITORY"', tooling)
+        self.assertIn('"$parent_count" == 2', tooling)
+        self.assertIn('--allow-github-merge', tooling)
         self.assertIn('No pull request commits returned by GitHub API', tooling)
-        self.assertIn('done <<< "$encoded_messages"', tooling)
+        self.assertIn('done <<< "$encoded_commits"', tooling)
         self.assertNotIn('done < <(', tooling)
         self.assertIn("github.event_name == 'push' &&", tooling)
         self.assertIn("startsWith(github.ref, 'refs/heads/')", tooling)

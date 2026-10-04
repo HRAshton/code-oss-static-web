@@ -19,21 +19,36 @@ runs:
       env:
         GH_TOKEN: ${{ github.token }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
       shell: bash
       run: |
         set -euo pipefail
-        encoded_messages="$(
+        encoded_commits="$(
           gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/commits" \
-            --jq '.[].commit.message | @base64'
+            --jq '.[] | [(.commit.message | @base64), (.parents | length | tostring)] | join("|")'
         )"
-        if [[ -z "$encoded_messages" ]]; then
+        if [[ -z "$encoded_commits" ]]; then
           echo "No pull request commits returned by GitHub API" >&2
           exit 1
         fi
-        while IFS= read -r encoded; do
+
+        allow_develop_promotion_merges=false
+        if [[ "$PR_BASE_REF" == master &&
+              "$PR_HEAD_REF" == develop &&
+              "$PR_HEAD_REPO" == "$GITHUB_REPOSITORY" ]]; then
+          allow_develop_promotion_merges=true
+        fi
+
+        while IFS='|' read -r encoded parent_count; do
           message="$(printf '%s' "$encoded" | base64 --decode)"
-          python3 scripts/check_commit_message.py "$message"
-        done <<< "$encoded_messages"
+          if [[ "$allow_develop_promotion_merges" == true && "$parent_count" == 2 ]]; then
+            python3 scripts/check_commit_message.py --allow-github-merge "$message"
+          else
+            python3 scripts/check_commit_message.py "$message"
+          fi
+        done <<< "$encoded_commits"
 
     - name: Commit message policy
       if: >-
