@@ -58,6 +58,10 @@ runs:
       shell: bash
       run: python3 scripts/validate_config.py
 
+    - name: Repository Markdown links
+      shell: bash
+      run: python3 scripts/check_markdown_links.py
+
     - name: Upstream tag-to-commit binding
       shell: bash
       run: python3 scripts/fetch_upstream.py --verify-tag-only

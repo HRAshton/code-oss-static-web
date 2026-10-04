@@ -17,11 +17,11 @@ network features that merely fail at the CSP layer.
 
 The supported base runtime is default-deny for external application network access.
 
-- [config/runtime.json](../../config/runtime.json) keeps telemetry false and gallery mode disabled.
-- [config/product-transform.json](../../config/product-transform.json) removes upstream
+- [config/policies/runtime/static.json](../../config/policies/runtime/static.json) keeps telemetry false and gallery mode disabled.
+- [config/policies/product/static.json](../../config/policies/product/static.json) removes upstream
   Marketplace-style built-in extension downloads/auto-updates and replaces unsupported service
   metadata with fail-closed values where needed.
-- [config/network-policy.json](../../config/network-policy.json) allows only <code>self</code>.
+- [config/policies/network/static.json](../../config/policies/network/static.json) allows only <code>self</code>.
 - [scripts/make_static.py](../../scripts/make_static.py) emits a CSP with
   <code>connect-src 'self'</code> and no <code>unsafe-eval</code>.
 - Clean startup is expected to make zero cross-origin HTTP requests and zero WebSocket connections.
@@ -47,9 +47,9 @@ configuration, runtime configuration, static CSP, and browser tests.
 
 ## Enforcement and verification
 
-- [config/runtime.json](../../config/runtime.json)
-- [config/network-policy.json](../../config/network-policy.json)
-- [config/product-transform.json](../../config/product-transform.json)
+- [config/policies/runtime/static.json](../../config/policies/runtime/static.json)
+- [config/policies/network/static.json](../../config/policies/network/static.json)
+- [config/policies/product/static.json](../../config/policies/product/static.json)
 - [scripts/validate_config.py](../../scripts/validate_config.py)
 - [scripts/make_static.py](../../scripts/make_static.py)
 - [scripts/smoke_static.py](../../scripts/smoke_static.py)
