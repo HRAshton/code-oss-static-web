@@ -7,8 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 
-import render_codeowners
-from common import BuildError
+import render_codeowners  # noqa: E402
+from common import BuildError  # noqa: E402
 
 
 class OrganizationCodeownersTests(unittest.TestCase):
@@ -26,6 +26,11 @@ class OrganizationCodeownersTests(unittest.TestCase):
         rendered = render_codeowners.render_codeowners(config)
         self.assertIn('/.github/ @example-company/platform @example-company/security', rendered)
         self.assertIn('/deploy/ @example-company/release @example-company/platform', rendered)
+        self.assertIn(
+            '/docs/organization-migration.md '
+            '@example-company/platform @example-company/security @example-company/release',
+            rendered,
+        )
         self.assertIn(
             '/extensions/license-policy.json @example-company/legal @example-company/extension-policy',
             rendered,

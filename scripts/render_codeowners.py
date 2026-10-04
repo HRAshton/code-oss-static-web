@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import re
 from pathlib import Path
 
@@ -61,6 +60,7 @@ def render_codeowners(config: dict[str, object]) -> str:
         ('/package.sh', ('platform', 'security')),
         ('/docs/release-security.md', ('security', 'release')),
         ('/docs/releasing.md', ('release', 'platform')),
+        ('/docs/organization-migration.md', ('platform', 'security', 'release')),
     ]
     lines = [
         '# Organization team-backed sensitive-path ownership.',

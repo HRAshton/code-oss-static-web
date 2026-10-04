@@ -1131,6 +1131,7 @@ def check_codeowners_policy() -> None:
             '/package.sh',
             '/docs/release-security.md',
             '/docs/releasing.md',
+            '/docs/organization-migration.md',
         }
         require(
             set(entries) == expected_patterns,
