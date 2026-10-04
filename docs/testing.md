@@ -65,10 +65,10 @@ The measured timing points are navigation start to visible workbench for cold an
 navigation start to a visible untitled editor for editor readiness. Static transfer size is the sum
 of same-origin `Content-Length` response headers observed by the time the workbench becomes visible.
 The suite also records the complete distribution size, JavaScript size, request failures, page
-errors, and unique console-error fingerprints. Request failures include Playwright transport
-failures plus HTTP responses with status 400 or higher, so a missing or server-error static asset
-cannot pass as a successful startup. All console-error occurrences remain in the diagnostics
-artifact. An F6 focus-cycle smoke check requires focus to move to a non-hidden, enabled
+errors, and every console-error occurrence plus its normalized fingerprint. Request failures include
+Playwright transport failures plus HTTP responses with status 400 or higher, so a missing or
+server-error static asset cannot pass as a successful startup. All console-error occurrences remain
+in the diagnostics artifact. An F6 focus-cycle smoke check requires focus to move to a non-hidden, enabled
 element with an accessible name; this adds accessibility coverage without duplicating the existing
 editor, settings, command-palette, and workspace-trust functional tests.
 
@@ -85,9 +85,13 @@ commit `63afddee4633456de01bb30a2cea5f3479d636bc`. The three timing samples rang
 for cold boot, 2.03–2.16 s for warm boot, and 2.17–2.35 s for editor readiness; startup transfer
 varied by less than 1%. The recorded medians are 2,096 ms, 2,034 ms, 2,188 ms, and 25,438,689 bytes
 respectively. Distribution size is 190,626,870 bytes and JavaScript size is 131,365,205 bytes.
-Failed requests and page errors baseline at zero. Ten unique file-watcher console-error fingerprints
-are present in the current zero-backend static mode (60 total occurrences across the six sampled
-loads), so the console gate permits those existing fingerprints but fails on any increase.
+Failed requests and page errors baseline at zero. Ten explicit file-watcher console-error
+fingerprints are tolerated from the captured baseline (60 total occurrences across the six sampled
+loads). The gate normalizes only the browser console styling prefix, then requires exact membership
+in `consoleErrorPolicy.toleratedFingerprints`; no regex, substring, wildcard, or count budget is
+accepted. It reports every raw and normalized occurrence. Stale tolerated fingerprints fail as
+well, forcing the allowlist to shrink when an upstream error disappears rather than leaving
+permanent budget behind.
 
 ## Current Playwright coverage
 

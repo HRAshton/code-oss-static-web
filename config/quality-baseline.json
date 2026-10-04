@@ -3,7 +3,7 @@
   "source": {
     "commit": "63afddee4633456de01bb30a2cea5f3479d636bc",
     "qualificationRunId": 37136030149,
-    "note": "Initial browser and static-size baselines were captured from this successful full qualification run. Console errors count unique error fingerprints; all occurrences remain in the diagnostics artifact."
+    "note": "Initial browser and static-size baselines were captured from this successful full qualification run. Console errors are gated by explicit normalized fingerprints captured from the same diagnostics."
   },
   "sampling": {
     "samples": 3,
@@ -50,11 +50,22 @@
       "baseline": 0,
       "relativeTolerance": 0,
       "absoluteTolerance": 0
-    },
-    "consoleErrors": {
-      "baseline": 10,
-      "relativeTolerance": 0,
-      "absoluteTolerance": 0
     }
+  },
+  "consoleErrorPolicy": {
+    "normalization": "strip-console-style-prefix",
+    "requireAllToleratedObserved": true,
+    "toleratedFingerprints": [
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.agents) (file:///.agents/skills)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.claude) (file:///.claude)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.claude) (file:///.claude/agents)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.claude) (file:///.claude/rules)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.claude) (file:///.claude/settings.json)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.claude) (file:///.claude/skills)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.copilot) (file:///.copilot/agents)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.copilot) (file:///.copilot/hooks)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.copilot) (file:///.copilot/instructions)",
+      "ERR [File Watcher ('FileSystemObserver')] Error: Unavailable (FileSystemError): Error: No file system handle registered (/.copilot) (file:///.copilot/skills)"
+    ]
   }
 }

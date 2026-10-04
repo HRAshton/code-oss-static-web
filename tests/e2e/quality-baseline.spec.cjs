@@ -1,6 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
+const {
+  evaluateConsoleErrors,
+  validateConsoleErrorPolicy,
+} = require('./quality-console-policy.cjs');
 
 const repoRoot = path.resolve(__dirname, '../..');
 const baselinePath = path.join(repoRoot, 'config', 'quality-baseline.json');
@@ -152,6 +156,32 @@ async function focusSmoke(page) {
   expect(result.name, 'focused ' + result.tagName + ' should have an accessible name').not.toBe('');
 }
 
+test('@quality console fingerprint policy rejects malformed policy', () => {
+  const valid = baseline.consoleErrorPolicy;
+  expect(() => validateConsoleErrorPolicy({ ...valid, normalization: 'regex' })).toThrow(
+    /unsupported console error normalization/
+  );
+  expect(() =>
+    validateConsoleErrorPolicy({
+      ...valid,
+      toleratedFingerprints: [
+        valid.toleratedFingerprints[0],
+        valid.toleratedFingerprints[0],
+      ],
+    })
+  ).toThrow(/must be unique/);
+});
+
+test('@quality console fingerprint policy rejects a new error replacing a tolerated error', () => {
+  const tolerated = baseline.consoleErrorPolicy.toleratedFingerprints;
+  expect(tolerated.length).toBeGreaterThan(1);
+  const result = evaluateConsoleErrors(
+    [tolerated[0], 'brand new console regression'],
+    baseline.consoleErrorPolicy
+  );
+  expect(result.unexpectedFingerprints).toEqual(['brand new console regression']);
+});
+
 test('@quality failed-request metric counts HTTP error responses', async ({ page, baseURL }) => {
   test.skip(!baseURL, 'quality baseline requires the configured static server');
   const observation = observePage(page, new URL(baseURL).origin);
@@ -217,8 +247,8 @@ test('@quality performance and accessibility baseline', async ({ browser, baseUR
     javascriptBytes: staticSizes.javascriptBytes,
     failedRequests: failedRequests.length,
     pageErrors: pageErrors.length,
-    consoleErrors: new Set(consoleErrors).size,
   };
+  const consolePolicyResult = evaluateConsoleErrors(consoleErrors, baseline.consoleErrorPolicy);
 
   const report = {
     schemaVersion: 1,
@@ -231,6 +261,10 @@ test('@quality performance and accessibility baseline', async ({ browser, baseUR
       pageErrors,
       consoleErrorOccurrences: consoleErrors.length,
       consoleErrors,
+      normalizedConsoleErrorOccurrences: consolePolicyResult.normalizedOccurrences,
+      observedConsoleErrorFingerprints: consolePolicyResult.observedFingerprints,
+      unexpectedConsoleErrorFingerprints: consolePolicyResult.unexpectedFingerprints,
+      staleConsoleErrorFingerprints: consolePolicyResult.staleFingerprints,
     },
   };
   const reportPath = process.env.CODE_OSS_STATIC_WEB_QUALITY_REPORT;
@@ -239,6 +273,18 @@ test('@quality performance and accessibility baseline', async ({ browser, baseUR
     fs.writeFileSync(reportPath, JSON.stringify(report, null, 2) + '\n');
   }
   console.log('[quality] metrics=' + JSON.stringify(metrics));
+  console.log('[quality] console-fingerprints=' + JSON.stringify(consolePolicyResult));
+
+  expect(
+    consolePolicyResult.unexpectedFingerprints,
+    'every console error fingerprint must be explicitly tolerated'
+  ).toEqual([]);
+  if (baseline.consoleErrorPolicy.requireAllToleratedObserved) {
+    expect(
+      consolePolicyResult.staleFingerprints,
+      'remove stale tolerated console fingerprints from the baseline'
+    ).toEqual([]);
+  }
 
   for (const [name, observed] of Object.entries(metrics)) expectWithinBaseline(name, observed);
 });
