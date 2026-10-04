@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
-QualificationLevel = Literal['lightweight', 'artifact', 'full']
+QualificationLevel = Literal['lightweight', 'release', 'artifact', 'full']
 
 DOCUMENTATION_ONLY_FILES = {
     'CONTRIBUTING.md',
@@ -21,6 +21,38 @@ DOCUMENTATION_ONLY_PREFIXES = (
     'docs/',
     'LICENSES/',
     '.github/ISSUE_TEMPLATE/',
+)
+
+RELEASE_ONLY_FILES = {
+    '.github/actions/independent-sbom/action.yml',
+    '.github/actions/publish-github-release/action.yml',
+    '.github/actions/publish-oci/action.yml',
+    '.github/actions/publish-pages/action.yml',
+    '.github/workflows/promote.yml',
+    '.github/workflows/recover-release-publication.yml',
+    '.github/workflows/release.yml',
+    'package.sh',
+    'pyproject.toml',
+    'schemas/sbom-comparison-policy.schema.json',
+    'scripts/check_policy.py',
+    'scripts/check_release_tag.py',
+    'scripts/compare_sbom_inventory.py',
+    'scripts/export_release_provenance.py',
+    'scripts/generate_license_inventory.py',
+    'scripts/generate_runtime_metadata.py',
+    'scripts/generate_sbom.py',
+    'scripts/package_release.py',
+    'scripts/pages_identity.py',
+    'scripts/promotion.py',
+    'scripts/publish_github_release.py',
+    'scripts/validate_json_schema.py',
+    'scripts/verify_oci_image.sh',
+    'scripts/verify_release.py',
+    'security/sbom-comparison-policy.json',
+}
+RELEASE_ONLY_PREFIXES = (
+    '.github/actions/release-metadata-qualification/',
+    'tests/test_',
 )
 
 ARTIFACT_FILES = {
@@ -44,12 +76,6 @@ ARTIFACT_PREFIXES = (
 FULL_FILES = {
     '.github/toolchain-versions.json',
     '.github/workflows/qualify.yml',
-    '.github/workflows/release.yml',
-    '.github/workflows/recover-release-publication.yml',
-    '.github/workflows/promote.yml',
-    '.github/actions/publish-github-release/action.yml',
-    '.github/actions/publish-oci/action.yml',
-    '.github/actions/publish-pages/action.yml',
     '.github/workflows/upstream-qualification.yml',
     'scripts/add_test_extension.py',
     'scripts/apply_patches.py',
@@ -57,16 +83,13 @@ FULL_FILES = {
     'scripts/classify_pr.py',
     'scripts/deployment_profile.py',
     'scripts/fetch_upstream.py',
-    'scripts/export_release_provenance.py',
-    'scripts/publish_github_release.py',
-    'scripts/promotion.py',
-    'scripts/verify_oci_image.sh',
     'scripts/install_playwright_browser.py',
     'scripts/make_static.py',
     'scripts/prepare_upstream.py',
     'scripts/run_e2e.py',
     'scripts/serve_static.py',
     'scripts/verify_dist_identity.py',
+    'security/network-policy.json',
     'upstream.lock.json',
 }
 FULL_PREFIXES = (
@@ -75,7 +98,6 @@ FULL_PREFIXES = (
     'config/',
     'extensions/',
     'patches/',
-    'security/',
     'tests/e2e/',
     'tests/fixtures/',
 )
@@ -105,6 +127,13 @@ def classify_paths(paths: Iterable[str]) -> QualificationLevel:
 
     if any(matches(path, FULL_FILES, FULL_PREFIXES) for path in normalized):
         return 'full'
+
+    if all(
+        matches(path, DOCUMENTATION_ONLY_FILES, DOCUMENTATION_ONLY_PREFIXES)
+        or matches(path, RELEASE_ONLY_FILES, RELEASE_ONLY_PREFIXES)
+        for path in normalized
+    ):
+        return 'release'
 
     if any(matches(path, ARTIFACT_FILES, ARTIFACT_PREFIXES) for path in normalized):
         return 'artifact'

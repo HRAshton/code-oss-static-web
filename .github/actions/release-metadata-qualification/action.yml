@@ -1,0 +1,12 @@
+name: Release metadata qualification
+description: Validate release, packaging, publication, and policy-only changes without rebuilding runtime bytes
+runs:
+  using: composite
+  steps:
+    - name: Repository policy
+      shell: bash
+      run: python3 scripts/check_policy.py
+
+    - name: Release and tooling tests
+      shell: bash
+      run: python3 -m unittest discover -s tests -v

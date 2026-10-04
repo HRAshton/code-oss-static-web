@@ -110,6 +110,10 @@ jobs:
                   browsers='[]'
                   scope=smoke
                   ;;
+                release)
+                  browsers='[]'
+                  scope=smoke
+                  ;;
                 artifact)
                   browsers='["chromium"]'
                   scope=smoke
@@ -296,7 +300,10 @@ jobs:
 
   build:
     needs: browser-plan
-    if: needs.browser-plan.outputs.level != 'lightweight' && needs.browser-plan.outputs.retry_tag == ''
+    if: >-
+      (needs.browser-plan.outputs.level == 'artifact' ||
+       needs.browser-plan.outputs.level == 'full') &&
+      needs.browser-plan.outputs.retry_tag == ''
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -399,7 +406,10 @@ jobs:
 
   browser:
     needs: [build, browser-plan]
-    if: needs.browser-plan.outputs.level != 'lightweight' && needs.browser-plan.outputs.retry_tag == ''
+    if: >-
+      (needs.browser-plan.outputs.level == 'artifact' ||
+       needs.browser-plan.outputs.level == 'full') &&
+      needs.browser-plan.outputs.retry_tag == ''
     strategy:
       fail-fast: false
       matrix:
@@ -434,10 +444,30 @@ jobs:
           retention-days: 2
           compression-level: 6
 
+  release-metadata:
+    name: Release metadata qualification
+    needs: browser-plan
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.browser-plan.outputs.level == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: Qualify release metadata and policy
+        uses: ./.github/actions/release-metadata-qualification
+
   artifact-gate:
     name: Artifact qualification gate
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [browser-plan, build, browser]
+    needs: [browser-plan, release-metadata, build, browser]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -446,6 +476,7 @@ jobs:
           LEVEL: ${{ needs.browser-plan.outputs.level }}
           PLAN_RESULT: ${{ needs.browser-plan.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          RELEASE_METADATA_RESULT: ${{ needs.release-metadata.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
         shell: bash
         run: |
@@ -458,6 +489,12 @@ jobs:
           case "$LEVEL" in
             lightweight)
               echo "Documentation-only pull request: artifact build not required."
+              ;;
+            release)
+              if [[ "$RELEASE_METADATA_RESULT" != success ]]; then
+                echo "required release metadata evidence missing: release-metadata=$RELEASE_METADATA_RESULT" >&2
+                exit 1
+              fi
               ;;
             artifact|full)
               if [[ "$BUILD_RESULT" != success || "$BROWSER_RESULT" != success ]]; then
