@@ -1267,6 +1267,42 @@ python-version: ${{ steps.versions.outputs.python }}
             browser_action,
         )
 
+    def test_independent_sbom_scan_is_fresh_for_current_distribution(self):
+        package = (ROOT / 'package.sh').read_text()
+        build = (ROOT / 'scripts/build.py').read_text()
+
+        self.assertNotIn('if [[ ! -f "$independent_sbom" ]]', package)
+        self.assertIn(
+            'rm -f "$independent_sbom" "$independent_sbom_tmp"',
+            package,
+        )
+        self.assertIn(
+            'syft -c "$ROOT/security/syft.yaml" "dir:$ROOT/dist" '
+            '-o "cyclonedx-json=$independent_sbom_tmp"',
+            package,
+        )
+        self.assertIn(
+            'mv "$independent_sbom_tmp" "$independent_sbom"',
+            package,
+        )
+        self.assertLess(
+            package.index('syft -c "$ROOT/security/syft.yaml"'),
+            package.index('python3 "$ROOT/scripts/package_release.py"'),
+        )
+
+        self.assertIn(
+            'independent_sbom.unlink(missing_ok=True)',
+            build,
+        )
+        self.assertIn(
+            'independent_sbom_tmp.unlink(missing_ok=True)',
+            build,
+        )
+        self.assertLess(
+            build.index('independent_sbom.unlink(missing_ok=True)'),
+            build.index("run([ROOT / 'scripts/make_static.py'"),
+        )
+
     def test_qualification_workflow_reuses_browser_action(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
         action = (ROOT / '.github/actions/browser-qualification/action.yml').read_text()

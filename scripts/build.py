@@ -13,6 +13,11 @@ def main() -> None:
     parser.add_argument('--reuse-upstream-build', action='store_true')
     args = parser.parse_args()
 
+    independent_sbom = WORK / 'independent-sbom.cdx.json'
+    independent_sbom_tmp = WORK / 'independent-sbom.cdx.json.tmp'
+    independent_sbom.unlink(missing_ok=True)
+    independent_sbom_tmp.unlink(missing_ok=True)
+
     run([ROOT / 'scripts/fetch_upstream.py'] + (['--clean'] if args.clean_upstream else []))
     source = WORK / 'vscode'
     built = WORK / 'vscode-web'

@@ -31,6 +31,12 @@ while extensions are normalized to Syft's npm-style representation and compared 
 blanket-exempted. Nested extension language-server package manifests discovered by Syft are also
 included by the native generator.
 
+Independent scan evidence is never reused across distribution changes. `scripts/build.py` deletes
+any prior independent-SBOM output before regenerating `dist/`, and `package.sh` always performs a
+fresh Syft scan of the current `dist/` into a temporary file and atomically replaces the scan used
+for comparison. A stale `.work/independent-sbom.cdx.json` therefore cannot satisfy packaging after
+the distribution changes.
+
 The license inventory uses the native SBOM component references and must cover every native component
 exactly once. Missing package declarations are represented explicitly as <code>NOASSERTION</code>;
 they are never silently omitted. Code-OSS's MIT license and upstream third-party notice file are
