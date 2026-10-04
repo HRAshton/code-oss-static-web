@@ -41,7 +41,7 @@ def build_intake_record(
     digest = sha256_file(vsix)
     base = mirror_base_url.rstrip('/')
     parsed = urlsplit(base)
-    extension_lock._url_origin(base, 'extension mirror base URL')
+    extension_lock.url_origin(base, 'extension mirror base URL')
     require(
         parsed.query == '' and parsed.fragment == '',
         'extension mirror base URL must be stable',

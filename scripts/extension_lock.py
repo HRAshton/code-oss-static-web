@@ -55,6 +55,10 @@ def _url_origin(value: str, field: str) -> str:
     return f'https://{host}'
 
 
+def url_origin(value: str, field: str) -> str:
+    return _url_origin(value, field)
+
+
 def _normalize_open_vsx_registry(value: Any, field: str) -> str:
     registry = _require_string(value, field).strip()
     try:
