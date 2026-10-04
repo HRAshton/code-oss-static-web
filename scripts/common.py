@@ -38,6 +38,24 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def assert_no_symlinks(root: Path, *, label: str = 'distribution') -> None:
+    require(
+        not root.is_symlink(),
+        f'{label} root must not be a symlink: {root}',
+    )
+    require(
+        root.is_dir(),
+        f'{label} root is not a directory: {root}',
+    )
+    symlinks = sorted(
+        path.relative_to(root).as_posix() for path in root.rglob('*') if path.is_symlink()
+    )
+    require(
+        not symlinks,
+        f'{label} contains symlink entries: {symlinks}',
+    )
+
+
 def run(
     args: Sequence[object],
     *,

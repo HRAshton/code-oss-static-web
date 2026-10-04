@@ -26,6 +26,7 @@ from common import (
     ROOT,
     WORK,
     BuildError,
+    assert_no_symlinks,
     load_json,
     require,
     sha256_file,
@@ -44,6 +45,7 @@ def iter_files(root: Path) -> list[Path]:
 
 
 def distribution_tree_digest(root: Path) -> tuple[str, int]:
+    assert_no_symlinks(root, label='distribution identity')
     digest = hashlib.sha256()
     count = 0
     for path in iter_files(root):
@@ -250,6 +252,7 @@ def main() -> None:
     args = parser.parse_args()
 
     require((DIST / 'index.html').is_file(), 'dist/ missing; run the build first')
+    assert_no_symlinks(DIST, label='release distribution')
     lock = load_json(ROOT / 'upstream.lock.json')
     epoch = int(lock['sourceDateEpoch'])
     ARTIFACTS.mkdir(exist_ok=True)

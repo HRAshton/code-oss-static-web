@@ -7,7 +7,7 @@ import json
 import shutil
 from pathlib import Path
 
-from common import DIST, WORK, BuildError, require, write_json
+from common import DIST, WORK, BuildError, assert_no_symlinks, require, write_json
 from deployment_profile import load_selected_profile, profile_metadata
 from extension_lock import install_locked_extensions
 from extensions_index import build_extension_index
@@ -108,8 +108,15 @@ def main() -> None:
     parser.add_argument('--output', type=Path, default=DIST)
     args = parser.parse_args()
 
-    source = args.input.resolve()
-    output = args.output.resolve()
+    source_arg = args.input
+    output_arg = args.output
+    assert_no_symlinks(source_arg, label='upstream web build')
+    require(
+        not output_arg.is_symlink(),
+        f'final static distribution root must not be a symlink: {output_arg}',
+    )
+    source = source_arg.resolve()
+    output = output_arg.resolve()
     require((source / WORKBENCH_ENTRY).is_file(), f'not a standalone Code OSS web build: {source}')
     require(
         (source / WORKBENCH_STYLESHEET).is_file(),
@@ -123,7 +130,7 @@ def main() -> None:
 
     if output.exists():
         shutil.rmtree(output)
-    shutil.copytree(source, output, symlinks=True)
+    shutil.copytree(source, output, symlinks=False)
     shutil.copy2(profile['paths']['runtime'], output / 'runtime.json')
     write_json(output / 'deployment-profile.json', profile_metadata(profile))
     (output / 'index.html').write_text(
@@ -177,6 +184,7 @@ def main() -> None:
             encoding='utf-8',
         )
 
+    assert_no_symlinks(output, label='final static distribution')
     print(f'static distribution: {output}')
 
 
