@@ -40,9 +40,13 @@ automation, release policy, deployment, security, and other trust boundaries req
 
 The protected default-branch ruleset must require the `Artifact qualification gate` job from the
 `Full build qualification` workflow. The gate is reported for every pull request: documentation-only
-changes pass after path classification without building the static application, product-affecting
-changes require a static build, structural smoke test, and Chromium boot, and higher-risk
-upstream/runtime/security-boundary changes require the broader browser qualification.
+changes pass after path classification without building the static application; explicitly
+allowlisted publication/promotion control-plane changes run a read-only release-metadata policy and
+unit test lane without rebuilding Code - OSS; distribution-dependent packaging/SBOM/OCI changes build
+a real static distribution, run Chromium smoke qualification, and package that exact artifact; and
+higher-risk upstream/runtime/qualification-boundary changes require
+the broader browser qualification. Mixed or unknown changes fail closed to the stronger applicable
+lane.
 
 ## Contribution requirements
 

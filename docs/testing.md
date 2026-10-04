@@ -19,20 +19,27 @@ canonical artifact is not modified.
 
 The expensive upstream Code-OSS web bundle is cached by immutable build inputs: upstream lock,
 the canonical Node and Python versions from `.github/toolchain-versions.json`, product transform,
-patch manifest/files and the scripts that drive the upstream build.
-Changes limited to browser tests or packaging can therefore reuse the same upstream bundle while
-still regenerating the current static wrapper.
+patch manifest/files and the scripts that drive the upstream build. Changes limited to browser tests
+can therefore reuse the same upstream bundle while still regenerating the current static wrapper.
+Publication/promotion control-plane-only pull requests do not rebuild that bundle at all; they use
+the release-metadata qualification lane below. Distribution-dependent packaging, SBOM, and OCI
+changes still build a real `dist/` and package that exact artifact.
 
 ## Current browser policy
 
 Browser execution is centralized in `.github/actions/browser-qualification`. The pull-request
 workflow always runs and classifies changed paths before deciding whether artifact evidence is
-required. Documentation-only changes remain on the lightweight tooling path. Product-affecting
-changes build the canonical static distribution, run the structural artifact smoke test, and run the
-Chromium zero-retry boot gate. Upstream, runtime, qualification-infrastructure, and security-boundary
-changes escalate to the full Chromium, Firefox, and WebKit qualification, with the same zero-retry
-boot gate before the broader suites. Renames are classified using both the old and new paths, and
-unknown paths fail closed to artifact qualification.
+required. Documentation-only changes remain on the lightweight tooling path. An explicit allowlist
+of release/package/publication-only paths uses a read-only release-metadata lane that runs repository
+policy and the Python tooling/unit suite without rebuilding Code - OSS or starting browsers.
+Product-affecting changes build the canonical static distribution, run the structural artifact smoke
+test, and run the Chromium zero-retry boot gate. Upstream, runtime, qualification-infrastructure, and
+other high-risk changes escalate to the full Chromium, Firefox, and WebKit qualification, with the
+same zero-retry boot gate before the broader suites. Renames are classified using both the old and
+new paths. Mixing release-only paths with runtime/build inputs escalates to the stronger applicable
+lane, and unknown paths fail closed to artifact qualification. Artifact/full pull requests also run packaging
+against the qualified distribution so distribution-dependent release tooling is exercised, but PR
+qualification never runs the downstream attestation job or receives OIDC/attestation write authority.
 
 The protected default-branch ruleset must require the `Artifact qualification gate` job from
 `Full build qualification`. That job is reported for every pull request, including documentation-only

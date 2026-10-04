@@ -159,6 +159,31 @@ def check_browser_qualification_topology() -> None:
         'full qualification must plan Chromium, Firefox and WebKit',
     )
     require('scope=smoke' in qualify, 'pull request qualification must use smoke scope')
+    release_action_path = ROOT / '.github/actions/release-metadata-qualification/action.yml'
+    require(release_action_path.is_file(), 'release metadata qualification action missing')
+    release_action = release_action_path.read_text(encoding='utf-8')
+    for required in (
+        'python3 scripts/check_policy.py',
+        'python3 -m unittest discover -s tests -v',
+    ):
+        require(
+            required in release_action,
+            f'release metadata qualification action missing: {required}',
+        )
+    for required in (
+        "needs.browser-plan.outputs.level == 'release'",
+        'uses: ./.github/actions/release-metadata-qualification',
+        'needs: [browser-plan, release-metadata, build, browser, package]',
+        'required release metadata evidence missing',
+        'PACKAGE_RESULT: ${{ needs.package.result }}',
+        "github.event_name != 'pull_request' ||",
+        "needs.browser-plan.outputs.level == 'artifact' ||",
+        'required artifact evidence missing:',
+        "needs.browser-plan.outputs.level == 'artifact' ||",
+        "needs.browser-plan.outputs.level == 'full'",
+        "if: github.event_name != 'pull_request'",
+    ):
+        require(required in qualify, f'qualification release-only topology missing: {required}')
     require('browser: [chromium]' in release, 'release validation must use Chromium matrix')
 
     browser_scripts = (

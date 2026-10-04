@@ -25,6 +25,60 @@ class PullRequestQualificationTests(unittest.TestCase):
             'lightweight',
         )
 
+    def test_release_only_changes_use_release_qualification(self):
+        paths = (
+            'scripts/promotion.py',
+            'scripts/pages_identity.py',
+            'scripts/publish_github_release.py',
+            '.github/workflows/promote.yml',
+            '.github/workflows/recover-release-publication.yml',
+            '.github/actions/publish-pages/action.yml',
+            '.github/actions/publish-github-release/action.yml',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(classify_pr.classify_paths([path]), 'release')
+
+    def test_distribution_dependent_release_paths_require_artifact_integration(self):
+        paths = (
+            'package.sh',
+            'pyproject.toml',
+            'scripts/package_release.py',
+            'scripts/generate_sbom.py',
+            'scripts/generate_license_inventory.py',
+            'scripts/generate_runtime_metadata.py',
+            'scripts/compare_sbom_inventory.py',
+            'scripts/verify_release.py',
+            'scripts/verify_oci_image.sh',
+            '.github/actions/independent-sbom/action.yml',
+            '.github/actions/publish-oci/action.yml',
+            'security/sbom-comparison-policy.json',
+            'schemas/sbom-comparison-policy.schema.json',
+            'tests/test_independent_sbom.py',
+        )
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertEqual(classify_pr.classify_paths([path]), 'artifact')
+
+    def test_release_workflow_keeps_full_qualification(self):
+        self.assertEqual(classify_pr.classify_paths(['.github/workflows/release.yml']), 'full')
+
+    def test_release_and_documentation_changes_stay_release_only(self):
+        self.assertEqual(
+            classify_pr.classify_paths(['scripts/promotion.py', 'docs/release-security.md']),
+            'release',
+        )
+
+    def test_release_changes_mixed_with_runtime_changes_escalate(self):
+        self.assertEqual(
+            classify_pr.classify_paths(['scripts/promotion.py', 'scripts/make_static.py']),
+            'full',
+        )
+        self.assertEqual(
+            classify_pr.classify_paths(['scripts/promotion.py', 'deploy/nginx.conf']),
+            'artifact',
+        )
+
     def test_product_affecting_paths_require_artifact_evidence(self):
         paths = (
             'scripts/check_policy.py',
@@ -53,12 +107,6 @@ class PullRequestQualificationTests(unittest.TestCase):
             'scripts/verify_dist_identity.py',
             '.github/workflows/qualify.yml',
             '.github/actions/browser-qualification/action.yml',
-            '.github/workflows/recover-release-publication.yml',
-            '.github/actions/publish-github-release/action.yml',
-            '.github/actions/publish-pages/action.yml',
-            '.github/actions/publish-oci/action.yml',
-            'scripts/publish_github_release.py',
-            'scripts/verify_oci_image.sh',
         )
         for path in paths:
             with self.subTest(path=path):
@@ -87,12 +135,25 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertNotIn('paths:', pull_request)
         self.assertIn('python3 scripts/classify_pr.py', workflow)
         self.assertIn('.previous_filename // empty', workflow)
+        self.assertIn("release)\n                  browsers='[]'", workflow)
         self.assertIn('browsers=\'["chromium"]\'', workflow)
         self.assertIn('browsers=\'["chromium","firefox","webkit"]\'', workflow)
-        self.assertIn("if: needs.browser-plan.outputs.level != 'lightweight'", workflow)
+        self.assertIn("needs.browser-plan.outputs.level == 'artifact' ||", workflow)
+        self.assertIn('name: Release metadata qualification', workflow)
+        self.assertIn('uses: ./.github/actions/release-metadata-qualification', workflow)
         self.assertIn('name: Artifact qualification gate', workflow)
-        self.assertIn('needs: [browser-plan, build, browser]', workflow)
+        self.assertIn(
+            'needs: [browser-plan, release-metadata, build, browser, package]',
+            workflow,
+        )
+        self.assertIn('required release metadata evidence missing', workflow)
+        self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', workflow)
+        self.assertIn("github.event_name == 'pull_request'", workflow)
+        self.assertIn("needs.browser-plan.outputs.level == 'artifact'", workflow)
         self.assertIn('required artifact evidence missing', workflow)
+
+        attest_block = workflow.split('  attest:\n', 1)[1].split('  release:\n', 1)[0]
+        self.assertIn("if: github.event_name != 'pull_request'", attest_block)
 
     def test_qualification_caches_separate_build_outputs_from_package_downloads(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
