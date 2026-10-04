@@ -181,6 +181,7 @@ def check_browser_qualification_topology() -> None:
         'required artifact evidence missing:',
         "needs.browser-plan.outputs.level == 'artifact' ||",
         "needs.browser-plan.outputs.level == 'full'",
+        "if: github.event_name != 'pull_request'",
     ):
         require(required in qualify, f'qualification release-only topology missing: {required}')
     require('browser: [chromium]' in release, 'release validation must use Chromium matrix')

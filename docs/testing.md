@@ -37,7 +37,9 @@ test, and run the Chromium zero-retry boot gate. Upstream, runtime, qualificatio
 other high-risk changes escalate to the full Chromium, Firefox, and WebKit qualification, with the
 same zero-retry boot gate before the broader suites. Renames are classified using both the old and
 new paths. Mixing release-only paths with runtime/build inputs escalates to the stronger applicable
-lane, and unknown paths fail closed to artifact qualification.
+lane, and unknown paths fail closed to artifact qualification. Artifact/full pull requests also run packaging
+against the qualified distribution so distribution-dependent release tooling is exercised, but PR
+qualification never runs the downstream attestation job or receives OIDC/attestation write authority.
 
 The protected default-branch ruleset must require the `Artifact qualification gate` job from
 `Full build qualification`. That job is reported for every pull request, including documentation-only

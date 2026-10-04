@@ -152,6 +152,9 @@ class PullRequestQualificationTests(unittest.TestCase):
         self.assertIn("needs.browser-plan.outputs.level == 'artifact'", workflow)
         self.assertIn('required artifact evidence missing', workflow)
 
+        attest_block = workflow.split('  attest:\n', 1)[1].split('  release:\n', 1)[0]
+        self.assertIn("if: github.event_name != 'pull_request'", attest_block)
+
     def test_qualification_caches_separate_build_outputs_from_package_downloads(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
         cache_key = workflow.split('key: code-oss-web-', 1)[1].split('\n\n      - name:', 1)[0]
