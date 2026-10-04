@@ -26,6 +26,7 @@ import package_release
 import publish_github_release
 import validate_config
 import verify_dist_identity
+import verify_qualification_source
 
 
 class ToolingTests(unittest.TestCase):
@@ -202,6 +203,45 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('gh workflow run qualify.yml', workflow)
         self.assertIn('-f browser=all', workflow)
         self.assertIn('-f release_mode=upstream', workflow)
+        self.assertIn('default_branch=', workflow)
+        self.assertIn("--jq '.default_branch'", workflow)
+        self.assertIn('commits/$default_branch', workflow)
+        self.assertIn('upstream.lock.json?ref=$current_sha', workflow)
+        self.assertIn('echo "source_sha=$current_sha" >> "$GITHUB_OUTPUT"', workflow)
+        self.assertNotIn('AFTER_SHA:', workflow)
+        self.assertNotIn('source_sha=$AFTER_SHA', workflow)
+        self.assertIn('SOURCE_SHA: ${{ steps.upstream.outputs.source_sha }}', workflow)
+        self.assertIn('-f expected_source_sha="$SOURCE_SHA"', workflow)
+
+    def test_qualification_source_mismatch_fails_closed(self):
+        expected_source_sha = 'a' * 40
+        moved_branch_sha = 'b' * 40
+
+        verify_qualification_source.verify_source_sha(
+            expected_source_sha,
+            expected_source_sha,
+        )
+        with self.assertRaisesRegex(
+            verify_qualification_source.BuildError,
+            'qualification source SHA mismatch',
+        ):
+            verify_qualification_source.verify_source_sha(
+                expected_source_sha,
+                moved_branch_sha,
+            )
+
+        workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
+        self.assertIn('expected_source_sha:', workflow)
+        self.assertIn('name: Verify expected source SHA', workflow)
+        self.assertIn(
+            'python3 scripts/verify_qualification_source.py "$EXPECTED_SOURCE_SHA" "$GITHUB_SHA"',
+            workflow,
+        )
+        self.assertLess(
+            workflow.index('name: Verify expected source SHA'),
+            workflow.index('name: Select browser qualification plan'),
+        )
+        check_policy.check_qualification_source_binding()
 
     def test_full_qualification_supports_upstream_and_patch_release_modes(self):
         workflow = (ROOT / '.github/workflows/qualify.yml').read_text()
@@ -218,6 +258,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('recover-publication:', workflow)
         self.assertIn('name: release-qualification', workflow)
         self.assertIn('releaseMode: $releaseMode', workflow)
+        self.assertIn('expectedSourceSha: $expectedSourceSha', workflow)
         self.assertIn('distribution: $distribution', workflow)
         self.assertIn('name: qualification-provenance', workflow)
         self.assertIn('qualification-provenance.sigstore.json', workflow)
@@ -244,6 +285,12 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn('already points to current master', patch)
         self.assertIn('-f browser=all', patch)
         self.assertIn('-f release_mode=patch', patch)
+        self.assertIn('contents/upstream.lock.json?ref=$master_sha', patch)
+        self.assertIn('SOURCE_SHA: ${{ steps.release.outputs.source_sha }}', patch)
+        self.assertIn('-f expected_source_sha="$SOURCE_SHA"', patch)
+
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        self.assertIn('.expectedSourceSha == $commit', release)
 
     def test_release_binds_qualified_distribution_before_reproducibility(self):
         workflow = (ROOT / '.github/workflows/release.yml').read_text()

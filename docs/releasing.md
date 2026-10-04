@@ -28,8 +28,12 @@ Renovate tracks `microsoft/vscode` and updates the exact upstream tag and tag co
 eligible for auto-merge; ordinary dependency updates do not build or deploy Code - OSS.
 
 When a merged `master` commit actually changes the pinned Microsoft tag or commit, the upstream
-qualification trigger dispatches `Full build qualification` with all browsers and
-`release_mode=upstream`. Metadata-only lock changes do not trigger that expensive path.
+qualification trigger re-resolves current protected `master`, inspects the lock at that immutable
+commit, and dispatches `Full build qualification` with all browsers, `release_mode=upstream`, and
+that current commit as `expected_source_sha`. If `master` moves again before qualification starts,
+qualification fails before planning; re-running the upstream trigger resolves and binds the new
+current `master` instead of reusing the original push SHA. Metadata-only lock changes do not trigger
+that expensive path.
 
 After build, Chromium/Firefox/WebKit qualification, packaging and qualification attestations all
 succeed, the workflow creates exactly:
@@ -48,7 +52,8 @@ including GitHub Pages, without human action.
 Use the **Patch release** workflow when a project-owned source, packaging, workflow, container, or
 security fix must ship before the next Microsoft release.
 
-The dispatcher is fail-closed:
+The dispatcher is fail-closed. It resolves one exact default-branch commit, reads the upstream lock
+from that immutable commit, and passes the same commit as `expected_source_sha` to qualification.
 
 1. the current Microsoft version must already have a `web.0` tag;
 2. if current `master` already matches the latest `web.N` tag, the request is treated as a retry
@@ -89,9 +94,11 @@ See [Operations](../OPERATIONS.md) for promotion, rollback, audit, and both reco
 The successful all-browser workflow run on the exact release commit is the qualification evidence.
 Qualification is not stored as a mutable boolean in source control.
 
-The qualification workflow records the exact commit, selected release tag, release mode, workflow
-run ID, and canonical Node/Python toolchain versions in a `release-qualification` artifact. The Release workflow downloads that artifact and
-verifies all of those bindings before doing any publication work.
+The qualification workflow records the exact commit, dispatched expected source SHA, selected
+release tag, release mode, workflow run ID, and canonical Node/Python toolchain versions in a
+`release-qualification` artifact. The Release workflow downloads that artifact and requires both
+the recorded commit and expected source SHA to equal the immutable release commit before doing any
+publication work.
 
 The Release workflow then performs an independent clean rebuild, reproducibility comparison,
 release-grade Chromium qualification, tag-specific packaging, provenance/SBOM attestation, and

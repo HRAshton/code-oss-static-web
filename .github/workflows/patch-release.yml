@@ -28,7 +28,7 @@ jobs:
           default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
           master_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq '.sha')"
           lock="$(
-            gh api               -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$default_branch"
+            gh api               -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$master_sha"
           )"
           version="$(jq -r '.tag' <<<"$lock")"
           prefix="refs/tags/v${version}-web."
@@ -66,6 +66,7 @@ jobs:
           fi
 
           echo "default_branch=$default_branch" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$master_sha" >> "$GITHUB_OUTPUT"
           echo "target_tag=$target_tag" >> "$GITHUB_OUTPUT"
           {
             echo "Patch release target: $target_tag"
@@ -77,9 +78,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ steps.release.outputs.default_branch }}
+          SOURCE_SHA: ${{ steps.release.outputs.source_sha }}
         run: >-
           gh workflow run qualify.yml
           --repo "$GITHUB_REPOSITORY"
           --ref "$DEFAULT_BRANCH"
           -f browser=all
           -f release_mode=patch
+          -f expected_source_sha="$SOURCE_SHA"

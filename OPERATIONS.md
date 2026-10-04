@@ -147,6 +147,23 @@ Human intervention is required only when the automated checks cannot prove a saf
 explicit rollback, or for a deliberate promotion-policy change. Routine Microsoft upstream release
 promotion remains automatic.
 
+## Qualification source binding
+
+Automated upstream and patch release dispatches first resolve the exact project commit they inspect,
+then pass that commit to `Full build qualification` as `expected_source_sha`. The upstream trigger
+re-resolves the protected default branch on every run, including a GitHub workflow retry; the original
+push event is used only to identify the pre-change lock revision. The patch path also reads
+`upstream.lock.json` by its resolved immutable commit rather than by the moving default-branch name.
+
+At workflow start, qualification checks the checked-out `GITHUB_SHA` against the expected SHA before
+planning, build, packaging, or release-tag work. A default-branch move between inspection and workflow
+start therefore fails closed. The expected SHA is shown in the workflow summary, stored in the
+`release-qualification` evidence, and independently rechecked by the Release workflow.
+
+A source-SHA mismatch is not a retryable publication failure. Re-run the upstream or patch dispatcher
+so it inspects the current branch state and creates a new qualification request bound to that exact
+commit.
+
 ## Recovering a partial immutable release publication
 
 Immutable release publication has two independent channels: GitHub Release assets and the immutable
