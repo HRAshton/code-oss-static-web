@@ -1,9 +1,0 @@
-{
-  "schemaVersion": 1,
-  "grants": {
-    "hrashton.remotish": [
-      "scmHistoryProvider",
-      "timeline"
-    ]
-  }
-}

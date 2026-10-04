@@ -1283,6 +1283,15 @@ python-version: ${{ steps.versions.outputs.python }}
             browser_action,
         )
 
+    def test_build_entrypoint_validates_configuration_before_build_work(self):
+        build = (ROOT / 'scripts/build.py').read_text()
+
+        self.assertIn("run([ROOT / 'scripts/validate_config.py'])", build)
+        self.assertLess(
+            build.index("run([ROOT / 'scripts/validate_config.py'])"),
+            build.index("run([ROOT / 'scripts/fetch_upstream.py']"),
+        )
+
     def test_independent_sbom_scan_is_fresh_for_current_distribution(self):
         package = (ROOT / 'package.sh').read_text()
         build = (ROOT / 'scripts/build.py').read_text()
