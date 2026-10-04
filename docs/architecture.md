@@ -284,6 +284,22 @@ Automatic promotion refuses to move stable backward. An explicit rollback is a n
 to an identity that has previously been successful in stable (or a legacy successful Pages
 deployment during migration). Release tags, GitHub Release assets, and immutable GHCR tags never move.
 
+### Canary serving model
+
+A canary promotion is a real Pages deployment, not an artifact-only deployment record. The workflow
+reconstructs the previously successful stable release at the Pages root from its immutable,
+attested GitHub Release archive, preserves that release's root deployment identity, and publishes the
+candidate below `__canary/<release-tag>/`. During migration, a successful legacy `github-pages`
+deployment plus the live root deployment identity is used to recover and verify the exact immutable
+production release when no `stable` record exists yet. The candidate carries the same promotion
+identity later required by stable promotion. A live identity fetch and Chromium boot synthetic must
+succeed before
+the repository records the `canary` deployment as successful.
+
+Automatic stable promotion depends on that successful canary identity. Stable publication then
+replaces the Pages root with the exact same immutable candidate release. A failed or indeterminate
+canary therefore cannot advance the stable channel.
+
 Immutable publication recovery remains artifact-only through
 [.github/workflows/recover-release-publication.yml](../.github/workflows/recover-release-publication.yml).
 Promotion recovery uses the durable immutable GitHub Release as its source and changes only deployment

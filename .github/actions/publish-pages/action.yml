@@ -16,6 +16,10 @@ inputs:
   identity-path:
     description: Expected release-bound Pages deployment identity
     required: true
+  identity-url-path:
+    description: Relative deployed URL path containing the identity document
+    required: false
+    default: deployment-identity.json
 outputs:
   page-url:
     description: Published Pages URL
@@ -75,7 +79,8 @@ runs:
         live_identity="$RUNNER_TEMP/pages-deployment-identity.json"
         verified=false
         for verify_attempt in 1 2 3 4 5; do
-          identity_url="${PAGE_URL%/}/deployment-identity.json?promotion_run=$GITHUB_RUN_ID&run_attempt=$GITHUB_RUN_ATTEMPT&verify=$verify_attempt"
+          identity_path="${{ inputs.identity-url-path }}"
+          identity_url="${PAGE_URL%/}/${identity_path#/}?promotion_run=$GITHUB_RUN_ID&run_attempt=$GITHUB_RUN_ATTEMPT&verify=$verify_attempt"
           if curl --fail --silent --show-error --location \
             --header 'Cache-Control: no-cache' \
             "$identity_url" \

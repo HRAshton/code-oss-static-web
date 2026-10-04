@@ -230,7 +230,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Bind Pages deployment identity
-        if: inputs.target == 'auto' || inputs.target == 'stable'
         run: >-
           python3 scripts/pages_identity.py write
           --promotion-identity .work/promotion/promotion-identity.json
@@ -247,20 +246,23 @@ jobs:
 
   canary:
     if: inputs.target == 'auto' || inputs.target == 'canary'
-    needs: authorize
+    needs: [authorize, pages-release-gate]
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.publication.outputs.page-url }}
     permissions:
       contents: read
       deployments: write
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up canonical Python
+      - name: Set up canonical toolchain
         uses: ./.github/actions/setup-toolchain
-        with:
-          node: 'false'
 
       - name: Download promotion input
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -340,16 +342,221 @@ jobs:
           )"
           gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses"             --input - <<<"$status" >/dev/null
 
-      - name: Verify canary artifact
+      - name: Require durable browser runtime
+        if: needs.authorize.outputs.playwright-runtime-available != 'true'
+        shell: bash
+        run: |
+          echo "immutable release is missing playwright-runtime.tar.gz" >&2
+          exit 1
+
+      - name: Extract durable Playwright runtime
+        shell: bash
+        run: |
+          rm -rf .work/playwright-runtime
+          mkdir -p .work/playwright-runtime
+          tar -C .work/playwright-runtime -xzf .work/promotion/playwright-runtime.tar.gz
+
+      - name: Build real canary Pages bundle
         env:
+          GH_TOKEN: ${{ github.token }}
           ARCHIVE_NAME: ${{ needs.authorize.outputs.archive-name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf .work/pages-dist .work/stable-release dist
+          mkdir -p .work/pages-dist dist
+
+          stable_deployment=''
+          while IFS= read -r deployment_id; do
+            [[ -n "$deployment_id" ]] || continue
+            success_count="$(
+              gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=100" \
+                --jq '[.[] | select(.state == "success")] | length'
+            )"
+            [[ "$success_count" -gt 0 ]] || continue
+            stable_deployment="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id")"
+            break
+          done < <(
+            gh api "repos/$GITHUB_REPOSITORY/deployments?environment=stable&per_page=100" \
+              --jq '.[].id'
+          )
+
+          stable_identity=''
+          if [[ -n "$stable_deployment" ]]; then
+            stable_identity="$stable_deployment"
+          else
+            legacy_deployment=''
+            while IFS= read -r deployment_id; do
+              [[ -n "$deployment_id" ]] || continue
+              success_count="$(
+                gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses?per_page=100" \
+                  --jq '[.[] | select(.state == "success")] | length'
+              )"
+              [[ "$success_count" -gt 0 ]] || continue
+              legacy_deployment="$(gh api "repos/$GITHUB_REPOSITORY/deployments/$deployment_id")"
+              break
+            done < <(
+              gh api "repos/$GITHUB_REPOSITORY/deployments?environment=github-pages&per_page=100" \
+                --jq '.[].id'
+            )
+
+            if [[ -n "$legacy_deployment" ]]; then
+              pages_url="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.html_url')"
+              legacy_identity=.work/legacy-pages-identity.json
+              curl --fail --silent --show-error --location \
+                --header 'Cache-Control: no-cache' \
+                "${pages_url%/}/deployment-identity.json?promotion_run=$GITHUB_RUN_ID&legacy=1" \
+                --output "$legacy_identity"
+
+              legacy_tag="$(jq -r '.release.tag // ""' "$legacy_identity")"
+              legacy_commit="$(jq -r '.release.commit // ""' "$legacy_identity")"
+              if [[ ! "$legacy_tag" =~ ^v.+-web\.(0|[1-9][0-9]*)$ ||
+                    ! "$legacy_commit" =~ ^[0-9a-f]{40}$ ]]; then
+                echo "live legacy Pages identity is invalid" >&2
+                exit 1
+              fi
+
+              mkdir -p .work/stable-release
+              legacy_release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$legacy_tag")"
+              jq -e --arg tag "$legacy_tag" '
+                .tag_name == $tag and
+                .draft == false and
+                .prerelease == false
+              ' <<<"$legacy_release" >/dev/null
+              legacy_release_id="$(jq -r '.id' <<<"$legacy_release")"
+              resolved_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$legacy_tag" --jq '.sha')"
+              if [[ "$resolved_commit" != "$legacy_commit" ]]; then
+                echo "legacy Pages release tag no longer resolves to deployed commit" >&2
+                exit 1
+              fi
+
+              gh release download "$legacy_tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --dir .work/stable-release \
+                --pattern artifact-manifest.json \
+                --pattern SHA256SUMS
+              stable_archive="$(
+                jq -r '
+                  [.artifacts[].name |
+                    select(startswith("code-oss-static-web-") and endswith(".tar.gz"))]
+                  | if length == 1 then .[0]
+                    else error("expected exactly one distribution tar.gz") end
+                ' .work/stable-release/artifact-manifest.json
+              )"
+              gh release download "$legacy_tag" \
+                --repo "$GITHUB_REPOSITORY" \
+                --dir .work/stable-release \
+                --pattern "$stable_archive"
+              for asset in artifact-manifest.json "$stable_archive"; do
+                gh attestation verify ".work/stable-release/$asset" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --source-ref "refs/tags/$legacy_tag" >/dev/null
+              done
+
+              python3 scripts/promotion.py \
+                --release-tag "$legacy_tag" \
+                --release-commit "$legacy_commit" \
+                --release-id "$legacy_release_id" \
+                --manifest .work/stable-release/artifact-manifest.json \
+                --checksums .work/stable-release/SHA256SUMS \
+                --archive ".work/stable-release/$stable_archive" \
+                --policy config/promotion-policy.json \
+                --output .work/stable-promotion-identity.json
+              python3 scripts/pages_identity.py write \
+                --promotion-identity .work/stable-promotion-identity.json \
+                --output .work/reconstructed-pages-identity.json
+              python3 scripts/pages_identity.py verify \
+                --expected "$legacy_identity" \
+                --actual .work/reconstructed-pages-identity.json
+
+              tar -C .work/pages-dist -xzf ".work/stable-release/$stable_archive"
+              cp "$legacy_identity" .work/pages-dist/deployment-identity.json
+            fi
+          fi
+
+          if [[ -n "$stable_identity" ]]; then
+            stable_tag="$(jq -r '.payload.release.tag // ""' <<<"$stable_identity")"
+            stable_archive="$(jq -r '.payload.artifact.archive.name // ""' <<<"$stable_identity")"
+            stable_digest="$(jq -r '.payload.artifact.archive.sha256 // ""' <<<"$stable_identity")"
+            if [[ ! "$stable_tag" =~ ^v.+-web\.(0|[1-9][0-9]*)$ ||
+                  -z "$stable_archive" ||
+                  "$stable_archive" == */* ||
+                  ! "$stable_digest" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "latest successful stable deployment has invalid immutable artifact identity" >&2
+              exit 1
+            fi
+
+            mkdir -p .work/stable-release
+            gh release download "$stable_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --dir .work/stable-release \
+              --pattern "$stable_archive"
+            actual_digest="$(sha256sum ".work/stable-release/$stable_archive" | awk '{print $1}')"
+            if [[ "$actual_digest" != "$stable_digest" ]]; then
+              echo "stable archive digest mismatch for $stable_tag" >&2
+              exit 1
+            fi
+            gh attestation verify ".work/stable-release/$stable_archive" \
+              --repo "$GITHUB_REPOSITORY" \
+              --source-ref "refs/tags/$stable_tag" >/dev/null
+            tar -C .work/pages-dist -xzf ".work/stable-release/$stable_archive"
+
+            jq '.payload | {schemaVersion, release, artifact, policy}' \
+              <<<"$stable_identity" > .work/stable-promotion-identity.json
+            python3 scripts/pages_identity.py write \
+              --promotion-identity .work/stable-promotion-identity.json \
+              --output .work/pages-dist/deployment-identity.json
+          elif [[ ! -f .work/pages-dist/deployment-identity.json ]]; then
+            printf '%s\n' \
+              '<!doctype html><meta charset="utf-8"><title>Canary qualification</title><p>No stable release is currently promoted.</p>' \
+              > .work/pages-dist/index.html
+          fi
+
+          canary_dir=".work/pages-dist/__canary/$RELEASE_TAG"
+          mkdir -p "$canary_dir"
+          tar -C "$canary_dir" -xzf ".work/promotion/$ARCHIVE_NAME"
+          cp .work/promotion/pages-deployment-identity.json \
+            "$canary_dir/deployment-identity.json"
+
           rm -rf dist
-          mkdir -p dist
-          tar -C dist -xzf ".work/promotion/$ARCHIVE_NAME"
+          cp -a "$canary_dir" dist
           python3 scripts/smoke_static.py dist
+
+      - name: Publish real canary to GitHub Pages
+        id: publication
+        uses: ./.github/actions/publish-pages
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          commit: ${{ needs.authorize.outputs.release-commit }}
+          dist-path: .work/pages-dist
+          identity-path: .work/promotion/pages-deployment-identity.json
+          identity-url-path: __canary/${{ inputs.release_tag }}/deployment-identity.json
+
+      - name: Resolve live canary URL
+        id: canary-url
+        env:
+          PAGE_URL: ${{ steps.publication.outputs.page-url }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        shell: bash
+        run: echo "url=${PAGE_URL%/}/__canary/$RELEASE_TAG/" >> "$GITHUB_OUTPUT"
+
+      - name: Verify live canary hosting
+        env:
+          CANARY_URL: ${{ steps.canary-url.outputs.url }}
+        run: >-
+          python3 scripts/check_hosting_contract.py
+          --target pages
+          --url "$CANARY_URL"
+
+      - name: Browser synthetic against live canary
+        uses: ./.github/actions/browser-qualification
+        with:
+          browser: chromium
+          scope: serving
+          base-url: ${{ steps.canary-url.outputs.url }}
+          diagnostics-artifact: canary-serving-diagnostics
 
       - name: Mark canary successful
         env:
@@ -359,11 +566,15 @@ jobs:
         run: |
           set -euo pipefail
           status="$(
-            jq -n               --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"               '{
+            jq -n \
+              --arg log_url "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              --arg environment_url "${{ steps.canary-url.outputs.url }}" \
+              '{
                 state: "success",
                 environment: "canary",
                 log_url: $log_url,
-                description: "Canary promotion verified"
+                environment_url: $environment_url,
+                description: "Live canary deployment and browser synthetic verified"
               }'
           )"
           gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"             --input - <<<"$status" >/dev/null
@@ -386,13 +597,12 @@ jobs:
           gh api --method POST             "repos/$GITHUB_REPOSITORY/deployments/$DEPLOYMENT_ID/statuses"             --input - <<<"$status" >/dev/null
 
   pages-release-gate:
-    if: inputs.target == 'auto' || inputs.target == 'stable'
     needs: authorize
     runs-on: ubuntu-latest
     environment: release
     permissions: {}
     steps:
-      - name: Authorize stable Pages promotion
+      - name: Authorize Pages publication
         run: ':'
 
   stable:
@@ -717,6 +927,7 @@ jobs:
               [[ "$STABLE_RESULT" == success ]]
               ;;
             canary)
+              [[ "$PAGES_GATE_RESULT" == success ]]
               [[ "$CANARY_RESULT" == success ]]
               ;;
             stable)

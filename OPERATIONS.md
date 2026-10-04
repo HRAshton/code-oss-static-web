@@ -132,6 +132,21 @@ deployment does not match the rollback commit, even if that older commit was dep
 Canary is not implicitly rolled back when stable is rolled back. Move canary separately if the
 operational intent is for both channel pointers to reference the same previous release.
 
+### Canary failure handling
+
+A successful `canary` deployment means the immutable candidate was actually served by GitHub Pages
+under `__canary/<release-tag>/`, its release-bound identity converged at that URL, and the live
+Chromium synthetic booted. While publishing canary, the workflow reconstructs the previous stable
+root from its immutable release asset, verifies its digest and attestation, and restores its root
+deployment identity before adding the candidate subpath. During migration, if no `stable`
+deployment record exists yet, the workflow recovers the exact legacy production identity from the
+live root `deployment-identity.json`, binds it to the successful legacy `github-pages` deployment,
+and reconstructs that immutable release instead of replacing production with an empty placeholder.
+
+If canary publication, identity verification, or browser boot fails, the canary deployment is marked
+failed and automatic stable promotion does not run. Re-run promotion for the same immutable release
+after correcting promotion infrastructure; do not move or rebuild the release tag.
+
 ### Recover a failed promotion
 
 Promotion is retry-safe because it always re-resolves immutable GitHub Release assets and records a

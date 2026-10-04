@@ -1413,9 +1413,10 @@ python-version: ${{ steps.versions.outputs.python }}
             2,
         )
         self.assertEqual(release.count('uses: ./.github/actions/browser-qualification'), 1)
-        self.assertEqual(promote.count('uses: ./.github/actions/browser-qualification'), 1)
+        self.assertEqual(promote.count('uses: ./.github/actions/browser-qualification'), 2)
         self.assertIn('browser: [chromium]', release)
         self.assertIn('name: OCI production-serving qualification', qualification)
+        self.assertIn('Browser synthetic against live canary', promote)
         self.assertIn('Browser smoke against live Pages deployment', promote)
         for workflow in (qualification, release, promote):
             self.assertNotIn('scripts/install_playwright_browser.py', workflow)
@@ -1435,6 +1436,11 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', qualification)
         self.assertIn('"$SERVING_RESULT" != success', qualification)
         self.assertIn('playwright-runtime.tar.gz', promotion)
+        self.assertIn('Publish real canary to GitHub Pages', promotion)
+        self.assertIn('deployments?environment=github-pages&per_page=100', promotion)
+        self.assertIn('legacy-pages-identity.json', promotion)
+        self.assertIn('identity-url-path: __canary/', promotion)
+        self.assertIn('Browser synthetic against live canary', promotion)
         self.assertIn('Browser smoke against live Pages deployment', promotion)
         self.assertNotIn('playwright-runtime-run-id:', promotion)
         self.assertNotIn('actions/runs/$run_id/artifacts', promotion)
