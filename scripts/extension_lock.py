@@ -70,11 +70,19 @@ def _normalize_open_vsx_registry(value: Any, field: str) -> str:
 def load_source_policy(path: Path) -> dict[str, Any]:
     data = load_json(path)
     version = data.get('schemaVersion')
-    require(version in (1, SOURCE_POLICY_SCHEMA_VERSION), 'unsupported extension source policy schemaVersion')
+    require(
+        version in (1, SOURCE_POLICY_SCHEMA_VERSION),
+        'unsupported extension source policy schemaVersion',
+    )
 
     if version == 1:
         require(
-            set(data) == {'schemaVersion', 'allowedOpenVsxRegistries', 'allowedOpenVsxDownloadOrigins'},
+            set(data)
+            == {
+                'schemaVersion',
+                'allowedOpenVsxRegistries',
+                'allowedOpenVsxDownloadOrigins',
+            },
             'extension source policy keys mismatch',
         )
         mirror_origins_raw: list[object] = []
@@ -279,7 +287,10 @@ def load_extension_lock(path: Path) -> dict[str, Any]:
                 raise BuildError(f'{prefix}.source.url is not a valid URL') from exc
             _url_origin(mirror_url, f'{prefix}.source.url')
             require(parsed_mirror.query == '', f'{prefix}.source.url must not include a query')
-            require(parsed_mirror.fragment == '', f'{prefix}.source.url must not include a fragment')
+            require(
+                parsed_mirror.fragment == '',
+                f'{prefix}.source.url must not include a fragment',
+            )
             require(
                 digest in parsed_mirror.path.lower(),
                 f'{prefix}.source.url must include the locked SHA-256 in its path',

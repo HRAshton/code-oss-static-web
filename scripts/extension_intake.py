@@ -42,7 +42,10 @@ def build_intake_record(
     base = mirror_base_url.rstrip('/')
     parsed = urlsplit(base)
     extension_lock._url_origin(base, 'extension mirror base URL')
-    require(parsed.query == '' and parsed.fragment == '', 'extension mirror base URL must be stable')
+    require(
+        parsed.query == '' and parsed.fragment == '',
+        'extension mirror base URL must be stable',
+    )
     mirror_url = f'{base}/sha256/{digest}/{extension_id}-{version}.vsix'
 
     entry: dict[str, Any] = {
@@ -87,7 +90,9 @@ def build_intake_record(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Validate a candidate VSIX for internal mirror intake')
+    parser = argparse.ArgumentParser(
+        description='Validate a candidate VSIX for internal mirror intake'
+    )
     parser.add_argument('--vsix', type=Path, required=True)
     parser.add_argument('--id', required=True)
     parser.add_argument('--version', required=True)
