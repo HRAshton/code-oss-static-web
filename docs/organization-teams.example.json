@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "organization": "example-company",
+  "teams": {
+    "platform": "platform",
+    "security": "security",
+    "release": "release",
+    "extensionPolicy": "extension-policy",
+    "legal": "legal"
+  }
+}

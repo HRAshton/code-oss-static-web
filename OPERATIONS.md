@@ -302,3 +302,8 @@ retry/recovery, real canary qualification, stable rollback, and forward promotio
 rebuilding release identities. Completed evidence belongs under
 [`release-evidence/game-days/`](release-evidence/game-days/README.md) and is structurally validated
 by the repository test suite.
+
+
+Organization ownership changes must follow [the organization migration procedure](docs/organization-migration.md).
+At least two approved Release operators must be able to execute the recovery procedures in this
+document before a personal maintainer is removed from operational coverage.

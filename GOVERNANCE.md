@@ -269,3 +269,13 @@ was approved and applied:
 
 Source-controlled policy documents describe intent; GitHub's effective repository settings are the
 enforcement state. Review both when auditing governance.
+
+
+## Prepared team migration tooling
+
+The source tree includes [`scripts/render_codeowners.py`](scripts/render_codeowners.py) so the
+final organization/team slugs can be applied without hand-editing sensitive-path ownership. The
+script refuses collapsed role slugs and produces an exact `.github/governance-teams.json` mapping
+that repository policy validates against CODEOWNERS. Until that mapping exists, the existing
+two-person interim ownership remains authoritative. Follow
+[the organization migration procedure](docs/organization-migration.md) for activation.
