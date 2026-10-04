@@ -1288,6 +1288,7 @@ python-version: ${{ steps.versions.outputs.python }}
             'github.ref_name != github.event.repository.default_branch',
             tooling,
         )
+        self.assertIn("github.ref_name != 'develop'", tooling)
         self.assertNotIn('style-normalization', tooling)
         self.assertNotIn('Export normalization workspace', tooling)
 
