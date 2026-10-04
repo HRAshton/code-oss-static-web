@@ -90,7 +90,12 @@ gh workflow run promote.yml \
 
 Stable promotion deploys GitHub Pages from the verified immutable release archive. It does not use a
 source checkout as release content and does not invoke `build.sh`, `package.sh`, or
-`actions/attest`.
+`actions/attest`. Before upload, the workflow adds `deployment-identity.json` containing the
+selected immutable release tag and commit, canonical distribution tree digest, and deployment-profile
+ID and digest. After deployment, the shared Pages action fetches that file from the returned live
+Pages URL with a cache-busting query and fails unless it exactly matches the expected promotion
+identity. A successful Pages workflow status alone is not treated as proof that the intended release
+is live.
 
 Forward stable promotion requires a canary recorded with the same complete promotion identity,
 including the promotion policy/profile digest. If the policy changes after canary, rerun canary under
@@ -133,9 +138,10 @@ new deployment attempt.
 - If authorization, checksum, attestation, or canary verification fails, stable is untouched.
 - If stable fails before Pages succeeds, fix the external/configuration problem and rerun
   `target=stable`; no new release is created.
-- If Pages succeeded but the promotion run failed before recording stable success, rerunning
-  `target=stable` re-resolves the same immutable release identity and safely redeploys the verified
-  bytes before recording stable success; it never rebuilds release content.
+- If Pages deployment reports success but live `deployment-identity.json` is missing, stale, or
+  mismatched, stable remains failed. Rerunning `target=stable` re-resolves the same immutable release
+  identity, redeploys the verified bytes, and repeats live identity verification before stable success
+  is recorded; it never rebuilds release content.
 - If an automatic promotion is stale relative to a newer stable release, it fails closed instead of
   rolling stable backward.
 - If the requested backward target has neither stable history nor a successful legacy Pages

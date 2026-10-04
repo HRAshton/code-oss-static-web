@@ -135,6 +135,7 @@ After publication:
 - verify the release-tagged GHCR image exposes both `linux/amd64` and `linux/arm64` manifests;
 - verify the latest successful `canary` and `stable` GitHub Deployment payloads reference the expected
   immutable release/artifact/policy identity;
-- verify GitHub Pages serves the stable release commit.
+- verify GitHub Pages serves `deployment-identity.json` for the expected immutable release tag,
+  commit, distribution tree digest, and deployment-profile digest.
 
 Do not publish or move a mutable `latest` tag as part of the immutable release contract.

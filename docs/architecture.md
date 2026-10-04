@@ -241,8 +241,18 @@ the upstream build, packaging, or attestation.
 
 The happy path is automatic: the immutable release is recorded as a successful <code>canary</code>
 deployment after artifact verification, then the exact same release/artifact/policy identity is
-promoted to <code>stable</code> and deployed to GitHub Pages. GitHub Deployments provide the
-auditable channel history.
+promoted to <code>stable</code> and deployed to GitHub Pages. Before upload, promotion derives a
+machine-readable <code>deployment-identity.json</code> from the verified immutable release identity.
+It records the release tag and commit, canonical distribution tree SHA-256, and deployment-profile ID
+and digest. The file is Pages promotion metadata added after the canonical distribution digest is
+established, so it does not create a self-referential tree digest.
+
+After <code>actions/deploy-pages</code> completes, the shared Pages action resolves the returned Pages
+URL, fetches <code>deployment-identity.json</code> with a cache-busting query, and requires exact
+equality with the expected promotion identity projection. The Pages deployment status keyed to the
+workflow SHA remains a transport-status check only; the live identity check independently proves the
+served site is the intended immutable release, including rollback runs whose workflow SHA differs
+from the release commit. GitHub Deployments provide the auditable channel history.
 
 Automatic promotion refuses to move stable backward. An explicit rollback is a new stable promotion
 to an identity that has previously been successful in stable (or a legacy successful Pages

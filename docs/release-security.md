@@ -84,6 +84,15 @@ accepted only when the target immutable release/artifact identity has previous s
 history; the new rollback event records the current policy/profile identity. Rollback is therefore a
 new audited promotion event rather than release mutation.
 
+Stable Pages publication carries a release-bound <code>deployment-identity.json</code> alongside the
+immutable release bytes. The identity contains the immutable release tag and commit, normalized
+distribution tree SHA-256, and deployment-profile ID and digest. After Pages deployment reports
+success, the publication action fetches that identity from the returned live Pages URL with a
+cache-busting query and requires an exact match to the expected promotion identity projection. The
+workflow-SHA Pages status is therefore not sufficient authorization evidence by itself; rollback and
+recovery remain bound to the selected immutable release even when they execute from newer
+<code>master</code>.
+
 Immutable publication is retry-safe per channel. The normal Release workflow and immutable recovery
 workflow share the same GitHub Release/GHCR implementations and the same `release-${ref}` concurrency
 group. GitHub Release publication reconciles assets monotonically: matching published assets are

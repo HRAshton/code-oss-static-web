@@ -13,6 +13,9 @@ inputs:
   dist-path:
     description: Extracted canonical distribution
     required: true
+  identity-path:
+    description: Expected release-bound Pages deployment identity
+    required: true
 outputs:
   page-url:
     description: Published Pages URL
@@ -61,3 +64,32 @@ runs:
           page_url="$(gh api "repos/${{ inputs.repository }}/pages" --jq '.html_url')"
         fi
         echo "page-url=$page_url" >> "$GITHUB_OUTPUT"
+
+    - name: Verify live Pages release identity
+      env:
+        PAGE_URL: ${{ steps.result.outputs.page-url }}
+        EXPECTED_IDENTITY: ${{ inputs.identity-path }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        live_identity="$RUNNER_TEMP/pages-deployment-identity.json"
+        verified=false
+        for verify_attempt in 1 2 3 4 5; do
+          identity_url="${PAGE_URL%/}/deployment-identity.json?promotion_run=$GITHUB_RUN_ID&run_attempt=$GITHUB_RUN_ATTEMPT&verify=$verify_attempt"
+          if curl --fail --silent --show-error --location \
+            --header 'Cache-Control: no-cache' \
+            "$identity_url" \
+            --output "$live_identity" &&
+            python3 scripts/pages_identity.py verify \
+              --expected "$EXPECTED_IDENTITY" \
+              --actual "$live_identity"; then
+            verified=true
+            break
+          fi
+          sleep 2
+        done
+        if [[ "$verified" != true ]]; then
+          echo "live Pages deployment identity did not converge to the expected release" >&2
+          exit 1
+        fi
+        echo "Live Pages identity verified for immutable release ${{ inputs.commit }}"

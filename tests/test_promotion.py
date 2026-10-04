@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
@@ -119,6 +121,84 @@ class PromotionIdentityTests(unittest.TestCase):
             )
             self.assertIsNone(identity['artifact']['deploymentProfile'])
 
+    def test_pages_deployment_identity_binds_release_tree_and_profile(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            policy, manifest, checksums, archive = self.write_fixture(Path(td))
+            identity = promotion.build_identity(
+                release_tag='v1.140.0-web.0',
+                release_commit='a' * 40,
+                release_id=42,
+                manifest_path=manifest,
+                checksums_path=checksums,
+                archive_path=archive,
+                policy_path=policy,
+            )
+            pages_identity = promotion.build_pages_deployment_identity(identity)
+
+            self.assertEqual(
+                pages_identity,
+                {
+                    'schemaVersion': 1,
+                    'release': {
+                        'tag': 'v1.140.0-web.0',
+                        'commit': 'a' * 40,
+                    },
+                    'distribution': {'treeSha256': 'b' * 64},
+                    'deploymentProfile': {
+                        'id': 'company-standard',
+                        'configSha256': 'c' * 64,
+                    },
+                },
+            )
+
+    def test_pages_deployment_identity_rejects_release_and_artifact_mismatches(self) -> None:
+        expected: dict[str, Any] = {
+            'schemaVersion': 1,
+            'release': {
+                'tag': 'v1.140.0-web.0',
+                'commit': 'a' * 40,
+            },
+            'distribution': {'treeSha256': 'b' * 64},
+            'deploymentProfile': {
+                'id': 'company-standard',
+                'configSha256': 'c' * 64,
+            },
+        }
+        mismatches = {
+            'release tag': ('release', 'tag', 'v1.140.0-web.1'),
+            'release commit': ('release', 'commit', 'd' * 40),
+            'tree digest': ('distribution', 'treeSha256', 'e' * 64),
+            'profile digest': ('deploymentProfile', 'configSha256', 'f' * 64),
+        }
+        for label, (section, field, replacement) in mismatches.items():
+            with self.subTest(label=label):
+                actual = copy.deepcopy(expected)
+                actual[section][field] = replacement
+                with self.assertRaisesRegex(
+                    BuildError,
+                    'does not match expected promotion identity',
+                ):
+                    promotion.verify_pages_deployment_identity(expected, actual)
+
+    def test_pages_deployment_identity_rollback_is_bound_to_release_commit(self) -> None:
+        workflow_sha = 'f' * 40
+        expected = {
+            'schemaVersion': 1,
+            'release': {
+                'tag': 'v1.139.1-web.2',
+                'commit': 'a' * 40,
+            },
+            'distribution': {'treeSha256': 'b' * 64},
+            'deploymentProfile': {
+                'id': 'company-standard',
+                'configSha256': 'c' * 64,
+            },
+        }
+        live = copy.deepcopy(expected)
+
+        self.assertNotEqual(workflow_sha, expected['release']['commit'])
+        promotion.verify_pages_deployment_identity(expected, live)
+
     def test_build_identity_rejects_tag_manifest_version_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             policy, manifest, checksums, archive = self.write_fixture(Path(td))
@@ -169,6 +249,16 @@ class PromotionWorkflowTests(unittest.TestCase):
         self.assertIn('previous stable deployment history', workflow)
         self.assertIn('environment=github-pages&ref=$RELEASE_COMMIT', workflow)
         self.assertIn('uses: ./.github/actions/publish-pages', workflow)
+        self.assertIn('scripts/pages_identity.py write', workflow)
+        self.assertIn(
+            'cp .work/promotion/pages-deployment-identity.json dist/deployment-identity.json',
+            workflow,
+        )
+        self.assertIn(
+            'identity-path: .work/promotion/pages-deployment-identity.json',
+            workflow,
+        )
+        self.assertIn('commit: ${{ needs.authorize.outputs.release-commit }}', workflow)
 
         self.assertNotIn('uses: ./.github/actions/publish-pages', release)
         self.assertIn('immutable-publication-status:', release)
@@ -178,6 +268,10 @@ class PromotionWorkflowTests(unittest.TestCase):
 
         self.assertNotIn('uses: ./.github/actions/publish-pages', recovery)
         self.assertIn('pages/deployments/$GITHUB_SHA', pages_action)
+        self.assertIn('DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}', pages_action)
+        self.assertIn('deployment-identity.json?promotion_run=$GITHUB_RUN_ID', pages_action)
+        self.assertIn('Cache-Control: no-cache', pages_action)
+        self.assertIn('scripts/pages_identity.py verify', pages_action)
         self.assertNotIn('deployments?environment=github-pages', pages_action)
         self.assertNotIn('steps.state.outputs.complete', pages_action)
 
