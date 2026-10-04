@@ -95,3 +95,8 @@ checked against [Releasing](docs/releasing.md) and [Release security](docs/relea
 
 Use GitHub Issues for public bugs and enhancement requests. Security vulnerabilities must follow
 the private process in [SECURITY.md](SECURITY.md).
+
+
+After organization migration, sensitive-path ownership is generated from the approved team mapping;
+contributors should not replace team owners with personal accounts. See
+[organization migration](docs/organization-migration.md).

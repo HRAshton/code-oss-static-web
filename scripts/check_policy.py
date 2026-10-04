@@ -1099,10 +1099,7 @@ def check_codeowners_policy() -> None:
         if not line or line.startswith('#'):
             continue
         parts = line.split()
-        require(
-            len(parts) >= 2,
-            f'.github/CODEOWNERS:{line_number}: owner list missing',
-        )
+        require(len(parts) >= 2, f'.github/CODEOWNERS:{line_number}: owner list missing')
         pattern, *owners = parts
         require(
             pattern not in entries,
@@ -1110,40 +1107,65 @@ def check_codeowners_policy() -> None:
         )
         entries[pattern] = tuple(owners)
 
-    expected_patterns = {
-        '/.github/',
-        '/GOVERNANCE.md',
-        '/CONTRIBUTING.md',
-        '/SECURITY.md',
-        '/OPERATIONS.md',
-        '/renovate.json',
-        '/security/',
-        '/extensions/',
-        '/deploy/',
-        '/scripts/',
-        '/config/',
-        '/patches/',
-        '/build.sh',
-        '/package.sh',
-        '/docs/release-security.md',
-        '/docs/releasing.md',
-    }
-    require(
-        set(entries) == expected_patterns,
-        'CODEOWNERS sensitive-path allowlist changed; review governance mapping explicitly',
-    )
-
-    expected_owners = {'@HRAshton', '@vodyanica'}
-    for pattern, owners in entries.items():
-        require(
-            set(owners) == expected_owners and len(owners) == len(expected_owners),
-            f'CODEOWNERS interim owner set changed for {pattern}',
-        )
-
     require(
         '/upstream.lock.json' not in entries and 'upstream.lock.json' not in entries,
         'upstream.lock.json must remain outside CODEOWNERS for zero-touch upstream releases',
     )
+
+    team_mapping_path = ROOT / '.github/governance-teams.json'
+    if not team_mapping_path.exists():
+        expected_patterns = {
+            '/.github/',
+            '/GOVERNANCE.md',
+            '/CONTRIBUTING.md',
+            '/SECURITY.md',
+            '/OPERATIONS.md',
+            '/renovate.json',
+            '/security/',
+            '/extensions/',
+            '/deploy/',
+            '/scripts/',
+            '/config/',
+            '/patches/',
+            '/build.sh',
+            '/package.sh',
+            '/docs/release-security.md',
+            '/docs/releasing.md',
+            '/docs/organization-migration.md',
+        }
+        require(
+            set(entries) == expected_patterns,
+            'CODEOWNERS sensitive-path allowlist changed; review governance mapping explicitly',
+        )
+        expected_owners = {'@HRAshton', '@vodyanica'}
+        for pattern, owners in entries.items():
+            require(
+                set(owners) == expected_owners and len(owners) == len(expected_owners),
+                f'CODEOWNERS interim owner set changed for {pattern}',
+            )
+        return
+
+    import render_codeowners
+
+    config = load_json(team_mapping_path)
+    require(config.get('schemaVersion') == 1, 'governance team mapping schemaVersion invalid')
+    organization = config.get('organization')
+    teams = config.get('teams')
+    require(isinstance(organization, str), 'governance organization missing')
+    require(isinstance(teams, dict), 'governance teams missing')
+    assert isinstance(organization, str)
+    assert isinstance(teams, dict)
+    normalized = render_codeowners.mapping(organization, cast(dict[str, str], teams))
+    expected = render_codeowners.render_codeowners(normalized)
+    require(
+        codeowners_path.read_text(encoding='utf-8') == expected,
+        'organization CODEOWNERS does not match governance team mapping; rerun render_codeowners.py',
+    )
+    for owners in entries.values():
+        require(
+            all(owner.startswith(f'@{organization}/') for owner in owners),
+            'organization CODEOWNERS must use only approved organization teams',
+        )
 
 
 def main() -> None:

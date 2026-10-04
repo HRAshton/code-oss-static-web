@@ -42,3 +42,8 @@ hostname checks merely to make webviews render.
 The release pipeline separates untrusted upstream build execution from attestation and publication.
 See [Release security](docs/release-security.md) and the [threat model](security/threat-model.md) for
 the trust boundaries and release-security design.
+
+
+After organization migration, security-sensitive paths are routed to the approved Security team
+through generated team-backed CODEOWNERS. Repository transfer and team activation follow
+[the organization migration procedure](docs/organization-migration.md).
