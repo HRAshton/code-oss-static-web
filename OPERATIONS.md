@@ -150,8 +150,10 @@ promotion remains automatic.
 ## Qualification source binding
 
 Automated upstream and patch release dispatches first resolve the exact project commit they inspect,
-then pass that commit to `Full build qualification` as `expected_source_sha`. The patch path also
-reads `upstream.lock.json` by that immutable commit rather than by the moving default-branch name.
+then pass that commit to `Full build qualification` as `expected_source_sha`. The upstream trigger
+re-resolves the protected default branch on every run, including a GitHub workflow retry; the original
+push event is used only to identify the pre-change lock revision. The patch path also reads
+`upstream.lock.json` by its resolved immutable commit rather than by the moving default-branch name.
 
 At workflow start, qualification checks the checked-out `GITHUB_SHA` against the expected SHA before
 planning, build, packaging, or release-tag work. A default-branch move between inspection and workflow

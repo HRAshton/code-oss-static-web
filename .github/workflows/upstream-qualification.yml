@@ -21,15 +21,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE_SHA: ${{ github.event.before }}
-          AFTER_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          current_sha="$(
+            gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq '.sha'
+          )"
           old_lock="$(
             gh api -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$BEFORE_SHA"
           )"
           new_lock="$(
-            gh api -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$AFTER_SHA"
+            gh api -H 'Accept: application/vnd.github.raw+json'               "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$current_sha"
           )"
           old_revision="$(jq -r '[.tag, .commit] | @tsv' <<<"$old_lock")"
           new_revision="$(jq -r '[.tag, .commit] | @tsv' <<<"$new_lock")"
@@ -38,8 +41,11 @@ jobs:
           else
             echo 'changed=true' >> "$GITHUB_OUTPUT"
           fi
-          echo "source_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"
-          echo "Inspected source SHA: `$AFTER_SHA`" >> "$GITHUB_STEP_SUMMARY"
+          echo "source_sha=$current_sha" >> "$GITHUB_OUTPUT"
+          {
+            echo "Trigger push SHA: `$GITHUB_SHA`"
+            echo "Inspected current $default_branch SHA: `$current_sha`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Start full browser qualification
         if: steps.upstream.outputs.changed == 'true'

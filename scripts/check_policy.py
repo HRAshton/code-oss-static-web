@@ -480,7 +480,9 @@ def check_qualification_source_binding() -> None:
 
     upstream = (ROOT / '.github/workflows/upstream-qualification.yml').read_text(encoding='utf-8')
     for required in (
-        'echo "source_sha=$AFTER_SHA" >> "$GITHUB_OUTPUT"',
+        'commits/$default_branch',
+        'upstream.lock.json?ref=$current_sha',
+        'echo "source_sha=$current_sha" >> "$GITHUB_OUTPUT"',
         'SOURCE_SHA: ${{ steps.upstream.outputs.source_sha }}',
         '-f expected_source_sha="$SOURCE_SHA"',
     ):
@@ -488,6 +490,10 @@ def check_qualification_source_binding() -> None:
             required in upstream,
             f'upstream qualification dispatch missing source binding: {required}',
         )
+    require(
+        'AFTER_SHA:' not in upstream and 'source_sha=$AFTER_SHA' not in upstream,
+        'upstream qualification retry must not reuse the original push SHA',
+    )
 
     patch = (ROOT / '.github/workflows/patch-release.yml').read_text(encoding='utf-8')
     for required in (

@@ -28,10 +28,12 @@ Renovate tracks `microsoft/vscode` and updates the exact upstream tag and tag co
 eligible for auto-merge; ordinary dependency updates do not build or deploy Code - OSS.
 
 When a merged `master` commit actually changes the pinned Microsoft tag or commit, the upstream
-qualification trigger dispatches `Full build qualification` with all browsers,
-`release_mode=upstream`, and the exact merged commit as `expected_source_sha`. Qualification
-fails before planning if the mutable branch has advanced to a different `GITHUB_SHA`. Metadata-only
-lock changes do not trigger that expensive path.
+qualification trigger re-resolves current protected `master`, inspects the lock at that immutable
+commit, and dispatches `Full build qualification` with all browsers, `release_mode=upstream`, and
+that current commit as `expected_source_sha`. If `master` moves again before qualification starts,
+qualification fails before planning; re-running the upstream trigger resolves and binds the new
+current `master` instead of reusing the original push SHA. Metadata-only lock changes do not trigger
+that expensive path.
 
 After build, Chromium/Firefox/WebKit qualification, packaging and qualification attestations all
 succeed, the workflow creates exactly:
