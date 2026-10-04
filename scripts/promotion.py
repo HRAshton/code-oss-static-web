@@ -211,6 +211,131 @@ def build_identity(
     }
 
 
+def build_pages_deployment_identity(promotion_identity: Any) -> dict[str, Any]:
+    identity = _object(promotion_identity, 'promotion identity')
+    require(identity.get('schemaVersion') == 1, 'promotion identity schemaVersion must be 1')
+
+    release = _object(identity.get('release'), 'promotion identity release')
+    release_tag = _string(release.get('tag'), 'promotion identity release tag')
+    require(
+        RELEASE_TAG_RE.fullmatch(release_tag) is not None,
+        'promotion identity release tag is invalid',
+    )
+    release_commit = _string(release.get('commit'), 'promotion identity release commit')
+    require(
+        COMMIT_RE.fullmatch(release_commit) is not None,
+        'promotion identity release commit must be a full 40-character SHA',
+    )
+
+    artifact = _object(identity.get('artifact'), 'promotion identity artifact')
+    distribution = _object(
+        artifact.get('distribution'),
+        'promotion identity artifact distribution',
+    )
+    tree_sha256 = _string(
+        distribution.get('treeSha256'),
+        'promotion identity distribution tree digest',
+    )
+    require(
+        DIGEST_RE.fullmatch(tree_sha256) is not None,
+        'promotion identity distribution tree digest is invalid',
+    )
+
+    deployment_profile_value = artifact.get('deploymentProfile')
+    deployment_profile: dict[str, str] | None = None
+    if deployment_profile_value is not None:
+        profile = _object(
+            deployment_profile_value,
+            'promotion identity deployment profile',
+        )
+        profile_id = _string(profile.get('id'), 'promotion identity deployment profile id')
+        profile_digest = _string(
+            profile.get('configSha256'),
+            'promotion identity deployment profile digest',
+        )
+        require(
+            DIGEST_RE.fullmatch(profile_digest) is not None,
+            'promotion identity deployment profile digest is invalid',
+        )
+        deployment_profile = {
+            'id': profile_id,
+            'configSha256': profile_digest,
+        }
+
+    return {
+        'schemaVersion': 1,
+        'release': {
+            'tag': release_tag,
+            'commit': release_commit,
+        },
+        'distribution': {
+            'treeSha256': tree_sha256,
+        },
+        'deploymentProfile': deployment_profile,
+    }
+
+
+def validate_pages_deployment_identity(
+    value: Any,
+    label: str = 'Pages deployment identity',
+) -> dict[str, Any]:
+    identity = _object(value, label)
+    _exact_keys(
+        identity,
+        {'schemaVersion', 'release', 'distribution', 'deploymentProfile'},
+        label,
+    )
+    require(identity['schemaVersion'] == 1, f'{label} schemaVersion must be 1')
+
+    release = _object(identity['release'], f'{label} release')
+    _exact_keys(release, {'tag', 'commit'}, f'{label} release')
+    release_tag = _string(release['tag'], f'{label} release tag')
+    require(RELEASE_TAG_RE.fullmatch(release_tag) is not None, f'{label} release tag is invalid')
+    release_commit = _string(release['commit'], f'{label} release commit')
+    require(
+        COMMIT_RE.fullmatch(release_commit) is not None,
+        f'{label} release commit must be a full 40-character SHA',
+    )
+
+    distribution = _object(identity['distribution'], f'{label} distribution')
+    _exact_keys(distribution, {'treeSha256'}, f'{label} distribution')
+    tree_sha256 = _string(distribution['treeSha256'], f'{label} distribution tree digest')
+    require(
+        DIGEST_RE.fullmatch(tree_sha256) is not None,
+        f'{label} distribution tree digest is invalid',
+    )
+
+    deployment_profile_value = identity['deploymentProfile']
+    if deployment_profile_value is not None:
+        profile = _object(deployment_profile_value, f'{label} deployment profile')
+        _exact_keys(profile, {'id', 'configSha256'}, f'{label} deployment profile')
+        _string(profile['id'], f'{label} deployment profile id')
+        profile_digest = _string(
+            profile['configSha256'],
+            f'{label} deployment profile digest',
+        )
+        require(
+            DIGEST_RE.fullmatch(profile_digest) is not None,
+            f'{label} deployment profile digest is invalid',
+        )
+    return identity
+
+
+def verify_pages_deployment_identity(expected: Any, actual: Any) -> None:
+    expected_identity = validate_pages_deployment_identity(
+        expected,
+        'expected Pages deployment identity',
+    )
+    actual_identity = validate_pages_deployment_identity(
+        actual,
+        'live Pages deployment identity',
+    )
+    require(
+        actual_identity == expected_identity,
+        'live Pages deployment identity does not match expected promotion identity',
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description='Verify and record immutable promotion identity')
     parser.add_argument('--release-tag', required=True)

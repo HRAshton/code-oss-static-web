@@ -695,6 +695,10 @@ def check_promotion_boundaries() -> None:
         'gh attestation verify',
         'scripts/promotion.py',
         'promotion-identity.json',
+        'scripts/pages_identity.py write',
+        'pages-deployment-identity.json',
+        'cp .work/promotion/pages-deployment-identity.json dist/deployment-identity.json',
+        'identity-path: .work/promotion/pages-deployment-identity.json',
         '--argjson identity "$target_identity"',
         '--argjson releaseArtifact "$target_release_artifact"',
         '[.[] | select(.state == "success")] | length',
@@ -711,6 +715,22 @@ def check_promotion_boundaries() -> None:
     require(
         'pages/deployments/$GITHUB_SHA' in pages_action,
         'Pages publication must verify the exact Pages deployment created by the workflow',
+    )
+    for required in (
+        'identity-path:',
+        'DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}',
+        'deployment-identity.json?promotion_run=$GITHUB_RUN_ID',
+        'Cache-Control: no-cache',
+        'scripts/pages_identity.py verify',
+    ):
+        require(
+            required in pages_action,
+            f'Pages publication missing live release identity verification: {required}',
+        )
+    require(
+        pages_action.index('name: Deploy GitHub Pages')
+        < pages_action.index('name: Verify live Pages release identity'),
+        'Pages live release identity must be verified after deployment',
     )
     require(
         'deployments?environment=github-pages' not in pages_action,

@@ -201,12 +201,20 @@ jobs:
             echo "tree-sha256=$tree_sha256"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Bind Pages deployment identity
+        if: inputs.target == 'auto' || inputs.target == 'stable'
+        run: >-
+          python3 scripts/pages_identity.py write
+          --promotion-identity .work/promotion/promotion-identity.json
+          --output .work/promotion/pages-deployment-identity.json
+
       - name: Upload promotion input
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: promotion-input
           path: |
             .work/promotion/promotion-identity.json
+            .work/promotion/pages-deployment-identity.json
             .work/promotion/${{ steps.identity.outputs.archive-name }}
           if-no-files-found: error
           retention-days: 1
@@ -567,6 +575,7 @@ jobs:
           rm -rf dist
           mkdir -p dist
           tar -C dist -xzf ".work/promotion/$ARCHIVE_NAME"
+          cp .work/promotion/pages-deployment-identity.json dist/deployment-identity.json
 
       - name: Publish or verify stable GitHub Pages
         id: publication
@@ -576,6 +585,7 @@ jobs:
           repository: ${{ github.repository }}
           commit: ${{ needs.authorize.outputs.release-commit }}
           dist-path: dist
+          identity-path: .work/promotion/pages-deployment-identity.json
 
       - name: Mark stable successful
         env:
