@@ -143,3 +143,10 @@ pre-publication preparation jobs succeeded, and downloads retained `release-stat
 repair. It contains no upstream build, package, or attestation step. Promotion recovery is separate:
 it re-resolves durable GitHub Release assets, so stable rollback is not bounded by workflow-artifact
 retention and never reconstructs release content from source.
+
+Vulnerability admission reuses the independently generated final-distribution SBOM as input to pinned
+Grype. High/Critical and unknown-severity findings fail by default; exact package/vulnerability
+exceptions are owned, reasoned, and expiring. Automatic upstream releases also enforce the configured
+observation window measured from the pinned upstream GitHub release publication time. See
+[`docs/vulnerability-admission.md`](vulnerability-admission.md) and
+[`config/vulnerability-policy.json`](../config/vulnerability-policy.json).

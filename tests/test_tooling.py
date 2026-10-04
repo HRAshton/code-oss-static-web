@@ -117,9 +117,13 @@ class ToolingTests(unittest.TestCase):
                 fetch_upstream.verify_tag_binding(lock)
 
     def test_upstream_binding_is_validated_before_build(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertIn('name: Upstream tag-to-commit binding', workflow)
-        self.assertIn('python3 scripts/fetch_upstream.py --verify-tag-only', workflow)
+        ci = (ROOT / '.github/workflows/ci.yml').read_text()
+        qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+        self.assertIn('uses: ./.github/actions/tooling-checks', ci)
+        self.assertIn('uses: ./.github/actions/tooling-checks', qualify)
+        self.assertIn('name: Upstream tag-to-commit binding', tooling)
+        self.assertIn('python3 scripts/fetch_upstream.py --verify-tag-only', tooling)
 
         fetch_source = (ROOT / 'scripts/fetch_upstream.py').read_text()
         self.assertIn('verify_tag_binding(lock)', fetch_source)
@@ -371,12 +375,12 @@ class ToolingTests(unittest.TestCase):
             self.assertIn('permissions:\n      actions: write\n      contents: read', jobs)
 
     def test_reuse_ci_dependency_is_digest_pinned(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertNotIn("pip install --disable-pip-version-check 'reuse==", workflow)
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+        self.assertNotIn("pip install --disable-pip-version-check 'reuse==", tooling)
         self.assertIn(
             'docker://fsfe/reuse:6.2.0@sha256:'
             '85462a75c0f8efda09ddd190b92816b70e7662577c8427429e11e1b9f25a992e',
-            workflow,
+            tooling,
         )
 
     def test_repository_configuration_is_valid(self):
@@ -1196,29 +1200,40 @@ python-version: ${{ steps.versions.outputs.python }}
             )
 
     def test_ci_validates_pr_titles_and_avoids_redundant_branch_work(self):
-        workflow = (ROOT / '.github/workflows/ci.yml').read_text()
-        self.assertIn('name: Pull request title policy', workflow)
-        self.assertIn('types: [opened, synchronize, reopened, edited]', workflow)
-        self.assertIn('branches: [master, develop]', workflow)
-        self.assertIn('group: ci-', workflow)
-        self.assertIn('cancel-in-progress: true', workflow)
-        self.assertIn("github.event_name == 'pull_request'", workflow)
-        self.assertIn('github.event.pull_request.title', workflow)
-        self.assertIn('name: Pull request commit message policy', workflow)
-        self.assertIn('pulls/$PR_NUMBER/commits', workflow)
-        self.assertIn('@base64', workflow)
-        self.assertIn('encoded_messages="$(', workflow)
-        self.assertIn('No pull request commits returned by GitHub API', workflow)
-        self.assertIn('done <<< "$encoded_messages"', workflow)
-        self.assertNotIn('done < <(', workflow)
-        self.assertIn("github.event_name == 'push' &&", workflow)
-        self.assertIn("startsWith(github.ref, 'refs/heads/')", workflow)
+        ci = (ROOT / '.github/workflows/ci.yml').read_text()
+        qualify = (ROOT / '.github/workflows/qualify.yml').read_text()
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+
+        ci_triggers = ci.split('on:\n', 1)[1].split('\nconcurrency:', 1)[0]
+        qualify_triggers = qualify.split('on:\n', 1)[1].split('\nconcurrency:', 1)[0]
+        self.assertNotIn('pull_request:', ci_triggers)
+        self.assertIn('branches: [master, develop]', ci_triggers)
+        self.assertIn('pull_request:', qualify_triggers)
+        self.assertIn('types: [opened, synchronize, reopened, edited]', qualify_triggers)
+
+        self.assertIn('uses: ./.github/actions/tooling-checks', ci)
+        self.assertIn('uses: ./.github/actions/tooling-checks', qualify)
+        self.assertIn('group: ci-', ci)
+        self.assertIn('cancel-in-progress: true', ci)
+
+        self.assertIn('name: Pull request title policy', tooling)
+        self.assertIn("github.event_name == 'pull_request'", tooling)
+        self.assertIn('github.event.pull_request.title', tooling)
+        self.assertIn('name: Pull request commit message policy', tooling)
+        self.assertIn('pulls/$PR_NUMBER/commits', tooling)
+        self.assertIn('@base64', tooling)
+        self.assertIn('encoded_messages="$(', tooling)
+        self.assertIn('No pull request commits returned by GitHub API', tooling)
+        self.assertIn('done <<< "$encoded_messages"', tooling)
+        self.assertNotIn('done < <(', tooling)
+        self.assertIn("github.event_name == 'push' &&", tooling)
+        self.assertIn("startsWith(github.ref, 'refs/heads/')", tooling)
         self.assertIn(
             'github.ref_name != github.event.repository.default_branch',
-            workflow,
+            tooling,
         )
-        self.assertNotIn('style-normalization', workflow)
-        self.assertNotIn('Export normalization workspace', workflow)
+        self.assertNotIn('style-normalization', tooling)
+        self.assertNotIn('Export normalization workspace', tooling)
 
     def test_github_actions_yaml_checker_covers_actions_and_yaml_extensions(self):
         checker = (ROOT / 'scripts/check_workflow_yaml.rb').read_text()
