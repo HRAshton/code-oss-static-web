@@ -150,3 +150,12 @@ exceptions are owned, reasoned, and expiring. Automatic upstream releases also e
 observation window measured from the pinned upstream GitHub release publication time. See
 [`docs/vulnerability-admission.md`](vulnerability-admission.md) and
 [`config/vulnerability-policy.json`](../config/vulnerability-policy.json).
+
+## Recovery assurance exercise
+
+Operational recovery assurance is exercised through the controlled
+[release recovery game day](release-game-day.md). Its committed evidence record binds workflow runs,
+immutable artifact/OCI identities, durable Playwright-runtime digest, rollback target, and the
+canary/stable deployment identities before and after rollback. It also binds distinct executor and
+reviewer GitHub identities and the reviewer's durable GitHub sign-off permalink. The record is an
+index into GitHub's durable audit trail, not a substitute for workflow/release/deployment evidence.

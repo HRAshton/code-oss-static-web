@@ -151,3 +151,12 @@ After publication:
   commit, distribution tree digest, and deployment-profile digest.
 
 Do not publish or move a mutable `latest` tag as part of the immutable release contract.
+
+## Recovery game day
+
+For the controlled release/recovery exercise, follow
+[the release game-day runbook](release-game-day.md). The exercise deliberately distinguishes the
+short-lived retained-artifact publication-recovery path from durable rollback/promotion, which
+re-resolves immutable GitHub Release assets. Commit a validated game-day evidence record only after
+the real workflows and deployments have completed and a distinct reviewer has published the durable
+GitHub sign-off permalink recorded in that evidence.
