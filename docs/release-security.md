@@ -10,11 +10,43 @@ release to the project commit, pinned upstream commit, canonical Node/Python too
 distribution tree digest, patch/configuration/extension-lock inputs, runtime component metadata, and exact release-file
 digests and sizes.
 
-The SBOM is generated from the final static distribution plus runtime metadata captured from the
-pinned upstream package lock. The license inventory uses the same component references and must
-cover every SBOM component exactly once. Missing package declarations are represented explicitly as
-`NOASSERTION`; they are never silently omitted. Code-OSS's MIT license and upstream third-party
-notice file are copied alongside the candidate archives.
+The native SBOM is generated from the final static distribution plus runtime metadata captured from
+the pinned upstream package lock. Because that generator and its internal consistency checks share a
+discovery model, release qualification also scans the final <code>dist/</code> independently with
+Syft 1.48.0 through a full-commit-pinned Anchore action. The reviewed scanner configuration
+explicitly adds Syft's `javascript-package-cataloger` for directory scans so shipped npm and
+extension package manifests are independently discoverable. Packaging normalizes Syft's package findings
+into <code>independent-component-inventory.json</code> and compares them with the native SBOM in
+<code>sbom-comparison.json</code>. Package identity and installed location must agree; unexplained
+components missing from either side fail closed.
+
+Expected representation differences are not hidden in code. They live in
+<code>security/sbom-comparison-policy.json</code>, are JSON-schema validated, and must be used by the
+comparison or packaging fails as a stale exception. Current exceptions are exact purl+path entries
+for optimized runtime package directories whose final release bytes omit <code>package.json</code>;
+the native inventory still binds those components to the pinned upstream package lock. The root
+<code>Code - OSS</code> package is normalized directly to the native upstream application record.
+Syft file components are excluded because they are file evidence rather than software packages,
+while extensions are normalized to Syft's npm-style representation and compared rather than
+blanket-exempted. Nested extension language-server package manifests discovered by Syft are also
+included by the native generator.
+
+Independent scan evidence is never reused across distribution changes. `scripts/build.py` deletes
+any prior independent-SBOM output before regenerating `dist/`, and `package.sh` always performs a
+fresh Syft scan of the current `dist/` into a temporary file and atomically replaces the scan used
+for comparison. A stale `.work/independent-sbom.cdx.json` therefore cannot satisfy packaging after
+the distribution changes.
+
+The license inventory uses the native SBOM component references and must cover every native component
+exactly once. Missing package declarations are represented explicitly as <code>NOASSERTION</code>;
+they are never silently omitted. Code-OSS's MIT license and upstream third-party notice file are
+copied alongside the candidate archives. The normalized independent inventory and comparison report
+are release files covered by <code>SHA256SUMS</code>, the artifact manifest, and provenance
+attestation.
+
+There is no repository vulnerability-admission severity gate yet. If one is added, repository policy
+requires it to consume the same raw Syft SBOM produced by the independent final-distribution scan
+rather than rescanning from the native SBOM, preserving discovery independence.
 
 After browser qualification and packaging, an isolated OIDC job uses the SHA-pinned
 `actions/attest` action to create:

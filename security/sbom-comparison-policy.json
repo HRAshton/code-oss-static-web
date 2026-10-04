@@ -1,0 +1,243 @@
+{
+  "schemaVersion": 1,
+  "scanner": {
+    "name": "syft",
+    "version": "1.48.0"
+  },
+  "exceptions": [
+    {
+      "id": "manifestless-microsoft-1ds-core-js",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40microsoft/1ds-core-js@3.2.13",
+        "path": "node_modules/@microsoft/1ds-core-js"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-microsoft-1ds-post-js",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40microsoft/1ds-post-js@3.2.13",
+        "path": "node_modules/@microsoft/1ds-post-js"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-microsoft-applicationinsights-core-js",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40microsoft/applicationinsights-core-js@2.8.15",
+        "path": "node_modules/@microsoft/applicationinsights-core-js"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-microsoft-applicationinsights-shims",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40microsoft/applicationinsights-shims@2.0.2",
+        "path": "node_modules/@microsoft/applicationinsights-shims"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-microsoft-dynamicproto-js",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40microsoft/dynamicproto-js@1.1.9",
+        "path": "node_modules/@microsoft/dynamicproto-js"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-vscode-codicons",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40vscode/codicons@0.0.46-40",
+        "path": "node_modules/@vscode/codicons"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-vscode-iconv-lite-umd",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40vscode/iconv-lite-umd@0.7.1",
+        "path": "node_modules/@vscode/iconv-lite-umd"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-vscode-tree-sitter-wasm",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40vscode/tree-sitter-wasm@0.3.1",
+        "path": "node_modules/@vscode/tree-sitter-wasm"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-vscode-vscode-languagedetection",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40vscode/vscode-languagedetection@1.0.23",
+        "path": "node_modules/@vscode/vscode-languagedetection"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-clipboard",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-clipboard@0.3.0-beta.303",
+        "path": "node_modules/@xterm/addon-clipboard"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-image",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-image@0.10.0-beta.301",
+        "path": "node_modules/@xterm/addon-image"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-ligatures",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-ligatures@0.11.0-beta.301",
+        "path": "node_modules/@xterm/addon-ligatures"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-progress",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-progress@0.3.0-beta.301",
+        "path": "node_modules/@xterm/addon-progress"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-search",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-search@0.17.0-beta.301",
+        "path": "node_modules/@xterm/addon-search"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-serialize",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-serialize@0.15.0-beta.301",
+        "path": "node_modules/@xterm/addon-serialize"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-unicode11",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-unicode11@0.10.0-beta.301",
+        "path": "node_modules/@xterm/addon-unicode11"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-addon-webgl",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/addon-webgl@0.20.0-beta.300",
+        "path": "node_modules/@xterm/addon-webgl"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-xterm-xterm",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/%40xterm/xterm@6.1.0-beta.304",
+        "path": "node_modules/@xterm/xterm"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-commander",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/commander@9.5.0",
+        "path": "node_modules/commander"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-jschardet",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/jschardet@3.1.4",
+        "path": "node_modules/jschardet"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-katex",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/katex@0.16.22",
+        "path": "node_modules/katex"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-lru-cache",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/lru-cache@4.1.5",
+        "path": "node_modules/lru-cache"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-opentype.js",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/opentype.js@2.0.0",
+        "path": "node_modules/opentype.js"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-tas-client",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/tas-client@0.4.6",
+        "path": "node_modules/tas-client"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-vscode-oniguruma",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/vscode-oniguruma@1.7.0",
+        "path": "node_modules/vscode-oniguruma"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    },
+    {
+      "id": "manifestless-vscode-textmate",
+      "direction": "missingFromIndependent",
+      "match": {
+        "purl": "pkg:npm/vscode-textmate@9.3.2",
+        "path": "node_modules/vscode-textmate"
+      },
+      "reason": "The optimized static distribution ships this runtime package directory without package.json; Syft's JavaScript package cataloger cannot identify its name/version from the final filesystem. The native inventory remains bound to the pinned upstream package lock."
+    }
+  ]
+}

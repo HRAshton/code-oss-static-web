@@ -36,7 +36,10 @@ The project intentionally keeps its external build interface small:
 - `./build.sh --reuse-upstream-build` reuses the already-built immutable upstream web bundle and
   regenerates only the project-owned static distribution.
 - `./package.sh` packages the current `dist/` into deterministic release archives and metadata
-  under `artifacts/`.
+  under `artifacts/`. Packaging also requires the Syft version recorded in
+  `security/sbom-comparison-policy.json` and uses `security/syft.yaml` to enable independent
+  JavaScript package discovery. CI supplies the pinned scanner automatically; local packaging uses a
+  matching `syft` executable from `PATH`.
 - `python3 scripts/serve_static.py --directory dist --base-path <path> --port <port>` serves the
   generated distribution for local browser testing.
 

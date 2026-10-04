@@ -777,6 +777,149 @@ def check_promotion_boundaries() -> None:
         require(required in release, f'release workflow missing automatic promotion: {required}')
 
 
+def check_independent_sbom_policy() -> None:
+    policy_path = ROOT / 'security/sbom-comparison-policy.json'
+    require(policy_path.is_file(), 'independent SBOM comparison policy missing')
+    policy = load_json(policy_path)
+    require(policy.get('schemaVersion') == 1, 'independent SBOM policy schema must be 1')
+    scanner_value = policy.get('scanner')
+    require(isinstance(scanner_value, dict), 'independent SBOM scanner policy missing')
+    scanner = cast(dict[str, Any], scanner_value)
+    require(scanner.get('name') == 'syft', 'independent SBOM scanner must be Syft')
+    version_value = scanner.get('version')
+    require(
+        isinstance(version_value, str) and bool(version_value),
+        'independent Syft version missing',
+    )
+    version = cast(str, version_value)
+
+    exceptions_value = policy.get('exceptions')
+    require(isinstance(exceptions_value, list), 'independent SBOM exceptions must be an array')
+    exceptions = cast(list[Any], exceptions_value)
+    for exception_value in exceptions:
+        require(
+            isinstance(exception_value, dict),
+            'independent SBOM exception must be an object',
+        )
+        exception = cast(dict[str, Any], exception_value)
+        match_value = exception.get('match')
+        require(
+            isinstance(match_value, dict),
+            'independent SBOM exception match must be an object',
+        )
+        match = cast(dict[str, Any], match_value)
+        require(
+            isinstance(match.get('purl'), str)
+            and bool(match.get('purl'))
+            and isinstance(match.get('path'), str)
+            and bool(match.get('path')),
+            'independent SBOM exceptions must match exact purl and artifact path',
+        )
+
+    config_path = ROOT / 'security/syft.yaml'
+    require(config_path.is_file(), 'independent Syft scanner config missing')
+    config = config_path.read_text(encoding='utf-8')
+    require(
+        'select-catalogers:' in config and '- +javascript-package-cataloger' in config,
+        'independent Syft scanner must enable the JavaScript package cataloger',
+    )
+
+    action_path = ROOT / '.github/actions/independent-sbom/action.yml'
+    require(action_path.is_file(), 'independent SBOM action missing')
+    action = action_path.read_text(encoding='utf-8')
+    for required in (
+        'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+        f'syft-version: v{version}',
+        'config: security/syft.yaml',
+        'format: cyclonedx-json',
+        "dependency-snapshot: 'false'",
+        "upload-artifact: 'false'",
+        "upload-release-assets: 'false'",
+    ):
+        require(required in action, f'independent SBOM action missing invariant: {required}')
+
+    package_sh = (ROOT / 'package.sh').read_text(encoding='utf-8')
+    require(
+        '-c "$ROOT/security/syft.yaml"' in package_sh,
+        'local packaging must use the reviewed independent Syft scanner config',
+    )
+
+    for workflow_name in ('qualify.yml', 'release.yml'):
+        workflow_path = ROOT / '.github/workflows' / workflow_name
+        text = workflow_path.read_text(encoding='utf-8')
+        jobs = dict(workflow_job_blocks(text))
+        package = jobs.get('package')
+        require(package is not None, f'{workflow_name}: package job missing')
+        assert package is not None
+        require(
+            publication_write_permissions(package) == set(),
+            f'{workflow_name}: independent SBOM package job must remain read-only',
+        )
+        for required in (
+            'uses: ./.github/actions/independent-sbom',
+            'path: dist',
+            'output-file: .work/independent-sbom.cdx.json',
+            'run: ./package.sh',
+        ):
+            require(required in package, f'{workflow_name}: package job missing {required}')
+
+    qualify = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
+    qualify_jobs = dict(workflow_job_blocks(qualify))
+    gate = qualify_jobs.get('artifact-gate')
+    require(gate is not None, 'qualification artifact gate missing')
+    assert gate is not None
+    require(
+        'package' in workflow_job_needs(gate),
+        'qualification artifact gate must require independent SBOM packaging evidence',
+    )
+    require(
+        'PACKAGE_RESULT: ${{ needs.package.result }}' in gate
+        and '"$PACKAGE_RESULT" != success' in gate,
+        'qualification artifact gate must fail when independent SBOM packaging fails',
+    )
+    attest = qualify_jobs.get('attest')
+    require(attest is not None, 'qualification attestation job missing')
+    assert attest is not None
+    require(
+        "if: github.event_name != 'pull_request'" in attest,
+        'pull-request independent SBOM validation must not receive attestation authority',
+    )
+
+    package_release = (ROOT / 'scripts/package_release.py').read_text(encoding='utf-8')
+    for required in (
+        "WORK / 'independent-sbom.cdx.json'",
+        'compare_sbom_inventory.compare_files(',
+        "'independent-component-inventory.json'",
+        "'sbom-comparison.json'",
+        "'sbomComparisonPolicy': input_digest(",
+        "'sbomScannerConfig': input_digest(",
+    ):
+        require(
+            required in package_release,
+            f'release packaging missing SBOM cross-check: {required}',
+        )
+
+    verifier = (ROOT / 'scripts/verify_release.py').read_text(encoding='utf-8')
+    for required in (
+        'verify_independent_sbom_evidence(directory)',
+        "'independent-component-inventory.json'",
+        "'sbom-comparison.json'",
+        "comparison.get('status') == 'pass'",
+    ):
+        require(required in verifier, f'release verification missing SBOM cross-check: {required}')
+
+    for workflow in workflow_definition_paths():
+        text = workflow.read_text(encoding='utf-8')
+        if 'anchore/scan-action@' in text:
+            require(
+                'sbom: .work/independent-sbom.cdx.json' in text,
+                (
+                    f'{workflow.relative_to(ROOT)}: vulnerability admission must reuse '
+                    'the independent Syft SBOM'
+                ),
+            )
+
+
 def check_release_integrity_policy() -> None:
     workflow_path = ROOT / '.github/workflows/release.yml'
     workflow = workflow_path.read_text(encoding='utf-8')
@@ -992,6 +1135,7 @@ def main() -> None:
     check_qualification_release_retry_policy()
     check_recovery_publication_boundaries()
     check_promotion_boundaries()
+    check_independent_sbom_policy()
     check_release_integrity_policy()
     print('repository policy: ok')
 

@@ -14,6 +14,7 @@ select = ["E4", "E7", "E9", "F", "I", "B", "UP", "RUF"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
+"tests/test_independent_sbom.py" = ["E402"] # imports follow sys.path bootstrap for scripts/
 "tests/test_promotion.py" = ["E402"] # imports follow sys.path bootstrap for scripts/
 "tests/test_tooling.py" = ["E402"] # imports follow sys.path bootstrap for scripts/
 

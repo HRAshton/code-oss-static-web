@@ -155,6 +155,35 @@ Human intervention is required only when the automated checks cannot prove a saf
 explicit rollback, or for a deliberate promotion-policy change. Routine Microsoft upstream release
 promotion remains automatic.
 
+## Independent SBOM cross-check failures
+
+Release-intent qualification and the independent Release workflow both scan the extracted final
+distribution with pinned Syft before `package.sh` accepts a candidate. Successful candidates contain
+`independent-component-inventory.json` and `sbom-comparison.json` alongside the native
+`sbom.cdx.json`.
+
+If packaging reports a component missing from the native SBOM, treat it as a release blocker: either
+fix native component discovery or add a narrowly matched exception to
+`security/sbom-comparison-policy.json` with a reviewable reason. Do not add broad path/ecosystem
+ignores. Components missing from Syft are also blockers unless the representation difference is
+explicitly documented. Unused exceptions fail packaging, so remove an exception when the scanner and
+native model converge.
+
+The baseline exceptions are exact purl+path entries for runtime package directories whose optimized
+release form omits `package.json`; Syft cannot recover their package identity from those final bytes.
+They remain represented by the native inventory using the pinned upstream package lock. Any version
+or path change makes an exception stale and blocks packaging until reviewed. The root
+`Code - OSS` package is normalized to the native upstream application identity rather than
+excepted. Syft file records are not software components and are ignored by the comparison. Extensions
+are not ignored: the comparison maps their native `vscode-extension:` identity to Syft's npm package
+identity at the installed extension path, and nested extension language-server manifests are included
+in the native component inventory.
+
+For local `./package.sh`, install the Syft version recorded in
+`security/sbom-comparison-policy.json`. CI installs the reviewed version automatically. A scanner
+version change is a security-policy change and must update the policy and regression baseline
+together.
+
 ## Qualification source binding
 
 Automated upstream and patch release dispatches first resolve the exact project commit they inspect,

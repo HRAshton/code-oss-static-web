@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import check_release_tag
+import compare_sbom_inventory
 import generate_license_inventory
 import generate_runtime_metadata as runtime_metadata_generator
 import generate_sbom
@@ -219,6 +220,8 @@ def build_artifact_manifest(
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
             'deploymentProfileMetadata': input_digest(deployment_profile_path),
             'runtimeComponents': input_digest(runtime_metadata),
+            'sbomComparisonPolicy': input_digest(ROOT / 'security/sbom-comparison-policy.json'),
+            'sbomScannerConfig': input_digest(ROOT / 'security/syft.yaml'),
         },
         'patches': patch_inventory(),
         'artifacts': [
@@ -282,6 +285,21 @@ def main() -> None:
         distribution_tree_sha256=distribution_tree_sha256,
     )
 
+    independent_sbom_path = WORK / 'independent-sbom.cdx.json'
+    require(
+        independent_sbom_path.is_file(),
+        'independent Syft SBOM missing; run the independent final-distribution scan first',
+    )
+    independent_inventory_path = ARTIFACTS / 'independent-component-inventory.json'
+    sbom_comparison_path = ARTIFACTS / 'sbom-comparison.json'
+    compare_sbom_inventory.compare_files(
+        sbom_path,
+        independent_sbom_path,
+        ROOT / 'security/sbom-comparison-policy.json',
+        independent_inventory_path,
+        sbom_comparison_path,
+    )
+
     license_inventory_path = ARTIFACTS / 'license-inventory.json'
     generate_license_inventory.write_license_inventory(
         license_inventory_path,
@@ -324,6 +342,8 @@ def main() -> None:
                 tar_path,
                 zip_path,
                 sbom_path,
+                independent_inventory_path,
+                sbom_comparison_path,
                 license_inventory_path,
                 project_license_path,
                 upstream_license_path,

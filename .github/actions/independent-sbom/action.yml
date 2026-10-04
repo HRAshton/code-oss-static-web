@@ -1,0 +1,23 @@
+name: Generate independent SBOM
+description: Scan the final static distribution with pinned Syft for independent composition evidence
+inputs:
+  path:
+    description: Final distribution path to scan
+    required: true
+  output-file:
+    description: CycloneDX JSON output path
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Scan final distribution with Syft
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
+      with:
+        path: ${{ inputs.path }}
+        format: cyclonedx-json
+        output-file: ${{ inputs.output-file }}
+        syft-version: v1.48.0
+        config: security/syft.yaml
+        dependency-snapshot: 'false'
+        upload-artifact: 'false'
+        upload-release-assets: 'false'
