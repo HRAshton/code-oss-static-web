@@ -161,8 +161,8 @@ def check_browser_qualification_topology() -> None:
     )
     require(release.count(shared_action) == 1, 'release must use one shared browser action')
     require(
-        promote.count(shared_action) == 1,
-        'promotion must use browser action for live Pages qualification',
+        promote.count(shared_action) == 2,
+        'promotion must use browser action for live canary and stable Pages qualification',
     )
     require('secondary-browsers:' not in qualify, 'duplicate secondary browser job is forbidden')
     require('browsers=\'["chromium"]\'' in qualify, 'pull requests must plan Chromium-only smoke')
@@ -695,14 +695,22 @@ def check_promotion_boundaries() -> None:
     require(canary is not None, 'promotion workflow must have a canary job')
     assert canary is not None
     require(
-        'authorize' in workflow_job_needs(canary),
-        'canary promotion must depend on authorization',
+        {'authorize', 'pages-release-gate'}.issubset(workflow_job_needs(canary)),
+        'canary promotion must depend on authorization and release gate',
+    )
+    require(
+        workflow_job_environment(canary) == 'github-pages',
+        'canary promotion must deploy through github-pages environment',
     )
     require('deployments: write' in canary, 'canary promotion must record GitHub deployment state')
+    require('pages: write' in canary, 'canary promotion must own Pages deployment')
     require(
-        publication_write_permissions(canary).intersection({'contents', 'packages', 'pages'})
-        == set(),
-        'canary promotion must not publish immutable release channels or Pages',
+        publication_write_permissions(canary).intersection({'contents', 'packages'}) == set(),
+        'canary promotion must not publish immutable release channels',
+    )
+    require(
+        'uses: ./.github/actions/publish-pages' in canary,
+        'canary promotion must use the shared Pages publication action',
     )
 
     check_pages_release_gate(workflow, jobs, 'authorize')
@@ -745,6 +753,10 @@ def check_promotion_boundaries() -> None:
         'automatic promotion refuses to move stable backward',
         'previous stable deployment history',
         'environment=github-pages&ref=$RELEASE_COMMIT',
+        'deployments?environment=github-pages&per_page=100',
+        'legacy-pages-identity.json',
+        'for asset in artifact-manifest.json "$stable_archive"',
+        'pages_identity.py verify',
         'promotion-status:',
     ):
         require(required in text, f'promotion workflow missing invariant: {required}')
@@ -756,8 +768,9 @@ def check_promotion_boundaries() -> None:
     )
     for required in (
         'identity-path:',
+        'identity-url-path:',
         'DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}',
-        'deployment-identity.json?promotion_run=$GITHUB_RUN_ID',
+        '${identity_path#/}?promotion_run=$GITHUB_RUN_ID',
         'Cache-Control: no-cache',
         'scripts/pages_identity.py verify',
     ):

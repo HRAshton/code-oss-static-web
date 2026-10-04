@@ -339,6 +339,16 @@ class PromotionWorkflowTests(unittest.TestCase):
             'identity-path: .work/promotion/pages-deployment-identity.json',
             workflow,
         )
+        self.assertIn('identity-url-path: __canary/${{ inputs.release_tag }}', workflow)
+        self.assertIn('needs: [authorize, pages-release-gate]', workflow)
+        self.assertIn('Build real canary Pages bundle', workflow)
+        self.assertIn('deployments?environment=github-pages&per_page=100', workflow)
+        self.assertIn('legacy-pages-identity.json', workflow)
+        self.assertIn('pages_identity.py verify', workflow)
+        self.assertIn('legacy Pages release tag no longer resolves to deployed commit', workflow)
+        self.assertNotIn('deployment_commit="$(jq -r', workflow)
+        self.assertIn('for asset in artifact-manifest.json "$stable_archive"', workflow)
+        self.assertIn('Browser synthetic against live canary', workflow)
         self.assertIn('commit: ${{ needs.authorize.outputs.release-commit }}', workflow)
 
         self.assertNotIn('uses: ./.github/actions/publish-pages', release)
@@ -350,7 +360,8 @@ class PromotionWorkflowTests(unittest.TestCase):
         self.assertNotIn('uses: ./.github/actions/publish-pages', recovery)
         self.assertIn('pages/deployments/$GITHUB_SHA', pages_action)
         self.assertIn('DEPLOYED_URL: ${{ steps.deployment.outputs.page_url }}', pages_action)
-        self.assertIn('deployment-identity.json?promotion_run=$GITHUB_RUN_ID', pages_action)
+        self.assertIn('identity-url-path:', pages_action)
+        self.assertIn('${identity_path#/}?promotion_run=$GITHUB_RUN_ID', pages_action)
         self.assertIn('Cache-Control: no-cache', pages_action)
         self.assertIn('scripts/pages_identity.py verify', pages_action)
         self.assertNotIn('deployments?environment=github-pages', pages_action)
