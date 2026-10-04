@@ -18,6 +18,7 @@ on:
       - '.github/actions/browser-qualification/action.yml'
       - '.github/actions/setup-toolchain/action.yml'
       - '.github/toolchain-versions.json'
+      - '.github/builder-image.json'
   pull_request:
     types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
@@ -328,9 +329,17 @@ jobs:
        needs.browser-plan.outputs.level == 'full') &&
       needs.browser-plan.outputs.retry_tag == ''
     runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
     permissions:
       contents: read
     steps:
+      - name: Bootstrap pinned builder packages
+        run: >-
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          ca-certificates curl git jq tar unzip xz-utils
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -346,7 +355,7 @@ jobs:
           path: |
             .work/vscode-web
             .work/playwright-runtime
-          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/deployment_profile.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/**', 'patches/**') }}
+          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('.github/builder-image.json', '.github/workflows/qualify.yml', 'upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/deployment_profile.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/**', 'patches/**') }}
 
       - name: Restore npm download cache
         if: steps.upstream-cache.outputs.cache-hit != 'true'
@@ -360,9 +369,9 @@ jobs:
       - name: Install Code-OSS web build prerequisites
         if: steps.upstream-cache.outputs.cache-hit != 'true'
         run: >-
-          sudo apt-get update &&
-          sudo apt-get install -y --no-install-recommends
-          pkg-config libx11-dev libxkbfile-dev libkrb5-dev
+          apt-get update &&
+          apt-get install -y --no-install-recommends
+          build-essential pkg-config libx11-dev libxkbfile-dev libkrb5-dev
 
       - name: Build static Code-OSS candidate
         env:
@@ -813,14 +822,17 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           toolchain="$(jq -c '{node, python}' .github/toolchain-versions.json)"
+          builder="$(jq -c '{image, digest, platform}' .github/builder-image.json)"
           manifest=.work/qualified-candidate/artifact-manifest.json
           jq -e \
             --arg commit "$GITHUB_SHA" \
             --argjson toolchain "$toolchain" \
+            --argjson builder "$builder" \
             '
               .schemaVersion == 1 and
               .project.commit == $commit and
-              .toolchain == $toolchain
+              .toolchain == $toolchain and
+              .builder == $builder
             ' \
             "$manifest" >/dev/null
 
@@ -862,6 +874,7 @@ jobs:
             --arg releaseMode "$mode" \
             --argjson workflowRunId "$GITHUB_RUN_ID" \
             --argjson toolchain "$toolchain" \
+            --argjson builder "$builder" \
             --argjson distribution "$distribution" \
             '{
               commit: $commit,
@@ -870,6 +883,7 @@ jobs:
               releaseMode: $releaseMode,
               workflowRunId: $workflowRunId,
               toolchain: $toolchain,
+              builder: $builder,
               distribution: $distribution
             }' \
             > .work/release-qualification/release-qualification.json

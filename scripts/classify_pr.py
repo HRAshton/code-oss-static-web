@@ -40,6 +40,7 @@ RELEASE_ONLY_PREFIXES = ('.github/actions/release-metadata-qualification/',)
 
 ARTIFACT_FILES = {
     '.dockerignore',
+    '.github/builder-image.json',
     '.github/actions/independent-sbom/action.yml',
     '.github/actions/publish-oci/action.yml',
     '.github/toolchain-versions.json',
@@ -69,6 +70,7 @@ ARTIFACT_PREFIXES = (
 )
 
 FULL_FILES = {
+    '.github/builder-image.json',
     '.github/toolchain-versions.json',
     '.github/workflows/qualify.yml',
     '.github/workflows/release.yml',
@@ -76,6 +78,7 @@ FULL_FILES = {
     'scripts/add_test_extension.py',
     'scripts/apply_patches.py',
     'scripts/build.py',
+    'scripts/builder_environment.py',
     'scripts/classify_pr.py',
     'scripts/deployment_profile.py',
     'scripts/fetch_upstream.py',
