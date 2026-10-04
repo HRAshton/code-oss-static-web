@@ -344,9 +344,10 @@ class ToolingTests(unittest.TestCase):
 
         self.assertIn("needs.browser-plan.outputs.level == 'artifact' ||", qualify)
         self.assertIn(
-            'needs: [browser-plan, release-metadata, build, browser, package]',
+            'needs: [browser-plan, release-metadata, build, browser, production-serving, package]',
             qualify,
         )
+        self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', qualify)
         self.assertIn('PACKAGE_RESULT: ${{ needs.package.result }}', qualify)
         self.assertIn('"$PACKAGE_RESULT" != success', qualify)
 
@@ -1395,6 +1396,8 @@ python-version: ${{ steps.versions.outputs.python }}
 
         runner = (ROOT / 'scripts/run_e2e.py').read_text()
         self.assertIn('playwright-runtime', runner)
+        self.assertIn('--base-url', runner)
+        self.assertIn('CODE_OSS_STATIC_WEB_EXTERNAL_BASE_URL', runner)
         exporter = (ROOT / 'scripts/export_playwright_runtime.py').read_text()
         self.assertIn("Path('@playwright/test')", exporter)
 
@@ -1404,16 +1407,43 @@ python-version: ${{ steps.versions.outputs.python }}
 
         qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
         release = (ROOT / '.github/workflows/release.yml').read_text()
+        promote = (ROOT / '.github/workflows/promote.yml').read_text()
         self.assertEqual(
             qualification.count('uses: ./.github/actions/browser-qualification'),
-            1,
+            2,
         )
         self.assertEqual(release.count('uses: ./.github/actions/browser-qualification'), 1)
+        self.assertEqual(promote.count('uses: ./.github/actions/browser-qualification'), 1)
         self.assertIn('browser: [chromium]', release)
-        for workflow in (qualification, release):
+        self.assertIn('name: OCI production-serving qualification', qualification)
+        self.assertIn('Browser smoke against live Pages deployment', promote)
+        for workflow in (qualification, release, promote):
             self.assertNotIn('scripts/install_playwright_browser.py', workflow)
             self.assertNotIn('scripts/run_e2e.py', workflow)
             self.assertNotIn('scripts/add_test_extension.py', workflow)
+
+    def test_production_serving_qualification_is_release_gating(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text()
+        promotion = (ROOT / '.github/workflows/promote.yml').read_text()
+        release = (ROOT / '.github/workflows/release.yml').read_text()
+        nginx = (ROOT / 'deploy/nginx.conf').read_text()
+
+        self.assertIn('name: OCI production-serving qualification', qualification)
+        self.assertIn('docker build --tag code-oss-static-web:qualification', qualification)
+        self.assertIn('scripts/check_hosting_contract.py', qualification)
+        self.assertIn('scope: serving', qualification)
+        self.assertIn('SERVING_RESULT: ${{ needs.production-serving.result }}', qualification)
+        self.assertIn('"$SERVING_RESULT" != success', qualification)
+        self.assertIn('playwright-runtime.tar.gz', promotion)
+        self.assertIn('Browser smoke against live Pages deployment', promotion)
+        self.assertNotIn('playwright-runtime-run-id:', promotion)
+        self.assertNotIn('actions/runs/$run_id/artifacts', promotion)
+        self.assertIn('CODE_OSS_STATIC_WEB_PLAYWRIGHT_RUNTIME', release)
+        self.assertIn('retention-days: 7', release)
+        self.assertIn('Cross-Origin-Opener-Policy "same-origin"', nginx)
+        self.assertIn('Cache-Control "no-cache"', nginx)
+        self.assertIn('default_type application/javascript;', nginx)
+        self.assertIn('try_files $uri $uri/ =404;', nginx)
 
     def test_release_workflow_uses_clean_qualified_artifact(self):
         workflow_path = ROOT / '.github/workflows/release.yml'

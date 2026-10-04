@@ -156,3 +156,26 @@ not support claims for branded or managed enterprise deployments. Chrome Enterpr
 Enterprise, and Firefox ESR support requires the additional branded deployment qualification
 defined in [Compatibility](../COMPATIBILITY.md); Playwright WebKit does not establish Safari
 support.
+
+
+## Production-serving qualification
+
+The local Python server remains a qualification harness rather than the production hosting contract.
+It intentionally sends `Cache-Control: no-store` so the performance baseline measures warm browser
+state without HTTP response-cache reuse. It also emits COOP, COEP, and CORP headers as a strict local
+test boundary.
+
+Artifact and release-intent qualification additionally build the real `deploy/Dockerfile`, start the
+Nginx container, assert its HTTP headers and missing-asset 404 behavior, and run the zero-retry
+Chromium boot gate against the container URL. Nginx explicitly serves `Cache-Control: no-cache`, COOP `same-origin`, COEP
+`require-corp`, CORP `same-origin`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: no-referrer`, and the repository Permissions-Policy.
+
+Stable promotion verifies GitHub Pages deployment identity first, then runs the same packaged-workbench
+Chromium boot test against the live Pages URL before marking stable successful. The locked Playwright
+runtime used for that gate is published as a checksummed and attested immutable GitHub Release asset,
+so retries and rollbacks do not depend on Actions artifact retention. Legacy releases that predate
+that runtime asset remain rollback-eligible only when prior successful stable deployment history
+already proves the release was stable. GitHub Pages response headers and CDN cache policy are
+platform-controlled, so the repository asserts successful HTML serving and browser boot without
+claiming control over exact Pages cache/security headers.

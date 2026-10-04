@@ -11,6 +11,7 @@ on:
       - 'config/**'
       - 'patches/**'
       - 'extensions/**'
+      - 'deploy/**'
       - 'tests/e2e/**'
       - 'tests/fixtures/**'
       - '.github/workflows/qualify.yml'
@@ -466,6 +467,74 @@ jobs:
           retention-days: 2
           compression-level: 6
 
+  production-serving:
+    name: OCI production-serving qualification
+    needs: [build, browser-plan]
+    if: >-
+      (needs.browser-plan.outputs.level == 'artifact' ||
+       needs.browser-plan.outputs.level == 'full') &&
+      needs.browser-plan.outputs.retry_tag == ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical toolchain
+        uses: ./.github/actions/setup-toolchain
+
+      - name: Download canonical static distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: static-dist
+          path: .work/static-dist
+
+      - name: Extract canonical static distribution
+        shell: bash
+        run: |
+          rm -rf dist
+          mkdir -p dist
+          tar -C dist -xf .work/static-dist/static-dist.tar
+
+      - name: Build and start OCI image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --tag code-oss-static-web:qualification --file deploy/Dockerfile .
+          docker run --detach --rm \
+            --name code-oss-static-web-qualification \
+            -p 127.0.0.1:8080:8080 \
+            code-oss-static-web:qualification
+          for _ in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8080/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          docker logs code-oss-static-web-qualification >&2
+          exit 1
+
+      - name: Assert OCI HTTP contract
+        run: >-
+          python3 scripts/check_hosting_contract.py
+          --target oci
+          --url http://127.0.0.1:8080/
+
+      - name: Browser smoke against OCI image
+        uses: ./.github/actions/browser-qualification
+        with:
+          browser: chromium
+          playwright-runtime-artifact: playwright-runtime
+          scope: serving
+          base-url: http://127.0.0.1:8080/
+          diagnostics-artifact: oci-serving-diagnostics
+
+      - name: Stop OCI qualification container
+        if: always()
+        run: docker rm --force code-oss-static-web-qualification >/dev/null 2>&1 || true
+
   release-metadata:
     name: Release metadata qualification
     needs: browser-plan
@@ -489,7 +558,7 @@ jobs:
   artifact-gate:
     name: Artifact qualification gate
     if: ${{ always() && github.event_name == 'pull_request' }}
-    needs: [browser-plan, release-metadata, build, browser, package]
+    needs: [browser-plan, release-metadata, build, browser, production-serving, package]
     runs-on: ubuntu-latest
     permissions: {}
     steps:
@@ -500,6 +569,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           RELEASE_METADATA_RESULT: ${{ needs.release-metadata.result }}
           BROWSER_RESULT: ${{ needs.browser.result }}
+          SERVING_RESULT: ${{ needs.production-serving.result }}
           PACKAGE_RESULT: ${{ needs.package.result }}
         shell: bash
         run: |
@@ -522,8 +592,9 @@ jobs:
             artifact|full)
               if [[ "$BUILD_RESULT" != success ||
                     "$BROWSER_RESULT" != success ||
+                    "$SERVING_RESULT" != success ||
                     "$PACKAGE_RESULT" != success ]]; then
-                echo "required artifact evidence missing: build=$BUILD_RESULT browser=$BROWSER_RESULT package=$PACKAGE_RESULT" >&2
+                echo "required artifact evidence missing: build=$BUILD_RESULT browser=$BROWSER_RESULT serving=$SERVING_RESULT package=$PACKAGE_RESULT" >&2
                 exit 1
               fi
               ;;
@@ -534,7 +605,7 @@ jobs:
           esac
 
   package:
-    needs: [browser-plan, browser]
+    needs: [browser-plan, browser, production-serving]
     if: >-
       needs.browser-plan.outputs.retry_tag == '' &&
       (github.event_name != 'pull_request' ||

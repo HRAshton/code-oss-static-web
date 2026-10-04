@@ -95,11 +95,11 @@ def release_archive(manifest: dict[str, Any]) -> dict[str, Any]:
     for value in artifacts:
         artifact = _object(value, 'artifact manifest artifact')
         name = _string(artifact.get('name'), 'artifact manifest artifact name')
-        if name.endswith('.tar.gz'):
+        if name.startswith('code-oss-static-web-') and name.endswith('.tar.gz'):
             candidates.append(artifact)
     require(
         len(candidates) == 1,
-        f'artifact manifest must contain exactly one release tar.gz, got {len(candidates)}',
+        f'artifact manifest must contain exactly one distribution tar.gz, got {len(candidates)}',
     )
     return candidates[0]
 

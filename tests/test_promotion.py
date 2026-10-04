@@ -62,7 +62,12 @@ class PromotionIdentityTests(unittest.TestCase):
                             'name': archive.name,
                             'sha256': archive_digest,
                             'size': archive.stat().st_size,
-                        }
+                        },
+                        {
+                            'name': 'playwright-runtime.tar.gz',
+                            'sha256': 'd' * 64,
+                            'size': 123,
+                        },
                     ],
                 }
             )
@@ -98,6 +103,13 @@ class PromotionIdentityTests(unittest.TestCase):
             self.assertEqual(identity['artifact']['deploymentProfile']['configSha256'], 'c' * 64)
             self.assertEqual(identity['policy']['profile'], 'automatic-default-v1')
             self.assertRegex(identity['policy']['sha256'], r'^[0-9a-f]{64}$')
+
+    def test_release_archive_ignores_playwright_runtime_tarball(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            _, manifest, _, archive = self.write_fixture(Path(td))
+            data = json.loads(manifest.read_text(encoding='utf-8'))
+            selected = promotion.release_archive(data)
+            self.assertEqual(selected['name'], archive.name)
 
     def test_build_identity_records_legacy_unprofiled_release(self) -> None:
         with tempfile.TemporaryDirectory() as td:
