@@ -92,7 +92,9 @@ Stable promotion deploys GitHub Pages from the verified immutable release archiv
 source checkout as release content and does not invoke `build.sh`, `package.sh`, or
 `actions/attest`. Before upload, the workflow adds `deployment-identity.json` containing the
 selected immutable release tag and commit, canonical distribution tree digest, and deployment-profile
-ID and digest. After deployment, the shared Pages action fetches that file from the returned live
+ID and digest for profiled releases. Legacy releases that predate deployment-profile metadata retain
+`deploymentProfile: null`; rollback verifies that null exactly rather than inventing profile
+metadata. After deployment, the shared Pages action fetches that file from the returned live
 Pages URL with a cache-busting query and fails unless it exactly matches the expected promotion
 identity. A successful Pages workflow status alone is not treated as proof that the intended release
 is live.

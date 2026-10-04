@@ -244,8 +244,11 @@ deployment after artifact verification, then the exact same release/artifact/pol
 promoted to <code>stable</code> and deployed to GitHub Pages. Before upload, promotion derives a
 machine-readable <code>deployment-identity.json</code> from the verified immutable release identity.
 It records the release tag and commit, canonical distribution tree SHA-256, and deployment-profile ID
-and digest. The file is Pages promotion metadata added after the canonical distribution digest is
-established, so it does not create a self-referential tree digest.
+and digest when that immutable release contains profile metadata. Legacy releases preserve
+<code>deploymentProfile: null</code> in the Pages identity so the migration-era rollback contract
+remains representable without manufacturing provenance that did not exist. The file is Pages
+promotion metadata added after the canonical distribution digest is established, so it does not
+create a self-referential tree digest.
 
 After <code>actions/deploy-pages</code> completes, the shared Pages action resolves the returned Pages
 URL, fetches <code>deployment-identity.json</code> with a cache-busting query, and requires exact

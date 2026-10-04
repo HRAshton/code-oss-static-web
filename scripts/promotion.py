@@ -241,19 +241,26 @@ def build_pages_deployment_identity(promotion_identity: Any) -> dict[str, Any]:
         'promotion identity distribution tree digest is invalid',
     )
 
-    profile = _object(
-        artifact.get('deploymentProfile'),
-        'promotion identity deployment profile',
-    )
-    profile_id = _string(profile.get('id'), 'promotion identity deployment profile id')
-    profile_digest = _string(
-        profile.get('configSha256'),
-        'promotion identity deployment profile digest',
-    )
-    require(
-        DIGEST_RE.fullmatch(profile_digest) is not None,
-        'promotion identity deployment profile digest is invalid',
-    )
+    deployment_profile_value = artifact.get('deploymentProfile')
+    deployment_profile: dict[str, str] | None = None
+    if deployment_profile_value is not None:
+        profile = _object(
+            deployment_profile_value,
+            'promotion identity deployment profile',
+        )
+        profile_id = _string(profile.get('id'), 'promotion identity deployment profile id')
+        profile_digest = _string(
+            profile.get('configSha256'),
+            'promotion identity deployment profile digest',
+        )
+        require(
+            DIGEST_RE.fullmatch(profile_digest) is not None,
+            'promotion identity deployment profile digest is invalid',
+        )
+        deployment_profile = {
+            'id': profile_id,
+            'configSha256': profile_digest,
+        }
 
     return {
         'schemaVersion': 1,
@@ -264,10 +271,7 @@ def build_pages_deployment_identity(promotion_identity: Any) -> dict[str, Any]:
         'distribution': {
             'treeSha256': tree_sha256,
         },
-        'deploymentProfile': {
-            'id': profile_id,
-            'configSha256': profile_digest,
-        },
+        'deploymentProfile': deployment_profile,
     }
 
 
@@ -301,17 +305,19 @@ def validate_pages_deployment_identity(
         f'{label} distribution tree digest is invalid',
     )
 
-    profile = _object(identity['deploymentProfile'], f'{label} deployment profile')
-    _exact_keys(profile, {'id', 'configSha256'}, f'{label} deployment profile')
-    _string(profile['id'], f'{label} deployment profile id')
-    profile_digest = _string(
-        profile['configSha256'],
-        f'{label} deployment profile digest',
-    )
-    require(
-        DIGEST_RE.fullmatch(profile_digest) is not None,
-        f'{label} deployment profile digest is invalid',
-    )
+    deployment_profile_value = identity['deploymentProfile']
+    if deployment_profile_value is not None:
+        profile = _object(deployment_profile_value, f'{label} deployment profile')
+        _exact_keys(profile, {'id', 'configSha256'}, f'{label} deployment profile')
+        _string(profile['id'], f'{label} deployment profile id')
+        profile_digest = _string(
+            profile['configSha256'],
+            f'{label} deployment profile digest',
+        )
+        require(
+            DIGEST_RE.fullmatch(profile_digest) is not None,
+            f'{label} deployment profile digest is invalid',
+        )
     return identity
 
 

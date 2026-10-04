@@ -121,6 +121,32 @@ class PromotionIdentityTests(unittest.TestCase):
             )
             self.assertIsNone(identity['artifact']['deploymentProfile'])
 
+    def test_pages_deployment_identity_preserves_legacy_unprofiled_release(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            policy, manifest, checksums, archive = self.write_fixture(Path(td))
+            data = json.loads(manifest.read_text(encoding='utf-8'))
+            del data['deploymentProfile']
+            manifest.write_text(json.dumps(data) + '\n', encoding='utf-8')
+            checksums.write_text(
+                f'{hashlib.sha256(manifest.read_bytes()).hexdigest()}  {manifest.name}\n'
+                f'{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}\n',
+                encoding='utf-8',
+            )
+            identity = promotion.build_identity(
+                release_tag='v1.140.0-web.0',
+                release_commit='a' * 40,
+                release_id=42,
+                manifest_path=manifest,
+                checksums_path=checksums,
+                archive_path=archive,
+                policy_path=policy,
+            )
+
+            pages_identity = promotion.build_pages_deployment_identity(identity)
+
+            self.assertIsNone(identity['artifact']['deploymentProfile'])
+            self.assertIsNone(pages_identity['deploymentProfile'])
+
     def test_pages_deployment_identity_binds_release_tree_and_profile(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             policy, manifest, checksums, archive = self.write_fixture(Path(td))
@@ -198,6 +224,49 @@ class PromotionIdentityTests(unittest.TestCase):
 
         self.assertNotEqual(workflow_sha, expected['release']['commit'])
         promotion.verify_pages_deployment_identity(expected, live)
+
+    def test_pages_deployment_identity_legacy_rollback_preserves_null_profile(self) -> None:
+        workflow_sha = 'f' * 40
+        expected: dict[str, Any] = {
+            'schemaVersion': 1,
+            'release': {
+                'tag': 'v1.139.1-web.2',
+                'commit': 'a' * 40,
+            },
+            'distribution': {'treeSha256': 'b' * 64},
+            'deploymentProfile': None,
+        }
+        live = copy.deepcopy(expected)
+
+        self.assertNotEqual(workflow_sha, expected['release']['commit'])
+        promotion.verify_pages_deployment_identity(expected, live)
+
+    def test_pages_deployment_identity_rejects_profile_presence_mismatch(self) -> None:
+        legacy: dict[str, Any] = {
+            'schemaVersion': 1,
+            'release': {
+                'tag': 'v1.139.1-web.2',
+                'commit': 'a' * 40,
+            },
+            'distribution': {'treeSha256': 'b' * 64},
+            'deploymentProfile': None,
+        }
+        profiled = copy.deepcopy(legacy)
+        profiled['deploymentProfile'] = {
+            'id': 'company-standard',
+            'configSha256': 'c' * 64,
+        }
+
+        with self.assertRaisesRegex(
+            BuildError,
+            'does not match expected promotion identity',
+        ):
+            promotion.verify_pages_deployment_identity(legacy, profiled)
+        with self.assertRaisesRegex(
+            BuildError,
+            'does not match expected promotion identity',
+        ):
+            promotion.verify_pages_deployment_identity(profiled, legacy)
 
     def test_build_identity_rejects_tag_manifest_version_mismatch(self) -> None:
         with tempfile.TemporaryDirectory() as td:
