@@ -795,7 +795,8 @@ def check_independent_sbom_policy() -> None:
 
     exceptions_value = policy.get('exceptions')
     require(isinstance(exceptions_value, list), 'independent SBOM exceptions must be an array')
-    for exception_value in exceptions_value:
+    exceptions = cast(list[Any], exceptions_value)
+    for exception_value in exceptions:
         require(
             isinstance(exception_value, dict),
             'independent SBOM exception must be an object',

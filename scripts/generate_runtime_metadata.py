@@ -47,6 +47,8 @@ def embedded_extension_npm_components(dist: Path) -> list[dict[str, Any]]:
             isinstance(version, str) and bool(version),
             f'embedded extension npm version missing: {package_json}',
         )
+        assert isinstance(name, str)
+        assert isinstance(version, str)
         path = package_json.parent.relative_to(dist).as_posix()
         key = (name, path)
         require(key not in seen, f'duplicate embedded extension npm component: {name} at {path}')
