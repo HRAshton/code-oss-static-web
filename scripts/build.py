@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import argparse
 
-from common import ROOT, WORK, BuildError, require, run
+from common import ROOT, WORK, BuildError, assert_no_symlinks, require, run
 
 
 def main() -> None:
@@ -26,7 +26,7 @@ def main() -> None:
     runtime = WORK / 'playwright-runtime' / 'node_modules'
 
     if args.reuse_upstream_build:
-        require(built.is_dir(), f'cached upstream web build missing: {built}')
+        assert_no_symlinks(built, label='cached upstream web build')
         require(
             (runtime / '@playwright/test/cli.js').is_file(),
             'cached Playwright runtime missing',

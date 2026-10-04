@@ -169,9 +169,15 @@ It intentionally sends `Cache-Control: no-store` so the performance baseline mea
 state without HTTP response-cache reuse. It also emits COOP, COEP, and CORP headers as a strict local
 test boundary.
 
-Artifact and release-intent qualification additionally build the real `deploy/Dockerfile`, start the
-Nginx container, assert its HTTP headers and missing-asset 404 behavior, and run the zero-retry
-Chromium boot gate against the container URL. Nginx explicitly serves `Cache-Control: no-cache`, COOP `same-origin`, COEP
+Artifact and release-intent qualification additionally require the final `dist/` tree to contain
+only real files/directories: the supplied upstream-build and output roots are checked before path
+resolution, and symlink entries are rejected during static assembly, cached-build reuse, structural
+smoke, distribution-identity calculation, and release packaging. This prevents packaging or identity
+calculation from silently dereferencing links to content outside the qualified tree.
+
+Qualification then builds the real `deploy/Dockerfile`, starts the Nginx container, asserts its
+HTTP headers and missing-asset 404 behavior, and runs the zero-retry Chromium boot gate against the
+container URL. Nginx explicitly serves `Cache-Control: no-cache`, COOP `same-origin`, COEP
 `require-corp`, CORP `same-origin`, `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: no-referrer`, and the repository Permissions-Policy.
 
