@@ -91,6 +91,9 @@ jobs:
           )"
           evidence=.work/release-qualification/release-qualification.json
           manifest=.work/release-qualification/artifact-manifest.json
+          admission=.work/release-qualification/vulnerability-admission.json
+
+          jq -e '.schemaVersion == 1 and .passed == true' "$admission" >/dev/null
 
           jq -e \
             --arg commit "$GITHUB_SHA" \

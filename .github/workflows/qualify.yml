@@ -18,7 +18,7 @@ on:
       - '.github/actions/setup-toolchain/action.yml'
       - '.github/toolchain-versions.json'
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
     inputs:
       expected_source_sha:
@@ -44,6 +44,11 @@ on:
           - none
           - upstream
           - patch
+      security_override_reason:
+        description: Emergency reason for bypassing the upstream soak window
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: qualify-${{ github.workflow }}-${{ github.ref }}
@@ -53,8 +58,25 @@ permissions:
   contents: read
 
 jobs:
+  tooling:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run tooling checks
+        uses: ./.github/actions/tooling-checks
+
   browser-plan:
     name: Qualification plan
+    needs: tooling
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' || needs.tooling.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -556,8 +578,71 @@ jobs:
           path: dist
           output-file: .work/independent-sbom.cdx.json
 
+      - name: Install pinned vulnerability scanner
+        shell: bash
+        run: |
+          set -euo pipefail
+          grype_version=0.120.0
+          grype_sha256=a5a1218dce63acdac152a6b3b5bb366e7267e36f4069848cf455543b3fa5700e
+          mkdir -p .work/tools
+          archive=".work/tools/grype_${grype_version}_linux_amd64.tar.gz"
+          curl --fail --silent --show-error --location             "https://github.com/anchore/grype/releases/download/v${grype_version}/grype_${grype_version}_linux_amd64.tar.gz"             --output "$archive"
+          printf '%s  %s\n' "$grype_sha256" "$archive" | sha256sum --check -
+          tar -C .work/tools -xzf "$archive" grype
+          .work/tools/grype version
+
+      - name: Vulnerability and rollout admission gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.release_mode || 'none' }}
+          SECURITY_OVERRIDE_REASON: ${{ inputs.security_override_reason || '' }}
+          SECURITY_OVERRIDE_ACTOR: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          .work/tools/grype sbom:.work/independent-sbom.cdx.json -o json > .work/grype-report.json
+          upstream_release_published_at=''
+          if [[ "$RELEASE_MODE" == upstream ]]; then
+            upstream_tag="$(jq -r '.tag' upstream.lock.json)"
+            upstream_release_published_at="$(
+              gh api "repos/microsoft/vscode/releases/tags/$upstream_tag" \
+                --jq 'select(.draft == false and .prerelease == false) | .published_at'
+            )"
+            if [[ -z "$upstream_release_published_at" ||
+                  "$upstream_release_published_at" == null ]]; then
+              echo "Upstream release $upstream_tag has no public publication timestamp." >&2
+              exit 1
+            fi
+          fi
+          args=(
+            --report .work/grype-report.json
+            --policy config/vulnerability-policy.json
+            --release-mode "$RELEASE_MODE"
+            --output .work/vulnerability-admission.json
+          )
+          if [[ -n "$upstream_release_published_at" ]]; then
+            args+=(--upstream-release-published-at "$upstream_release_published_at")
+          fi
+          if [[ -n "$SECURITY_OVERRIDE_REASON" ]]; then
+            args+=(
+              --override-reason "$SECURITY_OVERRIDE_REASON"
+              --override-actor "$SECURITY_OVERRIDE_ACTOR"
+            )
+          fi
+          python3 scripts/vulnerability_policy.py "${args[@]}"
+
       - name: Package canonical candidate
         run: ./package.sh
+
+      - name: Upload vulnerability qualification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vulnerability-qualification
+          path: |
+            .work/grype-report.json
+            .work/vulnerability-admission.json
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Upload canonical candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -635,6 +720,12 @@ jobs:
           name: qualification-provenance
           path: .work/qualification-provenance
 
+      - name: Download vulnerability qualification evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: vulnerability-qualification
+          path: .work/vulnerability-qualification
+
       - name: Record release qualification
         id: qualification
         env:
@@ -686,6 +777,12 @@ jobs:
           cp "$manifest" .work/release-qualification/artifact-manifest.json
           cp "${provenance_bundles[0]}" \
             .work/release-qualification/qualification-provenance.sigstore.json
+          cp .work/vulnerability-qualification/grype-report.json \
+            .work/release-qualification/grype-report.json
+          cp .work/vulnerability-qualification/vulnerability-admission.json \
+            .work/release-qualification/vulnerability-admission.json
+          jq -e '.schemaVersion == 1 and .passed == true' \
+            .work/release-qualification/vulnerability-admission.json >/dev/null
 
           jq -n \
             --arg commit "$GITHUB_SHA" \
