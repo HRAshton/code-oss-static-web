@@ -82,9 +82,11 @@ For every supported deployment tuple, record at least:
 - normal persistent-storage mode;
 - qualification date and operator/reviewer.
 
-The record may live in the company's deployment/promotion or change-management system. Do not commit
-enterprise policy exports, proxy credentials, authentication material, or other internal secrets to
-this public repository.
+Use the [enterprise browser qualification record template](docs/enterprise-browser-qualification-record.md)
+to capture the full tuple, per-check outcomes, extension-specific results, evidence references,
+and an independent approval. Store completed records in the company's private
+deployment/promotion or change-management system. Do not commit enterprise policy exports,
+proxy credentials, authentication material, or other internal secrets to this public repository.
 
 Using the exact release artifact and the actual company deployment path, perform these checks from a
 clean, non-private browser profile without development flags:
