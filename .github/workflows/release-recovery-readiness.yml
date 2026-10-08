@@ -1,0 +1,17 @@
+name: Release recovery readiness
+
+# An explicit evidence audit; never invoked by the normal release pipeline.
+on:
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require completed game-day evidence
+        run: python3 scripts/check_release_recovery_readiness.py

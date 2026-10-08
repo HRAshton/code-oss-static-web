@@ -89,3 +89,23 @@ Repository tests also validate every committed `release-evidence/game-days/*.jso
 Do not commit secrets, tokens, environment credentials, browser traces containing private data, or
 raw private logs. The JSON record does not replace the GitHub workflow/release/deployment audit
 trail; it links the exercise to those immutable records.
+
+## Confirm operational readiness
+
+After the **real** exercise has finished, the distinct reviewer has signed off, and
+its JSON record has been committed to the default branch, run:
+
+```bash
+make release-recovery-readiness
+```
+
+The manual **Release recovery readiness** GitHub Actions workflow runs the same check on the
+selected branch. It fails when there are no completed JSON records or any committed record fails
+the existing structural verifier. This opt-in check is intentionally excluded from ordinary CI
+and automated release/promotion: the first game day needs those workflows in order to create
+its evidence.
+
+A passing check only validates the presence and structure of committed records. It **does not**
+prove that referenced GitHub workflow runs, deployments, identities, or the reviewer's sign-off
+are genuine. The independent reviewer must verify those durable records as required above.
+Do not create synthetic JSON records just to make the check pass.

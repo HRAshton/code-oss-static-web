@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 
+import check_release_recovery_readiness  # noqa: E402
 import verify_game_day_record  # noqa: E402
 from common import BuildError  # noqa: E402
 
@@ -155,6 +156,29 @@ class GameDayRecordTests(unittest.TestCase):
             bad.write_text(json.dumps(record()), encoding='utf-8')
             with self.assertRaisesRegex(BuildError, 'filename must match'):
                 verify_game_day_record.validate_file(bad)
+
+    def test_release_readiness_fails_without_records(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            with self.assertRaisesRegex(BuildError, 'no recorded game day'):
+                check_release_recovery_readiness.validate_readiness(Path(td))
+
+    def test_release_readiness_accepts_completed_record(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / '2026-10-04-v1.2.3-web.0.json'
+            path.write_text(json.dumps(record()), encoding='utf-8')
+            self.assertEqual(
+                check_release_recovery_readiness.validate_readiness(Path(td)),
+                [path],
+            )
+
+    def test_release_readiness_rejects_invalid_record(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            value = record()
+            value['independentReviewUrl'] = 'https://example.com/not-reviewed'
+            path = Path(td) / '2026-10-04-v1.2.3-web.0.json'
+            path.write_text(json.dumps(value), encoding='utf-8')
+            with self.assertRaisesRegex(BuildError, 'independentReviewUrl'):
+                check_release_recovery_readiness.validate_readiness(Path(td))
 
     def test_repository_game_day_records_are_valid(self) -> None:
         evidence_dir = ROOT / 'release-evidence/game-days'
