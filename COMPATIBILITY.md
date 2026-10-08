@@ -4,9 +4,9 @@ This document defines the browser and deployment environments supported by Code 
 It applies to the currently supported project release described in [Support](SUPPORT.md).
 
 A browser engine passing Playwright is not, by itself, a support promise for a branded browser
-deployment. Company support depends on the complete deployment tuple: release artifact, browser
-brand/version, operating-system image, managed-browser policy, proxy/network path, storage mode,
-and static-hosting configuration.
+deployment. Company support depends on the complete deployment tuple: release artifact, resolved deployment
+profile ID/digest, browser brand/version, operating-system image, managed-browser policy,
+proxy/network path, storage mode, and static-hosting configuration.
 
 ## Evidence levels
 
@@ -25,11 +25,23 @@ managed enterprise deployment.
 
 ## Current deployment shape
 
-The repository currently has one supportable deployment shape: the zero-backend static runtime
-produced in `dist/`. This document calls it the **baseline static deployment** for clarity; there
-is not yet a selectable deployment-profile system.
+The repository produces one zero-backend static runtime in `dist/`, with selectable build-time
+deployment profiles. The tracked `config/deployment.json` chooses a profile from `config/profiles/`;
+it currently selects `company-standard`.
 
-The baseline static deployment has these fixed boundaries:
+| Profile | Proposed API grants | Purpose |
+| --- | --- | --- |
+| `company-standard` | None | Default secure deployment starting point, not a preconfigured company environment. |
+| `baseline-static` | None | Exception-free secure baseline. |
+| `remotish-compat` | `hrashton.remotish`: `scmHistoryProvider`, `timeline` | Explicit opt-in compatibility for separately distributed Remotish. |
+
+At present `company-standard` and `baseline-static` bind the same policy documents. The
+extension lock is empty, and no internal extension mirror or company-specific branding or support
+configuration is provisioned. The `remotish-compat` profile grants two proposed APIs only to
+`hrashton.remotish`; it does not bundle, install, download, or qualify that extension. See
+[Remotish host compatibility](docs/remotish-compatibility.md).
+
+The shared static deployment has these fixed boundaries:
 
 - all application assets are static files served from one origin, optionally below a path prefix;
 - telemetry is disabled;
@@ -39,8 +51,11 @@ The baseline static deployment has these fixed boundaries:
 - no service-worker offline cache is part of the product;
 - additional extensions are admitted at build time from the immutable extension lock.
 
-A deployment that changes those boundaries is a different product profile and is unsupported until
-it has its own reviewed policy and qualification contract.
+Selecting another profile changes the build input and the resolved deployment-profile digest;
+it requires the normal build, release, and qualification process, not an end-user runtime toggle.
+A deployment that changes the shared runtime boundaries is unsupported until it has its own
+reviewed policy and qualification contract. A configured compatibility grant alone does not
+establish supported extension behavior.
 
 ## Branded browser support
 
@@ -73,7 +88,7 @@ and identity/network stack.
 For every supported deployment tuple, record at least:
 
 - Code OSS Static Web release tag and canonical distribution digest or other immutable artifact
-  identity;
+  identity, plus the profile ID and configuration digest from `dist/deployment-profile.json`;
 - browser brand, full version, and release channel;
 - OS edition/version/build or managed image identifier;
 - managed-browser policy set identifier or revision;
@@ -234,7 +249,7 @@ Only browser-compatible extensions are candidates for support. Locked extensions
 non-empty `browser` entry point, exact version and digest, and must pass the repository's extension
 ingestion policy.
 
-The baseline static deployment does not support extensions that require:
+The shared static runtime does not support extensions that require:
 
 - a Node.js-only extension host or a `main` entry point without a browser entry point;
 - native modules, local process execution, or direct host-OS filesystem access;
@@ -242,8 +257,10 @@ The baseline static deployment does not support extensions that require:
 - runtime installation from a public extension gallery;
 - arbitrary cross-origin network access blocked by the baseline CSP/network policy.
 
-Proposed APIs are not a general compatibility promise. An extension that depends on a proposed API
-needs explicit policy review and extension-specific qualification.
+Proposed APIs are not a general compatibility promise. `company-standard` and `baseline-static`
+grant none. `remotish-compat` permits only the listed Remotish proposals, and that permission
+still requires separate extension distribution and extension-specific qualification before support
+can be claimed.
 
 The repository's automated extension fixture proves browser extension-host activation, global-state
 persistence, browser-filesystem persistence, and JavaScript language-service initialization. It does
