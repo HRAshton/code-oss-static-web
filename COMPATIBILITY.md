@@ -172,6 +172,30 @@ repository's inline-style allowance. A hosting platform or gateway may add a CSP
 the combined policy still permits the baseline application to run. A deployment cannot rely on a
 proxy or response header to broaden the generated meta policy.
 
+The generated application and shipped OCI Nginx configuration are **iframe-neutral by default**:
+they do not impose an HTTP anti-framing policy. This allows embedding, but provides no
+clickjacking protection. Each deployment operator must decide whether to prohibit framing,
+permit only same-origin framing, or allow explicitly approved embedding origins.
+
+When anti-framing protection is required, send an HTTP `Content-Security-Policy` header on
+the **Code OSS document response** at the actual public serving edge. For example:
+
+- Prohibit embedding: `Content-Security-Policy: frame-ancestors 'none'`
+- Allow an approved portal: `Content-Security-Policy: frame-ancestors 'self' https://portal.example.com`
+
+`frame-ancestors` cannot be enforced through the generated meta CSP. Setting a policy on
+the parent portal alone does not restrict who else may frame Code OSS. Avoid conflicting
+`X-Frame-Options: DENY` or `SAMEORIGIN` headers if cross-origin embedding is intended.
+Multiple HTTP CSP policies are enforced together, so adding a permissive policy cannot
+override an existing restrictive one. Qualify the resulting embedding behavior in the
+customer's actual browser and hosting environment.
+
+GitHub Pages does not expose arbitrary response-header configuration to this repository.
+Clients needing an enforced anti-framing policy for Pages-hosted artifacts must serve the
+application behind a controlled HTTP edge or host it themselves; changing only the
+embedding page cannot set the required header. HSTS likewise belongs at the
+TLS-terminating production edge, not in the static HTML or the HTTP-only OCI server.
+
 Cross-origin asset CDNs and extensions that require arbitrary cross-origin network access are not
 supported by the baseline static deployment.
 

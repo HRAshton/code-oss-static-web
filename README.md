@@ -44,6 +44,10 @@ Each immutable `v*-web.*` release publishes the same qualified static distributi
 - an OCI image at `ghcr.io/hrashton/code-oss-static-web:<tag>` for
   `linux/amd64` and `linux/arm64`.
 
+Iframe embedding is a hosting decision: the shipped application and OCI image are neutral by
+default. Operators can restrict embedding with an HTTP `frame-ancestors` header on the Code
+OSS response at their public serving edge. See [static hosting and CSP](COMPATIBILITY.md#static-hosting-and-csp).
+
 Release archives include checksums, an artifact manifest, CycloneDX SBOM, component-level license
 inventory, upstream metadata, licenses, notices, and GitHub/Sigstore attestations.
 

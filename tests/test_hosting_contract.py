@@ -53,6 +53,11 @@ class HostingContractTests(unittest.TestCase):
                 },
             )
 
+    def test_default_oci_host_is_iframe_neutral(self) -> None:
+        nginx = (ROOT / 'deploy/nginx.conf').read_text().lower()
+        self.assertNotIn('frame-ancestors', nginx)
+        self.assertNotIn('x-frame-options', nginx)
+
     def test_nginx_contract_serves_modules_as_javascript(self) -> None:
         nginx = (ROOT / 'deploy/nginx.conf').read_text()
         self.assertIn(r'location ~ \.mjs$', nginx)

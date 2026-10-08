@@ -181,6 +181,12 @@ container URL. Nginx explicitly serves `Cache-Control: no-cache`, COOP `same-ori
 `require-corp`, CORP `same-origin`, `X-Content-Type-Options: nosniff`,
 `Referrer-Policy: no-referrer`, and the repository Permissions-Policy.
 
+The default OCI image intentionally omits anti-framing response headers, allowing deployers
+to choose whether Code OSS may be embedded. The repository's OCI checks cover that neutral
+default, not any HTTP security headers injected by the production TLS proxy or CDN. Operators
+must verify their chosen `frame-ancestors` policy and HSTS at the real public HTTPS endpoint,
+including an iframe allow/deny check appropriate to the customer deployment.
+
 Stable promotion verifies GitHub Pages deployment identity first, then runs the same packaged-workbench
 Chromium boot test against the live Pages URL before marking stable successful. The locked Playwright
 runtime used for that gate is published as a checksummed and attested immutable GitHub Release asset,
