@@ -352,18 +352,37 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+      volumes:
+        - /etc/ssl/certs/ca-certificates.crt:/tmp/runner-ca-bundle.pem:ro
     permissions:
       contents: read
+    env:
+      APT_SNAPSHOT: '20261001T000000Z'
     steps:
-      - name: Bootstrap pinned builder packages
-        run: >-
-          apt-get update &&
-          apt-get install -y --no-install-recommends
-          ca-certificates curl git jq tar unzip xz-utils
+      - name: Bootstrap snapshot-locked builder packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Minimal Ubuntu has no CA roots; trust the runner bundle for snapshot TLS only.
+          test -s /tmp/runner-ca-bundle.pem
+          apt-get update --snapshot "$APT_SNAPSHOT" \
+            -o Acquire::https::CaInfo=/tmp/runner-ca-bundle.pem \
+            -o APT::Update::Error-Mode=any
+          snapshot_origin="https://snapshot.ubuntu.com/ubuntu/$APT_SNAPSHOT"
+          apt-cache -o APT::Snapshot="$APT_SNAPSHOT" policy build-essential |
+            grep -F "$snapshot_origin"
+          DEBIAN_FRONTEND=noninteractive apt-get install \
+            --snapshot "$APT_SNAPSHOT" -y --no-install-recommends \
+            -o Acquire::https::CaInfo=/tmp/runner-ca-bundle.pem \
+            ca-certificates curl git jq tar unzip xz-utils \
+            build-essential pkg-config libx11-dev libxkbfile-dev libkrb5-dev
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify builder APT snapshot lock
+        run: test "$(jq -er '.aptSnapshot' .github/builder-image.json)" = "$APT_SNAPSHOT"
 
       - name: Set up canonical toolchain
         id: toolchain
@@ -386,13 +405,6 @@ jobs:
           key: code-oss-npm-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-${{ hashFiles('upstream.lock.json') }}
           restore-keys: |
             code-oss-npm-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-
-
-      - name: Install Code-OSS web build prerequisites
-        if: steps.upstream-cache.outputs.cache-hit != 'true'
-        run: >-
-          apt-get update &&
-          apt-get install -y --no-install-recommends
-          build-essential pkg-config libx11-dev libxkbfile-dev libkrb5-dev
 
       - name: Build static Code-OSS candidate
         env:
@@ -843,7 +855,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           toolchain="$(jq -c '{node, python}' .github/toolchain-versions.json)"
-          builder="$(jq -c '{image, digest, platform}' .github/builder-image.json)"
+          builder="$(jq -c '{image, digest, platform, aptSnapshot}' .github/builder-image.json)"
           manifest=.work/qualified-candidate/artifact-manifest.json
           jq -e \
             --arg commit "$GITHUB_SHA" \

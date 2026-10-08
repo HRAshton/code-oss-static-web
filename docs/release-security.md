@@ -168,6 +168,20 @@ qualification and both Release rebuilds execute inside the digest-pinned builder
 that lock, the artifact manifest records its identity and lock digest, and release authorization
 rejects qualification evidence whose builder identity does not match the immutable release commit.
 
-Apt mirrors and upstream package availability remain explicit residual dependencies. Historical
-rebuilds must fail visibly when those inputs are unavailable rather than silently moving to a
-different builder identity.
+The builder lock also records the Ubuntu APT snapshot timestamp (`aptSnapshot`). All three
+build jobs install bootstrap and native prerequisites from that same snapshot before checkout,
+verify that APT selected the snapshot archive, and check the timestamp against the checked-out
+lock. The snapshot is part of the qualified artifact's builder identity and independently checked
+before release authorization. Cache keys include the builder lock, so snapshot rotation triggers
+full qualification.
+
+The digest-pinned minimal Ubuntu image initially lacks CA certificates. To authenticate the HTTPS
+snapshot endpoint without installing mutable packages, the build jobs mount the GitHub-hosted
+runner's CA bundle read-only for APT transport only. Ubuntu archive signatures are still verified,
+and all installed system packages (including `ca-certificates`) come from the locked snapshot.
+The host CA bundle is an explicit external trust/availability assumption, not an artifact input.
+
+The Ubuntu Snapshot Service remains an external availability dependency. Canonical currently intends to retain snapshots for
+at least two years, not indefinitely; very old historical
+rebuilds may eventually fail closed if the snapshot disappears. A separately digest-pinned
+builder OCI image with preinstalled prerequisites remains the archival alternative.

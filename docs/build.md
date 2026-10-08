@@ -88,5 +88,8 @@ inputs.
 For an older immutable release, check out its release tag, inspect the tag's
 `.github/builder-image.json`, and run the build in that exact image digest with the tag's canonical
 toolchain, upstream lock, patch set, deployment profiles, and extension lock. Compare the normalized
-distribution tree with the release's `artifact-manifest.json`. The manifest's `builder` and
-`inputs.builderImage` fields provide the durable builder identity and lock digest for that exercise.
+distribution tree with the release's `artifact-manifest.json`. The manifest's `builder` (including `aptSnapshot`) and
+`inputs.builderImage` fields record the builder identity and lock digest for that exercise.
+Use the recorded snapshot timestamp for both `apt-get update` and `apt-get install` rather
+than the current Ubuntu repositories. Historical snapshots have finite retention; the exercise
+may eventually fail closed for an older release without an archived builder image.
