@@ -148,7 +148,9 @@ class PullRequestQualificationTests(unittest.TestCase):
             1,
         )[0]
         self.assertIn('needs: tooling', browser_plan_block)
+        self.assertIn('Verify trusted emergency dispatch', browser_plan_block)
         self.assertIn("needs.tooling.result == 'success'", browser_plan_block)
+        self.assertIn('python3 scripts/authorize_soak_override.py', browser_plan_block)
         self.assertIn('python3 scripts/classify_pr.py', workflow)
         self.assertIn('.previous_filename // empty', workflow)
         self.assertIn("release)\n                  browsers='[]'", workflow)

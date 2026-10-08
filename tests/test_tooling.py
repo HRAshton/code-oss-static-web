@@ -198,6 +198,46 @@ class ToolingTests(unittest.TestCase):
         self.assertNotIn('/upstream.lock.json', lines)
         self.assertNotIn('upstream.lock.json', lines)
 
+    def test_break_glass_privileged_workflow_call_is_narrowly_allowed(self):
+        workflow = ROOT / '.github/workflows/upstream-soak-break-glass.yml'
+        block = dict(check_policy.workflow_job_blocks(workflow.read_text()))['qualify']
+        check_policy.check_publication_job_block(workflow, 'qualify', block, 'attest')
+
+        with self.assertRaisesRegex(
+            check_policy.BuildError, 'unapproved privileged reusable workflow call'
+        ):
+            check_policy.check_publication_job_block(
+                workflow,
+                'qualify',
+                block.replace('browser: all', 'browser: chromium'),
+                'attest',
+            )
+
+        with self.assertRaisesRegex(
+            check_policy.BuildError, 'unapproved privileged reusable workflow call'
+        ):
+            check_policy.check_publication_job_block(
+                workflow,
+                'qualify',
+                block.replace('    needs: authorize-override', '    needs: bypass'),
+                'attest',
+            )
+
+        with self.assertRaisesRegex(check_policy.BuildError, 'unexpected permissions'):
+            check_policy.check_publication_job_block(
+                workflow,
+                'qualify',
+                block.replace('      contents: write', '      packages: write'),
+                'attest',
+            )
+
+        with self.assertRaisesRegex(
+            check_policy.BuildError, 'unapproved privileged reusable workflow call'
+        ):
+            check_policy.check_publication_job_block(
+                ROOT / '.github/workflows/qualify.yml', 'qualify', block, 'attest'
+            )
+
     def test_upstream_revision_change_dispatches_full_qualification(self):
         workflow = (ROOT / '.github/workflows/upstream-qualification.yml').read_text()
         self.assertIn('branches: [master]', workflow)

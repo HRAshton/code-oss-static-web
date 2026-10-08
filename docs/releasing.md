@@ -47,6 +47,18 @@ Release and release-tagged GHCR publication succeeds, Release automatically disp
 workflow. The default policy verifies canary and promotes the same immutable identity to stable,
 including GitHub Pages, without human action.
 
+## Emergency upstream soak bypass
+
+Normal qualification and the unattended Microsoft update path always enforce the upstream
+publication observation window. An approved Release/Security operator may use
+**Upstream soak break-glass** (`.github/workflows/upstream-soak-break-glass.yml`) on `master`
+with the exact current source SHA and an emergency reason. The dedicated caller requires a distinct
+`upstream-soak-break-glass` environment approval before invoking qualification, and the called
+workflow independently authorizes both the original dispatcher and re-running actor before full
+three-browser qualification. Configure the environment and
+approved operators as specified in [vulnerability admission](vulnerability-admission.md).
+The override does not relax the Grype vulnerability admission threshold.
+
 ## Project patch release
 
 Use the **Patch release** workflow when a project-owned source, packaging, workflow, container, or

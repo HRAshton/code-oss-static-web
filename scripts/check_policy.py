@@ -390,6 +390,53 @@ def check_publication_job_block(
         return
 
     display = f'{workflow.relative_to(ROOT)}:{job_name}'
+    if re.search(r'^    uses:', block, re.MULTILINE) is not None:
+        # The caller grants token permissions to the reusable workflow. Only
+        # the reviewed emergency qualifier may inherit publication authority.
+        trusted_caller = (
+            workflow.name == 'upstream-soak-break-glass.yml'
+            and job_name == 'qualify'
+            and '    uses: ./.github/workflows/qualify.yml' in block.splitlines()
+        )
+        require(
+            trusted_caller,
+            f'{display}: unapproved privileged reusable workflow call',
+        )
+        require(
+            workflow_job_needs(block) == {'authorize-override'},
+            f'{display}: unapproved privileged reusable workflow call',
+        )
+        caller_jobs = dict(workflow_job_blocks(workflow.read_text()))
+        authorization = caller_jobs.get('authorize-override')
+        require(
+            authorization is not None
+            and workflow_job_environment(authorization) == 'upstream-soak-break-glass'
+            and 'python3 scripts/authorize_soak_override.py' in authorization,
+            f'{display}: unapproved privileged reusable workflow call',
+        )
+        required_inputs = (
+            'browser: all',
+            'release_mode: upstream',
+            'expected_source_sha: ${{ inputs.expected_source_sha }}',
+            'security_override_reason: ${{ inputs.security_override_reason }}',
+        )
+        require(
+            all(item in block for item in required_inputs),
+            f'{display}: unapproved privileged reusable workflow call',
+        )
+        privileged_permissions = {
+            'actions',
+            'contents',
+            'id-token',
+            'attestations',
+            'artifact-metadata',
+        }
+        require(
+            write_permissions == privileged_permissions,
+            f'{display}: privileged reusable qualifier has unexpected permissions',
+        )
+        return
+
     needs = workflow_job_needs(block)
     require(
         evidence_job in needs,

@@ -44,8 +44,17 @@ jobs:
           [[ "$(jq -r '.status' <<<"$qualification")" == 'completed' ]]
           [[ "$(jq -r '.conclusion' <<<"$qualification")" == 'success' ]]
           [[ "$(jq -r '.event' <<<"$qualification")" == 'workflow_dispatch' ]]
-          [[ "$(jq -r '.name' <<<"$qualification")" == 'Full build qualification' ]]
-          [[ "$(jq -r '.path' <<<"$qualification")" == '.github/workflows/qualify.yml' ]]
+          qualification_name="$(jq -r '.name' <<<"$qualification")"
+          qualification_path="$(jq -r '.path' <<<"$qualification")"
+          case "$qualification_name:$qualification_path" in
+            'Full build qualification:.github/workflows/qualify.yml'|\
+            'Upstream soak break-glass:.github/workflows/upstream-soak-break-glass.yml')
+              ;;
+            *)
+              echo "unrecognized qualification workflow: $qualification_name ($qualification_path)" >&2
+              exit 1
+              ;;
+          esac
           [[ "$(jq -r '.head_branch' <<<"$qualification")" == 'master' ]]
           [[ "$(jq -r '.head_sha' <<<"$qualification")" == "$GITHUB_SHA" ]]
 
