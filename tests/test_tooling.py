@@ -182,6 +182,33 @@ class ToolingTests(unittest.TestCase):
             with self.subTest(path=denied):
                 self.assertNotIn(denied, auto_approvable)
 
+    def test_renovate_auto_approval_waits_for_successful_pr_qualification(self):
+        qualification = (ROOT / '.github/workflows/qualify.yml').read_text(encoding='utf-8')
+        approval = (ROOT / '.github/workflows/renovate-auto-approve.yml').read_text(
+            encoding='utf-8'
+        )
+        qualification_name = qualification.splitlines()[0].removeprefix('name: ')
+        qualification_triggers = qualification.split('\non:\n', 1)[1].split(
+            '\nconcurrency:',
+            1,
+        )[0]
+        self.assertIn('  pull_request:\n', qualification_triggers)
+
+        approval_triggers = approval.split('\non:\n', 1)[1].split(
+            '\npermissions:',
+            1,
+        )[0]
+        self.assertIn('  workflow_run:\n', approval_triggers)
+        self.assertIn(f"    workflows: ['{qualification_name}']", approval_triggers)
+        self.assertIn('    types: [completed]', approval_triggers)
+
+        approval_job = approval.split('  approve:\n', 1)[1].split(
+            '    runs-on:',
+            1,
+        )[0]
+        self.assertIn("github.event.workflow_run.conclusion == 'success'", approval_job)
+        self.assertIn("github.event.workflow_run.event == 'pull_request'", approval_job)
+
     def test_sensitive_paths_require_codeowners_without_gating_upstream_updates(self):
         codeowners = (ROOT / '.github/CODEOWNERS').read_text()
         check_policy.check_codeowners_policy()

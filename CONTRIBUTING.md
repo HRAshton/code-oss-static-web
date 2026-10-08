@@ -22,7 +22,8 @@ URI handlers, provenance, release publication, or other trust boundaries require
 review. Automated approvals cannot satisfy that requirement.
 
 The trusted Renovate auto-approval workflow is a narrow exception for dependency pull requests that
-change only `upstream.lock.json`. Changes under `.github/**`, `deploy/**`, or any other
+change only `upstream.lock.json`. Approval waits for successful pull-request `Full build qualification`,
+not the push-only `CI` workflow. Changes under `.github/**`, `deploy/**`, or any other
 release/security trust boundary are outside that allowlist and require human approval.
 
 Pull requests otherwise require human review and the repository's required checks before merge.
