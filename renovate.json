@@ -9,16 +9,21 @@
   ],
   "packageRules": [
     {
-      "description": "Automerge Microsoft Code OSS integration updates",
+      "description": "One platform PR updates the VS Code lock and data-only Ubuntu snapshot lock",
       "matchManagers": [
         "custom.regex"
       ],
       "matchPackageNames": [
-        "microsoft/vscode"
+        "microsoft/vscode",
+        "ubuntu-snapshot"
       ],
+      "groupName": "Code OSS platform and Ubuntu snapshot",
+      "groupSlug": "code-oss-platform",
+      "minimumGroupSize": 2,
+      "separateMajorMinor": false,
       "semanticCommitType": "chore",
       "semanticCommitScope": "upstream",
-      "commitMessageTopic": "Code OSS"
+      "commitMessageTopic": "Code OSS platform"
     }
   ],
   "platformAutomerge": true,
@@ -39,9 +44,30 @@
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "semver",
       "autoReplaceStringTemplate": "\"tag\": \"{{{newValue}}}\",\n  \"commit\": \"{{{newDigest}}}\""
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
+        "/^builder-image\\.json$/"
+      ],
+      "matchStrings": [
+        "\"aptSnapshot\":\\s*\"(?<currentValue>\\d{8}T\\d{6}Z)\""
+      ],
+      "depNameTemplate": "ubuntu-snapshot",
+      "datasourceTemplate": "custom.ubuntu-snapshot",
+      "versioningTemplate": "regex:^(?<major>\\d{4})(?<minor>\\d{2})(?<patch>\\d{2})T(?<build>\\d{6})Z$"
     }
   ],
   "commitMessageLowerCase": "never",
   "automerge": true,
-  "automergeType": "pr"
+  "automergeType": "pr",
+  "customDatasources": {
+    "ubuntu-snapshot": {
+      "defaultRegistryUrlTemplate": "https://api.github.com/repos/microsoft/vscode/releases/latest",
+      "format": "json",
+      "transformTemplates": [
+        "{\"releases\":[{\"version\":$fromMillis($toMillis(published_at)-172800000,\"[Y0001][M01][D01]T000000Z\")}],\"sourceUrl\":\"https://snapshot.ubuntu.com/\"}"
+      ]
+    }
+  }
 }
