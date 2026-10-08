@@ -18,6 +18,7 @@ path = [
   "SUPPORT.md",
   "THIRD_PARTY_NOTICES.md",
   "build.sh",
+  "builder-image.json",
   "package.sh",
   "pyproject.toml",
   "renovate.json",

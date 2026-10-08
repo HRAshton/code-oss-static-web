@@ -66,7 +66,7 @@ Full changes continue to run Chromium, Firefox, and WebKit qualification.
 
 Qualification builds that can authorize a release, the independent release rebuild, and the second
 reproducibility rebuild run inside the immutable OCI image recorded in
-[`.github/builder-image.json`](../.github/builder-image.json). Workflows reference the image by
+[`builder-image.json`](../builder-image.json). Workflows reference the image by
 digest rather than by a mutable tag. The qualification cache key includes both the builder lock and
 the qualification workflow itself, which binds its bootstrap and native-package prerequisite
 definition. A builder or prerequisite change therefore cannot reuse an upstream web bundle built
@@ -86,7 +86,28 @@ inputs.
 ## Historical rebuild exercise
 
 For an older immutable release, check out its release tag, inspect the tag's
-`.github/builder-image.json`, and run the build in that exact image digest with the tag's canonical
+`builder-image.json`, and run the build in that exact image digest with the tag's canonical
 toolchain, upstream lock, patch set, deployment profiles, and extension lock. Compare the normalized
-distribution tree with the release's `artifact-manifest.json`. The manifest's `builder` and
-`inputs.builderImage` fields provide the durable builder identity and lock digest for that exercise.
+distribution tree with the release's `artifact-manifest.json`. The manifest's `builder` (including `aptSnapshot`) and
+`inputs.builderImage` fields record the builder identity and lock digest for that exercise.
+Use the recorded snapshot timestamp for both `apt-get update` and `apt-get install` rather
+than the current Ubuntu repositories. Historical snapshots have finite retention; the exercise
+may eventually fail closed for an older release without an archived builder image.
+
+### Renovate-managed builder snapshot rotation
+
+The same Renovate PR that updates the pinned VS Code release also updates the Ubuntu
+APT snapshot timestamp. Renovate's custom datasource derives the candidate from VS
+Code's published GitHub release time, minus 48 hours and rounded down to midnight
+UTC. The `minimumGroupSize: 2` requirement groups the upstream tag/commit update with
+the builder snapshot lock. The qualification planner and release authorizer resolve
+the pinned timestamp from this lock at the exact source commit; container jobs
+consume those immutable job outputs rather than duplicating the timestamp in YAML.
+
+The trusted auto-approval job accepts only the exact two-file diff: an advancing
+VS Code tag and commit plus a timestamp-only builder lock change.
+It downloads both revisions from GitHub and executes the guard from trusted
+master, never the PR branch. Full qualification must succeed before automated
+approval and merge. All other changes fail closed. The builder lock is a narrowly
+scoped, non-CODEOWNED data input like the upstream lock; all workflow files remain
+CODEOWNED. If the release has no publication timestamp, the group is not generated.

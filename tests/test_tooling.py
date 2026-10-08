@@ -134,7 +134,7 @@ class ToolingTests(unittest.TestCase):
         )
         self.assertIn("require(actual == lock['commit']", fetch_source)
 
-    def test_renovate_auto_approval_is_limited_to_upstream_lock(self):
+    def test_renovate_auto_approval_is_limited_to_exact_platform_inputs(self):
         config = json.loads((ROOT / 'renovate.json').read_text())
         self.assertTrue(config['automerge'])
         self.assertEqual(config['automergeType'], 'pr')
@@ -171,8 +171,26 @@ class ToolingTests(unittest.TestCase):
             for line in allowlist.splitlines()
             if line.strip().endswith(') ;;')
         }
-        self.assertEqual(auto_approvable, {'upstream.lock.json'})
+        self.assertEqual(
+            auto_approvable,
+            {
+                'upstream.lock.json',
+                'builder-image.json',
+            },
+        )
         self.assertIn('upstream.lock.json', auto_approvable)
+        self.assertIn('verify_renovate_update.py', workflow)
+        self.assertIn('ref: master', workflow)
+        self.assertEqual(config['packageRules'][0]['minimumGroupSize'], 2)
+        self.assertEqual(config['packageRules'][0]['groupSlug'], 'code-oss-platform')
+        self.assertEqual(
+            config['customDatasources']['ubuntu-snapshot']['defaultRegistryUrlTemplate'],
+            'https://api.github.com/repos/microsoft/vscode/releases/latest',
+        )
+        self.assertIn(
+            '[Y0001][M01][D01]T000000Z',
+            config['customDatasources']['ubuntu-snapshot']['transformTemplates'][0],
+        )
         for denied in (
             'deploy/Dockerfile',
             '.github/workflows/ci.yml',
@@ -224,6 +242,7 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(lines['/renovate.json'], {'@HRAshton', '@vodyanica'})
         self.assertNotIn('/upstream.lock.json', lines)
         self.assertNotIn('upstream.lock.json', lines)
+        self.assertNotIn('builder-image.json', lines)
 
     def test_break_glass_privileged_workflow_call_is_narrowly_allowed(self):
         workflow = ROOT / '.github/workflows/upstream-soak-break-glass.yml'
