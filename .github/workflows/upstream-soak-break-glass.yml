@@ -1,0 +1,54 @@
+name: Upstream soak break-glass
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_source_sha:
+        description: Exact protected master source commit to qualify
+        required: true
+        type: string
+      security_override_reason:
+        description: Emergency justification for skipping only the upstream observation window
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  authorize-override:
+    name: Approve upstream soak break-glass
+    runs-on: ubuntu-latest
+    environment: upstream-soak-break-glass
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify trusted emergency dispatch and approved operator
+        env:
+          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          REQUESTED_BROWSER: all
+          RELEASE_MODE: upstream
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          SECURITY_OVERRIDE_REASON: ${{ inputs.security_override_reason }}
+        run: python3 scripts/authorize_soak_override.py
+
+  qualify:
+    needs: authorize-override
+    # A called workflow cannot elevate its token above the caller's permissions.
+    permissions:
+      actions: write
+      contents: write
+      pull-requests: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    uses: ./.github/workflows/qualify.yml
+    with:
+      expected_source_sha: ${{ inputs.expected_source_sha }}
+      browser: all
+      release_mode: upstream
+      security_override_reason: ${{ inputs.security_override_reason }}

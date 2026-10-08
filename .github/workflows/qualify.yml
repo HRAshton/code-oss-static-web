@@ -46,8 +46,18 @@ on:
           - none
           - upstream
           - patch
+  workflow_call:
+    inputs:
+      expected_source_sha:
+        required: true
+        type: string
+      browser:
+        required: true
+        type: string
+      release_mode:
+        required: true
+        type: string
       security_override_reason:
-        description: Emergency reason for bypassing the upstream soak window
         required: false
         default: ''
         type: string
@@ -93,6 +103,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Verify trusted emergency dispatch and approved operator
+        if: ${{ inputs.security_override_reason != '' }}
+        env:
+          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          REQUESTED_BROWSER: ${{ inputs.browser }}
+          RELEASE_MODE: ${{ inputs.release_mode }}
+          EXPECTED_SOURCE_SHA: ${{ inputs.expected_source_sha }}
+          SECURITY_OVERRIDE_REASON: ${{ inputs.security_override_reason }}
+        run: python3 scripts/authorize_soak_override.py
 
       - name: Verify expected source SHA
         if: github.event_name == 'workflow_dispatch'
