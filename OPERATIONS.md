@@ -34,6 +34,19 @@ The default promotion policy is fully automatic. A successful immutable release 
 human action. Automatic promotion refuses to move canary or stable behind the currently successful
 stable release.
 
+The `canary` channel is a production-hosted **synthetic preflight**, not a progressive
+traffic rollout. The immutable candidate is served at `__canary/<release-tag>/` on the
+live GitHub Pages site, where its deployment identity, hosting contract, and Chromium
+browser boot are checked. There is no real-user cohort, dwell period, external health
+signal, or SLO gate; `target=auto` proceeds to stable after those checks succeed.
+Canary publication itself redeploys the Pages site. When a previous successful stable
+release or recoverable legacy Pages release exists, its verified immutable bytes are
+reconstructed at the root. On an initial deployment with neither, the root serves a
+placeholder page until stable promotion. This preflight therefore exercises the
+production hosting path rather than an isolated staging environment. The historical
+`canary` identifier remains in workflow inputs, deployment records, and promotion policy
+for compatibility.
+
 ### Audit channel state
 
 List recent promotion records:
@@ -136,12 +149,13 @@ operational intent is for both channel pointers to reference the same previous r
 
 A successful `canary` deployment means the immutable candidate was actually served by GitHub Pages
 under `__canary/<release-tag>/`, its release-bound identity converged at that URL, and the live
-Chromium synthetic booted. While publishing canary, the workflow reconstructs the previous stable
-root from its immutable release asset, verifies its digest and attestation, and restores its root
-deployment identity before adding the candidate subpath. During migration, if no `stable`
-deployment record exists yet, the workflow recovers the exact legacy production identity from the
-live root `deployment-identity.json`, binds it to the successful legacy `github-pages` deployment,
-and reconstructs that immutable release instead of replacing production with an empty placeholder.
+Chromium synthetic booted. When a previous stable release exists, publishing canary reconstructs
+its root from the immutable release asset, verifies its digest and attestation, and restores its
+deployment identity before adding the candidate subpath. During migration, if no `stable` deployment record exists yet,
+the workflow recovers the exact legacy production identity from the live root
+`deployment-identity.json`, binds it to the successful legacy `github-pages` deployment, and
+reconstructs that immutable release. If neither stable nor legacy deployment exists, the initial
+Pages root instead serves a placeholder until stable promotion.
 
 If canary publication, identity verification, or browser boot fails, the canary deployment is marked
 failed and automatic stable promotion does not run. Re-run promotion for the same immutable release

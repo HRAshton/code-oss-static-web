@@ -245,6 +245,7 @@ jobs:
           compression-level: 6
 
   canary:
+    name: Production preflight (live Pages + Chromium)
     if: inputs.target == 'auto' || inputs.target == 'canary'
     needs: [authorize, pages-release-gate]
     runs-on: ubuntu-latest
