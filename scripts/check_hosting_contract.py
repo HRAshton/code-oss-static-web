@@ -34,6 +34,22 @@ def validate_response(target: str, status: int, headers: Mapping[str, str]) -> N
                 actual == value,
                 f'OCI header {name} mismatch: expected {value!r}, got {actual!r}',
             )
+        # Only the shipped HTTP-only OCI server is iframe-neutral. A production
+        # edge may intentionally add a policy, and is qualified separately.
+        for name, value in headers.items():
+            if name.lower() == 'x-frame-options':
+                raise BuildError('OCI default must not send X-Frame-Options')
+            if name.lower() == 'content-security-policy':
+                directives = (
+                    part.strip().split(None, 1)[0].lower()
+                    for part in value.replace(',', ';').split(';')
+                    if part.strip()
+                )
+                require(
+                    'frame-ancestors' not in directives,
+                    'OCI default must not send frame-ancestors CSP',
+                )
+
         permissions = normalized.get('permissions-policy', '')
         for directive in ('camera=()', 'microphone=()', 'geolocation=()'):
             require(
@@ -75,7 +91,8 @@ def _require_missing_asset_404(url: str) -> None:
 def check_url(target: str, url: str) -> None:
     try:
         with urllib.request.urlopen(url, timeout=15) as response:
-            validate_response(target, response.status, dict(response.headers.items()))
+            # Preserve repeated CSP / X-Frame-Options fields for policy checks.
+            validate_response(target, response.status, response.headers)
     except urllib.error.URLError as exc:
         raise BuildError(f'{target} hosting request failed: {exc}') from exc
     if target == 'oci':

@@ -190,6 +190,19 @@ Multiple HTTP CSP policies are enforced together, so adding a permissive policy 
 override an existing restrictive one. Qualify the resulting embedding behavior in the
 customer's actual browser and hosting environment.
 
+The OCI image also serves `Cross-Origin-Resource-Policy: same-origin`. A cross-origin
+portal using `Cross-Origin-Embedder-Policy: require-corp` cannot assume that an
+allowing `frame-ancestors` policy is sufficient: the portal's COEP may still block
+the frame. For a qualified cross-origin portal deployment, the operator may need to
+**replace the CORP header on the Code OSS HTML document response** with
+`Cross-Origin-Resource-Policy: cross-origin` while preserving the document's
+`Cross-Origin-Embedder-Policy: require-corp` and setting the appropriate
+`frame-ancestors` allowlist. Keep the existing `same-origin` CORP on static assets
+unless separately reviewed. Unlike `frame-ancestors`, CORP has no arbitrary-origin
+allowlist: `cross-origin` is a broad opt-in to cross-origin no-CORS loading. Test
+the exact iframe, browser, and authentication/storage behavior at the public edge;
+do not change the default OCI image to relax these headers globally.
+
 GitHub Pages does not expose arbitrary response-header configuration to this repository.
 Clients needing an enforced anti-framing policy for Pages-hosted artifacts must serve the
 application behind a controlled HTTP edge or host it themselves; changing only the

@@ -17,21 +17,21 @@ SPEC.loader.exec_module(check_hosting_contract)
 
 
 class HostingContractTests(unittest.TestCase):
+    @staticmethod
+    def _oci_headers() -> dict[str, str]:
+        return {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache',
+            'Cross-Origin-Opener-Policy': 'same-origin',
+            'Cross-Origin-Embedder-Policy': 'require-corp',
+            'Cross-Origin-Resource-Policy': 'same-origin',
+            'X-Content-Type-Options': 'nosniff',
+            'Referrer-Policy': 'no-referrer',
+            'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+        }
+
     def test_oci_contract_requires_explicit_security_and_cache_headers(self) -> None:
-        check_hosting_contract.validate_response(
-            'oci',
-            200,
-            {
-                'Content-Type': 'text/html; charset=utf-8',
-                'Cache-Control': 'no-cache',
-                'Cross-Origin-Opener-Policy': 'same-origin',
-                'Cross-Origin-Embedder-Policy': 'require-corp',
-                'Cross-Origin-Resource-Policy': 'same-origin',
-                'X-Content-Type-Options': 'nosniff',
-                'Referrer-Policy': 'no-referrer',
-                'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-            },
-        )
+        check_hosting_contract.validate_response('oci', 200, self._oci_headers())
 
     def test_oci_contract_rejects_wrong_cache_semantics(self) -> None:
         with self.assertRaisesRegex(
@@ -52,6 +52,21 @@ class HostingContractTests(unittest.TestCase):
                     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
                 },
             )
+
+    def test_oci_contract_rejects_anti_framing_headers(self) -> None:
+        for name, value in (
+            ('X-Frame-Options', 'DENY'),
+            ('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none'"),
+            ('Content-Security-Policy', 'FRAME-ANCESTORS https://portal.example.com'),
+        ):
+            with self.subTest(header=name, value=value):
+                headers = self._oci_headers()
+                headers[name] = value
+                with self.assertRaisesRegex(
+                    check_hosting_contract.BuildError,
+                    'must not send',
+                ):
+                    check_hosting_contract.validate_response('oci', 200, headers)
 
     def test_default_oci_host_is_iframe_neutral(self) -> None:
         nginx = (ROOT / 'deploy/nginx.conf').read_text().lower()
