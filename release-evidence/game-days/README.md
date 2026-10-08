@@ -16,3 +16,9 @@ python3 scripts/verify_game_day_record.py release-evidence/game-days/<record>.js
 ```
 
 The repository unit suite validates every committed JSON record in this directory.
+
+To check that at least one validated game-day record has actually been committed, run
+`make release-recovery-readiness` or dispatch the manual **Release recovery readiness**
+GitHub Actions workflow. The check fails while this directory has no JSON records.
+It verifies record structure, not the authenticity of the referenced GitHub runs or deployments;
+that remains the independent reviewer's responsibility.

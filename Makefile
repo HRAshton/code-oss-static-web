@@ -8,7 +8,7 @@ REUSE ?= reuse
 PYTHON_PATHS := scripts tests
 SHELL_SCRIPTS := build.sh package.sh
 
-.PHONY: check format format-check lint typecheck shellcheck syntax schema config workflow-yaml reuse test policy
+.PHONY: check format format-check lint typecheck shellcheck syntax schema config workflow-yaml reuse test policy release-recovery-readiness
 
 check: format-check lint typecheck shellcheck syntax schema config workflow-yaml reuse test policy
 
@@ -48,3 +48,7 @@ test:
 
 policy:
 	$(PYTHON) scripts/check_policy.py
+
+# Explicit operational gate; not part of ordinary CI or release bootstrap.
+release-recovery-readiness:
+	$(PYTHON) scripts/check_release_recovery_readiness.py
