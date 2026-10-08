@@ -2,7 +2,7 @@ name: Renovate auto-approval
 
 on:
   workflow_run:
-    workflows: ['CI']
+    workflows: ['Full build qualification']
     types: [completed]
 
 permissions:
@@ -44,6 +44,18 @@ jobs:
             exit 1
           }
 
+          if ! changed_paths="$(
+            gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$pr_number/files" \
+              --jq '.[].filename'
+          )"; then
+            echo "Failed to fetch Renovate PR file list; refusing approval." >&2
+            exit 1
+          fi
+          if [[ -z "$changed_paths" ]]; then
+            echo "Empty Renovate PR file list; refusing approval." >&2
+            exit 1
+          fi
+
           while IFS= read -r path; do
             case "$path" in
               upstream.lock.json) ;;
@@ -52,7 +64,7 @@ jobs:
                 exit 1
                 ;;
             esac
-          done < <(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$pr_number/files" --jq '.[].filename')
+          done <<< "$changed_paths"
 
           approved="$(
             gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number/reviews"               --jq '[.[] | select(.user.login == "github-actions[bot]" and .state == "APPROVED")] | length'
