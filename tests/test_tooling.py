@@ -425,7 +425,7 @@ class ToolingTests(unittest.TestCase):
     def test_independent_sbom_cross_check_is_release_gating(self):
         action = (ROOT / '.github/actions/independent-sbom/action.yml').read_text()
         self.assertIn(
-            'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+            'anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
             action,
         )
         self.assertIn('syft-version: v1.48.0', action)
