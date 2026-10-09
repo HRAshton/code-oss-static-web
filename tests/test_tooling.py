@@ -194,7 +194,7 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('upstream.lock.json', auto_approvable)
         self.assertIn('verify_renovate_update.py', workflow)
         self.assertIn('ref: master', workflow)
-        self.assertEqual(config['packageRules'][0]['minimumGroupSize'], 2)
+        self.assertEqual(config['packageRules'][0]['minimumGroupSize'], 3)
         self.assertEqual(config['packageRules'][0]['groupSlug'], 'code-oss-platform')
         self.assertEqual(
             config['customDatasources']['ubuntu-snapshot']['defaultRegistryUrlTemplate'],

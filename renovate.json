@@ -9,17 +9,18 @@
   ],
   "packageRules": [
     {
-      "description": "One platform PR updates the VS Code lock and data-only Ubuntu snapshot lock",
+      "description": "One platform PR updates VS Code tag, commit, source date epoch and Ubuntu snapshot",
       "matchManagers": [
         "custom.regex"
       ],
       "matchPackageNames": [
         "microsoft/vscode",
+        "vscode-source-date-epoch",
         "ubuntu-snapshot"
       ],
       "groupName": "Code OSS platform and Ubuntu snapshot",
       "groupSlug": "code-oss-platform",
-      "minimumGroupSize": 2,
+      "minimumGroupSize": 3,
       "separateMajorMinor": false,
       "semanticCommitType": "chore",
       "semanticCommitScope": "upstream",
@@ -57,6 +58,18 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
+        "/^upstream\\.lock\\.json$/"
+      ],
+      "matchStrings": [
+        "\"sourceDateEpoch\":\\s*(?<currentValue>\\d+)"
+      ],
+      "depNameTemplate": "vscode-source-date-epoch",
+      "datasourceTemplate": "custom.vscode-source-date-epoch",
+      "versioningTemplate": "regex:^(?<major>\\d+)$"
+    },
+    {
+      "customType": "regex",
+      "managerFilePatterns": [
         "/^builder-image\\.json$/"
       ],
       "matchStrings": [
@@ -71,6 +84,13 @@
   "automerge": true,
   "automergeType": "pr",
   "customDatasources": {
+    "vscode-source-date-epoch": {
+      "defaultRegistryUrlTemplate": "https://api.github.com/repos/microsoft/vscode/releases/latest",
+      "format": "json",
+      "transformTemplates": [
+        "{\"releases\":[{\"version\":$string($floor($toMillis(created_at)/1000))}],\"sourceUrl\":\"https://github.com/microsoft/vscode\"}"
+      ]
+    },
     "ubuntu-snapshot": {
       "defaultRegistryUrlTemplate": "https://api.github.com/repos/microsoft/vscode/releases/latest",
       "format": "json",
