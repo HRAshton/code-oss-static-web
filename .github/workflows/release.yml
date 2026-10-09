@@ -258,7 +258,7 @@ jobs:
           tar -C dist -cf .work/release-static-dist.tar .
 
       - name: Upload canonical static distribution
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-static-dist
           path: .work/release-static-dist.tar
@@ -267,7 +267,7 @@ jobs:
           compression-level: 6
 
       - name: Upload locked Playwright runtime
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-playwright-runtime
           path: .work/playwright-runtime/
@@ -276,7 +276,7 @@ jobs:
           compression-level: 6
 
       - name: Upload build metadata
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-build-metadata
           path: .work/runtime-components.json
@@ -422,7 +422,7 @@ jobs:
         run: ./package.sh
 
       - name: Upload verified candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-candidate
           path: artifacts/
@@ -459,7 +459,7 @@ jobs:
           sbom-path: artifacts/sbom.cdx.json
 
       - name: Upload release provenance bundle
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-attestation
           path: ${{ steps.provenance.outputs.bundle-path }}
