@@ -2,13 +2,18 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import sys
 import tempfile
 import textwrap
 import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+
+from verify_renovate_update import EXPECTED_PATHS  # noqa: E402
 
 MOCK_GH = """#!/usr/bin/env python3
 import base64
@@ -67,6 +72,32 @@ else:
 
 
 class RenovateAutoApprovalTests(unittest.TestCase):
+    def test_documented_auto_approval_allowlist_matches_implementation(self) -> None:
+        header = 'The exact trusted Renovate auto-approval allowlist is:\n\n'
+        for name in ('CONTRIBUTING.md', 'GOVERNANCE.md'):
+            with self.subTest(document=name):
+                document = (ROOT / name).read_text(encoding='utf-8')
+                self.assertEqual(document.count(header), 1)
+                listing = document.split(header, 1)[1].split('\n\n', 1)[0]
+                lines = listing.splitlines()
+                self.assertTrue(
+                    all(line.startswith('- `') and line.endswith('`') for line in lines),
+                    'allowlist must contain only path bullets',
+                )
+                paths = [line[3:-1] for line in lines]
+                self.assertEqual(len(paths), len(set(paths)), 'duplicate documented path')
+                self.assertEqual(set(paths), set(EXPECTED_PATHS))
+
+        workflow = (ROOT / '.github/workflows/renovate-auto-approve.yml').read_text(
+            encoding='utf-8'
+        )
+        allowlist = re.search(r'(?ms)^\s+case "\$path" in\n(?P<arms>.*?)^\s+esac$', workflow)
+        self.assertIsNotNone(allowlist)
+        assert allowlist is not None
+        arms = re.findall(r'(?m)^\s+([^\s)]+)\)', allowlist.group('arms'))
+        self.assertEqual(arms.count('*'), 1, 'unexpected-path rejection must remain')
+        self.assertEqual(set(arms) - {'*'}, set(EXPECTED_PATHS))
+
     def test_renovate_epoch_manager_is_grouped_with_upstream_and_builder(self) -> None:
         config = json.loads((ROOT / 'renovate.json').read_text())
         group = next(
