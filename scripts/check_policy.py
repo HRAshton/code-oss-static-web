@@ -924,7 +924,7 @@ def check_independent_sbom_policy() -> None:
     require(action_path.is_file(), 'independent SBOM action missing')
     action = action_path.read_text(encoding='utf-8')
     for required in (
-        'anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26',
+        'anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c',
         f'syft-version: v{version}',
         'config: security/syft.yaml',
         'format: cyclonedx-json',
