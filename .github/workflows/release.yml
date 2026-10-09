@@ -192,7 +192,7 @@ jobs:
     needs: authorize
     runs-on: ubuntu-latest
     container:
-      image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+      image: public.ecr.aws/docker/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
       volumes:
         - /etc/ssl/certs/ca-certificates.crt:/tmp/runner-ca-bundle.pem:ro
     permissions:
@@ -295,7 +295,7 @@ jobs:
     needs: authorize
     runs-on: ubuntu-latest
     container:
-      image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+      image: public.ecr.aws/docker/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
       volumes:
         - /etc/ssl/certs/ca-certificates.crt:/tmp/runner-ca-bundle.pem:ro
     permissions:

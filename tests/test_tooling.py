@@ -1742,7 +1742,7 @@ python-version: ${{ steps.versions.outputs.python }}
         dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
         self.assertRegex(
             dockerfile,
-            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
+            r'(?m)^FROM public\.ecr\.aws/nginx/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
         )
         self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
 
