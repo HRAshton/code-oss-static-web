@@ -197,6 +197,29 @@ def check_browser_qualification_topology() -> None:
         "if: github.event_name != 'pull_request'",
     ):
         require(required in qualify, f'qualification release-only topology missing: {required}')
+    tooling_block = qualify.split('  tooling:\n', 1)[1].split('\n  browser-plan:\n', 1)[0]
+    require('\n    if:' not in tooling_block, 'qualification tooling must run on non-PR events')
+    plan_block = qualify.split('  browser-plan:\n', 1)[1].split('\n  recover-publication:\n', 1)[0]
+    require(
+        "always() && needs.tooling.result == 'success'" in plan_block,
+        'qualification plan must require successful tooling on every event',
+    )
+    release_gate = qualify.split('  release-intent-gate:\n', 1)[1]
+    for required in (
+        "always() && (inputs.release_mode == 'upstream' || inputs.release_mode == 'patch')",
+        'needs: [tooling, browser-plan, recover-publication, build, browser, production-serving, package, attest, release]',
+        'permissions: {}',
+        'require_result tooling "$TOOLING_RESULT" success',
+        'require_result browser-plan "$PLAN_RESULT" success',
+        'require_result recover-publication "$RECOVERY_RESULT" success',
+        'require_result build "$BUILD_RESULT" success',
+        'require_result browser "$BROWSER_RESULT" success',
+        'require_result production-serving "$SERVING_RESULT" success',
+        'require_result package "$PACKAGE_RESULT" success',
+        'require_result attest "$ATTEST_RESULT" success',
+        'require_result release "$RELEASE_RESULT" success',
+    ):
+        require(required in release_gate, f'release intent gate missing: {required}')
     require('browser: [chromium]' in release, 'release validation must use Chromium matrix')
 
     browser_scripts = (

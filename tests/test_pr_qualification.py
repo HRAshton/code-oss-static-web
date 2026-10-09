@@ -141,7 +141,7 @@ class PullRequestQualificationTests(unittest.TestCase):
             '\n  browser-plan:\n',
             1,
         )[0]
-        self.assertIn("if: github.event_name == 'pull_request'", tooling_block)
+        self.assertNotIn('\n    if:', tooling_block)
         self.assertIn('uses: ./.github/actions/tooling-checks', tooling_block)
         browser_plan_block = workflow.split('  browser-plan:\n', 1)[1].split(
             '\n  recover-publication:\n',
@@ -149,7 +149,7 @@ class PullRequestQualificationTests(unittest.TestCase):
         )[0]
         self.assertIn('needs: tooling', browser_plan_block)
         self.assertIn('Verify trusted emergency dispatch', browser_plan_block)
-        self.assertIn("needs.tooling.result == 'success'", browser_plan_block)
+        self.assertIn("always() && needs.tooling.result == 'success'", browser_plan_block)
         self.assertIn('python3 scripts/authorize_soak_override.py', browser_plan_block)
         self.assertIn('python3 scripts/classify_pr.py', workflow)
         self.assertIn('.previous_filename // empty', workflow)
