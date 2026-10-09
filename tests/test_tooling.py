@@ -134,6 +134,19 @@ class ToolingTests(unittest.TestCase):
         )
         self.assertIn("require(actual == lock['commit']", fetch_source)
 
+    def test_shellcheck_ci_uses_verified_binary_and_shared_file_list(self):
+        tooling = (ROOT / '.github/actions/tooling-checks/action.yml').read_text()
+        makefile = (ROOT / 'Makefile').read_text()
+        self.assertNotIn('ludeeus/action-shellcheck', tooling)
+        self.assertIn('version=v0.11.0', tooling)
+        self.assertRegex(tooling, r'[a-f0-9]{64}  \$archive')
+        self.assertIn('sha256sum -c -', tooling)
+        self.assertIn('make shellcheck SHELLCHECK=', tooling)
+        self.assertIn(
+            'SHELL_SCRIPTS := build.sh package.sh scripts/verify_oci_image.sh',
+            makefile,
+        )
+
     def test_renovate_auto_approval_is_limited_to_exact_platform_inputs(self):
         config = json.loads((ROOT / 'renovate.json').read_text())
         self.assertTrue(config['automerge'])
