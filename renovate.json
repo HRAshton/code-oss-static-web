@@ -24,6 +24,15 @@
       "semanticCommitType": "chore",
       "semanticCommitScope": "upstream",
       "commitMessageTopic": "Code OSS platform"
+    },
+    {
+      "description": "Group routine GitHub Actions updates weekly",
+      "matchManagers": ["github-actions"],
+      "matchPackageNames": ["!anchore/sbom-action"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "Weekly GitHub Actions",
+      "groupSlug": "weekly-github-actions",
+      "schedule": ["* 0-5 * * 1"]
     }
   ],
   "platformAutomerge": true,
