@@ -1098,7 +1098,7 @@ def check_release_integrity_policy() -> None:
 
     dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding='utf-8')
     nginx_base_image = re.compile(
-        r'^FROM public\.ecr\.aws/nginx/nginx-unprivileged:[^\s@]+@sha256:[0-9a-f]{64},
+        r'^FROM public[.]ecr[.]aws/nginx/nginx-unprivileged:[^@]+@sha256:[0-9a-f]{64}$',
         re.MULTILINE,
     )
     require(
