@@ -19,6 +19,7 @@ on:
       - '.github/actions/setup-toolchain/action.yml'
       - '.github/toolchain-versions.json'
       - 'builder-image.json'
+      - 'builder-apt-snapshot.json'
   pull_request:
     types: [opened, synchronize, reopened, edited]
   workflow_dispatch:
@@ -108,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          snapshot="$(jq -er '.aptSnapshot' builder-image.json)"
+          snapshot="$(jq -er '.aptSnapshot' builder-apt-snapshot.json)"
           [[ "$snapshot" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]
           echo "apt_snapshot=$snapshot" >> "$GITHUB_OUTPUT"
 
@@ -390,7 +391,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify builder APT snapshot lock
-        run: test "$(jq -er '.aptSnapshot' builder-image.json)" = "$APT_SNAPSHOT"
+        run: test "$(jq -er '.aptSnapshot' builder-apt-snapshot.json)" = "$APT_SNAPSHOT"
 
       - name: Set up canonical toolchain
         id: toolchain
@@ -403,7 +404,7 @@ jobs:
           path: |
             .work/vscode-web
             .work/playwright-runtime
-          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('builder-image.json', '.github/workflows/qualify.yml', 'upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/deployment_profile.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/**', 'patches/**') }}
+          key: code-oss-web-${{ runner.os }}-${{ runner.arch }}-node-${{ steps.toolchain.outputs.node-version }}-python-${{ steps.toolchain.outputs.python-version }}-${{ hashFiles('builder-image.json', 'builder-apt-snapshot.json', '.github/workflows/qualify.yml', 'upstream.lock.json', 'build.sh', 'scripts/common.py', 'scripts/build.py', 'scripts/fetch_upstream.py', 'scripts/prepare_upstream.py', 'scripts/deployment_profile.py', 'scripts/apply_patches.py', 'scripts/export_playwright_runtime.py', 'config/**', 'patches/**') }}
 
       - name: Restore npm download cache
         if: steps.upstream-cache.outputs.cache-hit != 'true'
@@ -863,7 +864,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
           toolchain="$(jq -c '{node, python}' .github/toolchain-versions.json)"
-          builder="$(jq -c '{image, digest, platform, aptSnapshot}' builder-image.json)"
+          builder="$(jq -cs '.[0] as $image | .[1] as $apt | {image: $image.image, digest: $image.digest, platform: $image.platform, aptSnapshot: $apt.aptSnapshot}' builder-image.json builder-apt-snapshot.json)"
           manifest=.work/qualified-candidate/artifact-manifest.json
           jq -e \
             --arg commit "$GITHUB_SHA" \

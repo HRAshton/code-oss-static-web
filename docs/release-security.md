@@ -164,16 +164,18 @@ index into GitHub's durable audit trail, not a substitute for workflow/release/d
 
 Release builds do not rely solely on the mutable `ubuntu-latest` filesystem. Release-authorizing
 qualification and both Release rebuilds execute inside the digest-pinned builder recorded in
-[`builder-image.json`](../builder-image.json). The qualification cache is bound to
-that lock, the artifact manifest records its identity and lock digest, and release authorization
-rejects qualification evidence whose builder identity does not match the immutable release commit.
+[`builder-image.json`](../builder-image.json). The qualification cache is bound to the image
+and snapshot locks; the artifact manifest records the combined identity and both input digests.
+Release authorization rejects qualification evidence whose builder identity does not match the
+immutable release commit.
 
-The builder lock also records the Ubuntu APT snapshot timestamp (`aptSnapshot`). All three
-build jobs install bootstrap and native prerequisites from that same snapshot before checkout,
-verify that APT selected the snapshot archive, and check the timestamp against the checked-out
-lock. The snapshot is part of the qualified artifact's builder identity and independently checked
-before release authorization. Cache keys include the builder lock, so snapshot rotation triggers
-full qualification.
+The separate, Renovate-managed [`builder-apt-snapshot.json`](../builder-apt-snapshot.json)
+records the Ubuntu APT snapshot timestamp (`aptSnapshot`); image, digest and platform remain
+in the CODEOWNED identity lock. All three build jobs install bootstrap and native prerequisites
+from that same snapshot before checkout, verify that APT selected the snapshot archive, and
+check the timestamp against the checked-out snapshot lock. The snapshot is part of the qualified
+artifact's builder identity and independently checked before release authorization, including
+its input digest. Cache keys include both locks, so snapshot rotation triggers full qualification.
 
 The digest-pinned minimal Ubuntu image initially lacks CA certificates. To authenticate the HTTPS
 snapshot endpoint without installing mutable packages, the build jobs mount the GitHub-hosted
@@ -189,9 +191,9 @@ builder OCI image with preinstalled prerequisites remains the archival alternati
 Renovate couples the snapshot refresh to the VS Code release. Its custom datasource
 uses the GitHub release publication timestamp minus 48 hours, rounded down to UTC
 midnight; the `minimumGroupSize: 3` grouped update requires the upstream tag/commit,
-its derived source date epoch, and the single root-level builder lock. The trusted
+its derived source date epoch, and the snapshot-only root lock. The trusted
 approval guard compares the actual base and PR-head bytes and permits only the
 expected tag, commit, source date epoch, and snapshot replacements. No workflow code
-or CODEOWNED path is edited in routine Renovate PRs; qualification and release jobs read the source-bound timestamp from
-trusted planner/authorizer outputs. Full qualification must pass. A failed candidate leaves
-the previously qualified builder lock and immutable release unchanged.
+or CODEOWNED path is edited in routine Renovate PRs; qualification and release jobs read the
+source-bound timestamp from trusted planner/authorizer outputs. Full qualification must pass.
+A failed candidate leaves the previously qualified builder inputs and immutable release unchanged.

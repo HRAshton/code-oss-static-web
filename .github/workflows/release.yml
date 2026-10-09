@@ -102,8 +102,12 @@ jobs:
           builder_lock=.work/release-qualification/builder-image.json
           gh api "repos/$GITHUB_REPOSITORY/contents/builder-image.json?ref=$GITHUB_SHA" \
             --jq '.content' | base64 --decode > "$builder_lock"
-          builder="$(jq -c '{image, digest, platform, aptSnapshot}' "$builder_lock")"
+          snapshot_lock=.work/release-qualification/builder-apt-snapshot.json
+          gh api "repos/$GITHUB_REPOSITORY/contents/builder-apt-snapshot.json?ref=$GITHUB_SHA" \
+            --jq '.content' | base64 --decode > "$snapshot_lock"
+          builder="$(jq -cs '.[0] as $image | .[1] as $apt | {image: $image.image, digest: $image.digest, platform: $image.platform, aptSnapshot: $apt.aptSnapshot}' "$builder_lock" "$snapshot_lock")"
           builder_input_sha256="$(sha256sum "$builder_lock" | awk '{print $1}')"
+          snapshot_input_sha256="$(sha256sum "$snapshot_lock" | awk '{print $1}')"
           evidence=.work/release-qualification/release-qualification.json
           manifest=.work/release-qualification/artifact-manifest.json
           admission=.work/release-qualification/vulnerability-admission.json
@@ -143,6 +147,7 @@ jobs:
             --argjson toolchain "$toolchain" \
             --argjson builder "$builder" \
             --arg builderInputSha256 "$builder_input_sha256" \
+            --arg snapshotInputSha256 "$snapshot_input_sha256" \
             --arg treeSha256 "$qualified_tree_sha256" \
             --argjson fileCount "$qualified_file_count" \
             '
@@ -152,12 +157,14 @@ jobs:
               .builder == $builder and
               .inputs.builderImage.path == "builder-image.json" and
               .inputs.builderImage.sha256 == $builderInputSha256 and
+              .inputs.builderAptSnapshot.path == "builder-apt-snapshot.json" and
+              .inputs.builderAptSnapshot.sha256 == $snapshotInputSha256 and
               .distribution.treeSha256 == $treeSha256 and
               .distribution.fileCount == $fileCount
             ' \
             "$manifest" >/dev/null
 
-          apt_snapshot="$(jq -er '.aptSnapshot' "$builder_lock")"
+          apt_snapshot="$(jq -er '.aptSnapshot' "$snapshot_lock")"
           [[ "$apt_snapshot" =~ ^[0-9]{8}T[0-9]{6}Z$ ]]
           {
             echo "apt_snapshot=$apt_snapshot"
@@ -216,7 +223,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify builder APT snapshot lock
-        run: test "$(jq -er '.aptSnapshot' builder-image.json)" = "$APT_SNAPSHOT"
+        run: test "$(jq -er '.aptSnapshot' builder-apt-snapshot.json)" = "$APT_SNAPSHOT"
 
       - name: Set up canonical toolchain
         id: toolchain
@@ -319,7 +326,7 @@ jobs:
           persist-credentials: false
 
       - name: Verify builder APT snapshot lock
-        run: test "$(jq -er '.aptSnapshot' builder-image.json)" = "$APT_SNAPSHOT"
+        run: test "$(jq -er '.aptSnapshot' builder-apt-snapshot.json)" = "$APT_SNAPSHOT"
 
       - name: Set up canonical toolchain
         id: toolchain

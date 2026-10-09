@@ -43,6 +43,11 @@ class OrganizationCodeownersTests(unittest.TestCase):
         self.assertNotIn('@HRAshton', rendered)
         self.assertNotIn('@vodyanica', rendered)
         self.assertNotIn('/upstream.lock.json', rendered)
+        self.assertNotIn('/builder-apt-snapshot.json', rendered)
+        self.assertIn(
+            '/builder-image.json @example-company/platform @example-company/security',
+            rendered,
+        )
 
     def test_roles_cannot_collapse_to_one_team(self) -> None:
         with self.assertRaisesRegex(BuildError, 'distinct team slugs'):

@@ -1,9 +1,9 @@
 # Interim sensitive-path ownership for the personal-account phase.
 #
 # These are real current maintainers, not placeholders for future organization teams.
-# Routine Renovate updates to /upstream.lock.json are intentionally not CODEOWNED:
-# their narrow bot approval/merge path remains protected by repository policy and
-# full release qualification instead of a per-update human gate.
+# Routine Renovate updates to /upstream.lock.json and /builder-apt-snapshot.json
+# remain unowned data-only changes under strict bot approval and full qualification.
+# Immutable builder image/digest/platform changes require code-owner review.
 
 /.github/ @HRAshton @vodyanica
 
@@ -12,6 +12,7 @@
 /SECURITY.md @HRAshton @vodyanica
 /OPERATIONS.md @HRAshton @vodyanica
 /renovate.json @HRAshton @vodyanica
+/builder-image.json @HRAshton @vodyanica
 
 /security/ @HRAshton @vodyanica
 /extensions/ @HRAshton @vodyanica

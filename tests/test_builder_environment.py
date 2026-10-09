@@ -20,13 +20,17 @@ class BuilderEnvironmentTests(unittest.TestCase):
             path.write_text(
                 json.dumps(
                     {
-                        'schemaVersion': 2,
+                        'schemaVersion': 3,
                         'image': 'docker.io/library/ubuntu',
                         'digest': 'sha256:' + 'a' * 64,
                         'platform': 'linux/amd64',
-                        'aptSnapshot': '20261001T000000Z',
                     }
                 ),
+                encoding='utf-8',
+            )
+            snapshot = path.with_name('builder-apt-snapshot.json')
+            snapshot.write_text(
+                json.dumps({'schemaVersion': 1, 'aptSnapshot': '20261001T000000Z'}),
                 encoding='utf-8',
             )
             builder = builder_environment.load_builder(path)
@@ -36,42 +40,62 @@ class BuilderEnvironmentTests(unittest.TestCase):
                 'docker.io/library/ubuntu@sha256:' + 'a' * 64,
             )
 
+            snapshot.write_text(
+                json.dumps({'schemaVersion': 1, 'aptSnapshot': '20261005T000000Z'}),
+                encoding='utf-8',
+            )
+            self.assertEqual(
+                builder_environment.load_builder(path)['aptSnapshot'], '20261005T000000Z'
+            )
+
     def test_builder_manifest_rejects_mutable_or_malformed_identity(self) -> None:
+        identity = {
+            'schemaVersion': 3,
+            'image': 'docker.io/library/ubuntu',
+            'digest': 'sha256:' + 'a' * 64,
+            'platform': 'linux/amd64',
+        }
         cases = [
-            {
-                'schemaVersion': 2,
-                'image': 'docker.io/library/ubuntu',
-                'digest': 'sha256:' + 'a' * 64,
-                'platform': 'linux/amd64',
-                'aptSnapshot': 'latest',
-            },
-            {
-                'schemaVersion': 2,
-                'image': 'docker.io/library/ubuntu@latest',
-                'digest': 'sha256:' + 'a' * 64,
-                'platform': 'linux/amd64',
-                'aptSnapshot': '20261001T000000Z',
-            },
-            {
-                'schemaVersion': 2,
-                'image': 'docker.io/library/ubuntu',
-                'digest': 'latest',
-                'platform': 'linux/amd64',
-                'aptSnapshot': '20261001T000000Z',
-            },
-            {
-                'schemaVersion': 2,
-                'image': 'docker.io/library/ubuntu',
-                'digest': 'sha256:' + 'a' * 64,
-                'platform': 'linux/arm64',
-                'aptSnapshot': '20261001T000000Z',
-            },
+            {**identity, 'aptSnapshot': '20261001T000000Z'},
+            {**identity, 'schemaVersion': 2},
+            {**identity, 'image': 'docker.io/library/ubuntu@latest'},
+            {**identity, 'digest': 'latest'},
+            {**identity, 'platform': 'linux/arm64'},
         ]
         for value in cases:
             with self.subTest(value=value):
                 with tempfile.TemporaryDirectory() as td:
                     path = Path(td) / 'builder.json'
                     path.write_text(json.dumps(value), encoding='utf-8')
+                    path.with_name('builder-apt-snapshot.json').write_text(
+                        json.dumps({'schemaVersion': 1, 'aptSnapshot': '20261001T000000Z'}),
+                        encoding='utf-8',
+                    )
+                    with self.assertRaises(BuildError):
+                        builder_environment.load_builder(path)
+
+    def test_builder_snapshot_rejects_unsupported_fields_and_formats(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / 'builder.json'
+            path.write_text(
+                json.dumps(
+                    {
+                        'schemaVersion': 3,
+                        'image': 'docker.io/library/ubuntu',
+                        'digest': 'sha256:' + 'a' * 64,
+                        'platform': 'linux/amd64',
+                    }
+                ),
+                encoding='utf-8',
+            )
+            snapshot = path.with_name('builder-apt-snapshot.json')
+            for invalid in (
+                {'schemaVersion': 2, 'aptSnapshot': '20261001T000000Z'},
+                {'schemaVersion': 1, 'aptSnapshot': 'latest'},
+                {'schemaVersion': 1, 'aptSnapshot': '20261001T000000Z', 'digest': 'malicious'},
+            ):
+                with self.subTest(invalid=invalid):
+                    snapshot.write_text(json.dumps(invalid), encoding='utf-8')
                     with self.assertRaises(BuildError):
                         builder_environment.load_builder(path)
 
