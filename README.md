@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/HRAshton/code-oss-static-web/actions/workflows/ci.yml/badge.svg)](https://github.com/HRAshton/code-oss-static-web/actions/workflows/ci.yml)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/HRAshton/code-oss-static-web/badge)](https://scorecard.dev/viewer/?uri=github.com/HRAshton/code-oss-static-web)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15349/badge)](https://www.bestpractices.dev/projects/15349)
 [![REUSE status](https://api.reuse.software/badge/github.com/HRAshton/code-oss-static-web)](https://api.reuse.software/info/github.com/HRAshton/code-oss-static-web)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
