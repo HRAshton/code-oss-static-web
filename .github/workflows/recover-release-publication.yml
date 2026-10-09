@@ -3,6 +3,10 @@ name: Recover immutable release publication
 on:
   workflow_dispatch:
     inputs:
+      release_tag:
+        description: Immutable tag for protected-branch recovery (omit on tag dispatch)
+        required: false
+        type: string
       release_run_id:
         description: Completed Release workflow run that produced the immutable publication artifacts
         required: true
@@ -18,7 +22,7 @@ on:
           - ghcr
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
   cancel-in-progress: false
 
 permissions: read-all
@@ -32,6 +36,8 @@ jobs:
     outputs:
       github-release: ${{ steps.selection.outputs.github-release }}
       ghcr: ${{ steps.selection.outputs.ghcr }}
+      release_tag: ${{ steps.source.outputs.release_tag }}
+      release_sha: ${{ steps.source.outputs.release_sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,23 +49,50 @@ jobs:
           node: 'false'
 
       - name: Verify recovery source
+        id: source
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_RUN_ID: ${{ inputs.release_run_id }}
           CHANNEL: ${{ inputs.channel }}
+          REQUESTED_TAG: ${{ inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF_TYPE" != tag ]]; then
-            echo 'publication recovery must run on the immutable release tag' >&2
+          # Current protected-branch code can repair a legacy tag's publication.
+          if [[ "$GITHUB_REF_TYPE" == tag && -z "$REQUESTED_TAG" ]]; then
+            release_tag="$GITHUB_REF_NAME"
+          elif [[ "$GITHUB_REF_TYPE" == branch && -n "$REQUESTED_TAG" ]]; then
+            default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+            [[ "$GITHUB_REF_NAME" == "$default_branch" ]] || exit 1
+            current_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq '.sha')"
+            [[ "$GITHUB_SHA" == "$current_sha" ]] || exit 1
+            release_tag="$REQUESTED_TAG"
+          else
+            echo 'recovery requires immutable tag or current default branch plus release_tag' >&2
             exit 1
           fi
-          python3 scripts/check_release_tag.py "$GITHUB_REF_NAME"
+          release_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$release_tag" --jq '.sha')"
+          # Validate the tag against the *source release's* version, not the
+          # potentially newer upstream lock on the current default branch.
+          source_version="$(
+            gh api "repos/$GITHUB_REPOSITORY/contents/upstream.lock.json?ref=$release_sha" \
+              --jq '.content' | base64 --decode | jq -er '.tag'
+          )"
+          PYTHONPATH=scripts python3 -c \
+            'import sys; from check_release_tag import release_revision; release_revision({"tag": sys.argv[1]}, sys.argv[2])' \
+            "$source_version" "$release_tag"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            [[ "$release_sha" == "$GITHUB_SHA" ]] || exit 1
+          fi
+          {
+            echo "release_tag=$release_tag"
+            echo "release_sha=$release_sha"
+          } >> "$GITHUB_OUTPUT"
 
           source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID")"
           jq -e \
-            --arg sha "$GITHUB_SHA" \
-            --arg tag "$GITHUB_REF_NAME" \
+            --arg sha "$release_sha" \
+            --arg tag "$release_tag" \
             '
               .status == "completed" and
               .event == "workflow_dispatch" and
@@ -167,12 +200,14 @@ jobs:
       - name: Verify immutable release ref
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.authorize-recovery.outputs.release_tag }}
+          RELEASE_SHA: ${{ needs.authorize-recovery.outputs.release_sha }}
         shell: bash
         run: |
           set -euo pipefail
           expected_pattern='refs/tags/v*-web.*'
-          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
-          [[ "$tag_sha" == "$GITHUB_SHA" ]]
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')"
+          [[ "$tag_sha" == "$RELEASE_SHA" ]]
           protected=0
           while IFS= read -r ruleset_id; do
             [[ -n "$ruleset_id" ]] || continue
@@ -183,15 +218,16 @@ jobs:
             fi
           done < <(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')
           [[ "$protected" == 1 ]]
-          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
-          [[ "$tag_sha_after" == "$GITHUB_SHA" ]]
+          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')"
+          [[ "$tag_sha_after" == "$RELEASE_SHA" ]]
 
       - name: Publish or verify GitHub Release
         uses: ./.github/actions/publish-github-release
         with:
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          tag: ${{ github.ref_name }}
+          tag: ${{ needs.authorize-recovery.outputs.release_tag }}
+          source-ref: refs/tags/${{ needs.authorize-recovery.outputs.release_tag }}
 
   oci:
     if: needs.authorize-recovery.outputs.ghcr == 'true'
@@ -224,12 +260,14 @@ jobs:
       - name: Verify immutable release ref
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.authorize-recovery.outputs.release_tag }}
+          RELEASE_SHA: ${{ needs.authorize-recovery.outputs.release_sha }}
         shell: bash
         run: |
           set -euo pipefail
           expected_pattern='refs/tags/v*-web.*'
-          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
-          [[ "$tag_sha" == "$GITHUB_SHA" ]]
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')"
+          [[ "$tag_sha" == "$RELEASE_SHA" ]]
           protected=0
           while IFS= read -r ruleset_id; do
             [[ -n "$ruleset_id" ]] || continue
@@ -240,16 +278,16 @@ jobs:
             fi
           done < <(gh api "repos/$GITHUB_REPOSITORY/rulesets" --jq '.[] | select(.target == "tag" and .enforcement == "active") | .id')
           [[ "$protected" == 1 ]]
-          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq '.sha')"
-          [[ "$tag_sha_after" == "$GITHUB_SHA" ]]
+          tag_sha_after="$(gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_TAG" --jq '.sha')"
+          [[ "$tag_sha_after" == "$RELEASE_SHA" ]]
 
       - name: Publish or verify GHCR
         uses: ./.github/actions/publish-oci
         with:
           github-token: ${{ github.token }}
-          image: ghcr.io/hrashton/code-oss-static-web:${{ github.ref_name }}
-          commit: ${{ github.sha }}
-          tag: ${{ github.ref_name }}
+          image: ghcr.io/hrashton/code-oss-static-web:${{ needs.authorize-recovery.outputs.release_tag }}
+          commit: ${{ needs.authorize-recovery.outputs.release_sha }}
+          tag: ${{ needs.authorize-recovery.outputs.release_tag }}
           dist-path: dist
 
   publication-status:
@@ -276,4 +314,4 @@ jobs:
             github-release) [[ "$GITHUB_RELEASE_RESULT" == success ]] ;;
             ghcr) [[ "$OCI_RESULT" == success ]] ;;
           esac
-          echo "Publication recovery complete: channel=$CHANNEL tag=$GITHUB_REF_NAME"
+          echo "Publication recovery complete: channel=$CHANNEL tag=${{ needs.authorize-recovery.outputs.release_tag }}"

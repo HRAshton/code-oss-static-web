@@ -291,8 +291,8 @@ jobs:
           retention-days: 7
           compression-level: 6
 
-  reproducibility:
-    needs: [build, authorize]
+  rebuild:
+    needs: authorize
     runs-on: ubuntu-latest
     container:
       image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
@@ -332,11 +332,52 @@ jobs:
         id: toolchain
         uses: ./.github/actions/setup-toolchain
 
+      - name: Independent clean rebuild
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: ./build.sh --clean-upstream
+
+      - name: Archive independent static distribution
+        run: |
+          mkdir -p .work
+          tar -C dist -cf .work/release-rebuild-static-dist.tar .
+
+      - name: Upload independent static distribution
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-rebuild-static-dist
+          path: .work/release-rebuild-static-dist.tar
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 6
+
+  reproducibility:
+    needs: [build, rebuild]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up canonical Python
+        uses: ./.github/actions/setup-toolchain
+        with:
+          node: 'false'
+
       - name: Download reference distribution
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-static-dist
           path: .work/release-static-dist
+
+      - name: Download independent distribution
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-rebuild-static-dist
+          path: .work/release-rebuild-static-dist
 
       - name: Extract reference distribution
         run: |
@@ -344,17 +385,17 @@ jobs:
           mkdir -p reference-dist
           tar -C reference-dist -xf .work/release-static-dist/release-static-dist.tar
 
-      - name: Independent clean rebuild
-        env:
-          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
-        run: ./build.sh --clean-upstream
+      - name: Extract independent distribution
+        run: |
+          rm -rf rebuild-dist
+          mkdir -p rebuild-dist
+          tar -C rebuild-dist -xf .work/release-rebuild-static-dist/release-rebuild-static-dist.tar
 
       - name: Compare normalized distributions
-        run: python3 scripts/compare_dist.py reference-dist dist
+        run: python3 scripts/compare_dist.py reference-dist rebuild-dist
 
   browser:
-    needs: [build, reproducibility]
+    needs: build
     strategy:
       fail-fast: false
       matrix:
@@ -377,7 +418,7 @@ jobs:
           diagnostics-artifact: release-qualification-diagnostics-${{ matrix.browser }}
 
   package:
-    needs: browser
+    needs: [browser, reproducibility]
     runs-on: ubuntu-latest
     permissions:
       contents: read

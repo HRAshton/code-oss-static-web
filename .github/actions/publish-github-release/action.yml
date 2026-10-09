@@ -10,6 +10,9 @@ inputs:
   tag:
     description: Immutable release tag
     required: true
+  source-ref:
+    description: Attested immutable source ref, defaults to the triggering ref
+    required: false
 runs:
   using: composite
   steps:
@@ -23,15 +26,18 @@ runs:
     - name: Verify release provenance bundle
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        SOURCE_REF: ${{ inputs.source-ref || github.ref }}
+        SOURCE_TAG: ${{ inputs.tag }}
       shell: bash
       run: |
         set -euo pipefail
+        [[ "$SOURCE_REF" == "refs/tags/$SOURCE_TAG" ]]
         while read -r _ asset; do
           asset="${asset#\*}"
           gh attestation verify "artifacts/$asset" \
             --repo "${{ inputs.repository }}" \
             --bundle artifacts/release-provenance.sigstore.json \
-            --source-ref "$GITHUB_REF" >/dev/null
+            --source-ref "$SOURCE_REF" >/dev/null
         done < artifacts/SHA256SUMS
 
     - name: Reconcile and verify GitHub Release

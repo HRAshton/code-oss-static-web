@@ -93,7 +93,9 @@ source commit has not changed.
 
 GitHub Release and release-tagged GHCR are immutable publication channels. For a partial failure in
 those channels, run **Recover immutable release publication** on the existing tag and provide the
-original Release workflow-run ID. Recovery consumes retained release artifacts and never rebuilds,
+original Release workflow-run ID. To repair a tag containing an obsolete recovery script, run the
+reviewed current workflow from protected `master` with an explicit `release_tag` input.
+Recovery consumes retained release artifacts and never rebuilds,
 repackages, or re-attests content.
 
 Canary, stable, and GitHub Pages are promotion state. For a failed promotion, rerun

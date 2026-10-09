@@ -638,6 +638,7 @@ def check_qualification_release_retry_policy() -> None:
         '.head_branch == $tag',
         '.head_sha == $sha',
         'gh workflow run recover-release-publication.yml',
+        '-f release_tag="$RELEASE_TAG"',
         '-f release_run_id="$release_run_id"',
         '-f channel=all',
     ):
@@ -679,12 +680,15 @@ def check_recovery_publication_boundaries() -> None:
         'publication recovery authorization must be read-only',
     )
     for required in (
+        'release_tag:',
         'release_run_id:',
         'channel:',
         'repos/$GITHUB_REPOSITORY/actions/runs/$RELEASE_RUN_ID',
         '.path == ".github/workflows/release.yml"',
         '.head_branch == $tag',
         '.head_sha == $sha',
+        'release_sha: ${{ steps.source.outputs.release_sha }}',
+        'current_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq \'.sha\')"',
         'required preparation job did not succeed exactly once',
         'release-static-dist',
         'release-candidate',
@@ -724,7 +728,7 @@ def check_recovery_publication_boundaries() -> None:
         'run-id: ${{ inputs.release_run_id }}',
         'uses: ./.github/actions/publish-github-release',
         'uses: ./.github/actions/publish-oci',
-        'group: release-${{ github.ref }}',
+        "group: release-${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}",
         'publication-status:',
     ):
         require(required in text, f'publication recovery missing: {required}')

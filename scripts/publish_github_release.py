@@ -64,12 +64,37 @@ def release_json(repository: str, tag: str) -> dict[str, Any] | None:
         capture_output=True,
         text=True,
     )
-    if completed.returncode != 0:
-        return None
-    value = json.loads(completed.stdout)
-    require(isinstance(value, dict), 'invalid GitHub Release response')
-    assert isinstance(value, dict)
-    return cast(dict[str, Any], value)
+    if completed.returncode == 0:
+        value = json.loads(completed.stdout)
+        require(isinstance(value, dict), 'invalid GitHub Release response')
+        return cast(dict[str, Any], value)
+
+    require(
+        'HTTP 404' in completed.stderr,
+        f'GitHub Release lookup failed: {completed.stderr.strip()}',
+    )
+
+    # The by-tag endpoint returns 404 for draft releases. Do not create a
+    # second release just because an existing draft is invisible by tag.
+    pages_output = run(
+        ['gh', 'api', '--paginate', '--slurp', f'repos/{repository}/releases?per_page=100'],
+        capture=True,
+    )
+    assert isinstance(pages_output, str)
+    pages: Any = json.loads(pages_output)
+    require(isinstance(pages, list), 'invalid GitHub releases listing')
+
+    matches: list[dict[str, Any]] = []
+    for page in cast(list[object], pages):
+        require(isinstance(page, list), 'invalid GitHub releases page')
+        for item in cast(list[object], page):
+            require(isinstance(item, dict), 'invalid GitHub Release entry')
+            release = cast(dict[str, Any], item)
+            if release.get('tag_name') == tag:
+                matches.append(release)
+
+    require(len(matches) <= 1, f'duplicate GitHub Releases for tag {tag}')
+    return matches[0] if matches else None
 
 
 def download_remote_asset(repository: str, asset_id: int) -> bytes:

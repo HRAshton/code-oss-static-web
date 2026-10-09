@@ -347,7 +347,8 @@ jobs:
 
           gh workflow run recover-release-publication.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$RELEASE_TAG" \
+            --ref "$GITHUB_REF_NAME" \
+            -f release_tag="$RELEASE_TAG" \
             -f release_run_id="$release_run_id" \
             -f channel=all
           echo "Existing immutable tag detected; dispatched publication verification/recovery from Release run $release_run_id"

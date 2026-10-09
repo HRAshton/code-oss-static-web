@@ -154,6 +154,43 @@ class BuilderEnvironmentTests(unittest.TestCase):
                 builder['aptSnapshot'],
             )
 
+    def test_parallel_release_builds_enforce_identical_locked_environment(self) -> None:
+        builder = builder_environment.load_builder(ROOT / 'builder-image.json')
+        reference = builder_environment.image_reference(builder)
+        jobs = builder_environment.job_blocks(
+            (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        )
+        for job_name in ('build', 'rebuild'):
+            with self.subTest(job=job_name):
+                block = jobs[job_name]
+                builder_environment.validate_build_job(
+                    f'release {job_name}', block, reference, builder['aptSnapshot']
+                )
+                with self.assertRaisesRegex(BuildError, 'locked builder digest'):
+                    builder_environment.validate_build_job(
+                        f'release {job_name}',
+                        block.replace(reference, 'docker.io/library/ubuntu:latest'),
+                        reference,
+                        builder['aptSnapshot'],
+                    )
+                with self.assertRaisesRegex(BuildError, 'locked APT snapshot'):
+                    builder_environment.validate_build_job(
+                        f'release {job_name}',
+                        block.replace(
+                            'needs.authorize.outputs.apt_snapshot',
+                            'needs.invalid.outputs.apt_snapshot',
+                        ),
+                        reference,
+                        builder['aptSnapshot'],
+                    )
+
+        self.assertIn('needs: [build, rebuild]', jobs['reproducibility'])
+        self.assertIn(
+            'scripts/compare_dist.py reference-dist rebuild-dist',
+            jobs['reproducibility'],
+        )
+        self.assertIn('needs: [browser, reproducibility]', jobs['package'])
+
     def test_job_block_parser_is_job_scoped(self) -> None:
         blocks = builder_environment.job_blocks(
             'jobs:\n  build:\n    runs-on: ubuntu-latest\n  release:\n    runs-on: ubuntu-latest\n'

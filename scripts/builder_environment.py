@@ -119,12 +119,26 @@ def validate_repository(root: Path = ROOT) -> None:
     expected = (
         ('qualification', qualify_jobs.get('build')),
         ('release build', release_jobs.get('build')),
-        ('release reproducibility', release_jobs.get('reproducibility')),
+        ('release rebuild', release_jobs.get('rebuild')),
     )
     for label, block in expected:
         require(block is not None, f'{label} job missing')
         assert block is not None
         validate_build_job(label, block, reference, builder['aptSnapshot'])
+
+    reproducibility = release_jobs.get('reproducibility')
+    require(reproducibility is not None, 'release reproducibility job missing')
+    assert reproducibility is not None
+    require(
+        'needs: [build, rebuild]' in reproducibility
+        and 'scripts/compare_dist.py reference-dist rebuild-dist' in reproducibility,
+        'release reproducibility must compare both independent locked builds',
+    )
+    package = release_jobs.get('package')
+    require(
+        package is not None and 'needs: [browser, reproducibility]' in package,
+        'release packaging must wait for browser and reproducibility gates',
+    )
 
     require(
         "hashFiles('builder-image.json', 'builder-apt-snapshot.json',"
