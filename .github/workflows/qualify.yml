@@ -71,7 +71,6 @@ permissions:
 
 jobs:
   tooling:
-    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -87,8 +86,7 @@ jobs:
     name: Qualification plan
     needs: tooling
     if: >-
-      always() &&
-      (github.event_name != 'pull_request' || needs.tooling.result == 'success')
+      always() && needs.tooling.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -972,3 +970,57 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --ref "$RELEASE_TAG" \
             -f qualification_run_id="$GITHUB_RUN_ID"
+
+  release-intent-gate:
+    name: Release intent gate
+    if: ${{ always() && (inputs.release_mode == 'upstream' || inputs.release_mode == 'patch') }}
+    needs: [tooling, browser-plan, recover-publication, build, browser, production-serving, package, attest, release]
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Verify release-intent job results
+        env:
+          RETRY_TAG: ${{ needs.browser-plan.outputs.retry_tag }}
+          TOOLING_RESULT: ${{ needs.tooling.result }}
+          PLAN_RESULT: ${{ needs.browser-plan.result }}
+          RECOVERY_RESULT: ${{ needs.recover-publication.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          BROWSER_RESULT: ${{ needs.browser.result }}
+          SERVING_RESULT: ${{ needs.production-serving.result }}
+          PACKAGE_RESULT: ${{ needs.package.result }}
+          ATTEST_RESULT: ${{ needs.attest.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          require_result() {
+            local name="$1"
+            local actual="$2"
+            local expected="$3"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "release intent gate: $name=$actual (expected $expected)" >&2
+              exit 1
+            fi
+          }
+
+          require_result tooling "$TOOLING_RESULT" success
+          require_result browser-plan "$PLAN_RESULT" success
+
+          if [[ -n "$RETRY_TAG" ]]; then
+            # An immutable tag already exists: only artifact-only recovery may run.
+            require_result recover-publication "$RECOVERY_RESULT" success
+            require_result build "$BUILD_RESULT" skipped
+            require_result browser "$BROWSER_RESULT" skipped
+            require_result production-serving "$SERVING_RESULT" skipped
+            require_result package "$PACKAGE_RESULT" skipped
+            require_result attest "$ATTEST_RESULT" skipped
+            require_result release "$RELEASE_RESULT" skipped
+          else
+            require_result recover-publication "$RECOVERY_RESULT" skipped
+            require_result build "$BUILD_RESULT" success
+            require_result browser "$BROWSER_RESULT" success
+            require_result production-serving "$SERVING_RESULT" success
+            require_result package "$PACKAGE_RESULT" success
+            require_result attest "$ATTEST_RESULT" success
+            require_result release "$RELEASE_RESULT" success
+          fi

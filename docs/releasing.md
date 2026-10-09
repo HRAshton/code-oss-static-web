@@ -42,6 +42,12 @@ succeed, the workflow creates exactly:
 v<code-oss-version>-web.0
 ```
 
+The terminal release-intent gate rejects a successful workflow when tooling, planning, build,
+browser, OCI serving, packaging, attestation, or release dispatch was skipped or failed.
+An already-existing immutable tag instead requires successful artifact-only publication recovery,
+with new-build and tag-creation jobs skipped. Both automatic and operator-triggered release intent
+use this gate.
+
 It then dispatches the independent Release workflow for that immutable tag. After immutable GitHub
 Release and release-tagged GHCR publication succeeds, Release automatically dispatches the promotion
 workflow. The default policy verifies canary and promotes the same immutable identity to stable,
