@@ -177,6 +177,12 @@ check the timestamp against the checked-out snapshot lock. The snapshot is part 
 artifact's builder identity and independently checked before release authorization, including
 its input digest. Cache keys include both locks, so snapshot rotation triggers full qualification.
 
+The release builder image and the unprivileged NGINX OCI serving base are both pinned by
+SHA-256 and pulled from upstream-published Amazon ECR Public registries. Using ECR avoids Docker
+Hub anonymous pull limits without permitting mutable-tag resolution. Both independent release
+builds use the same locked Ubuntu image and APT snapshot; OCI serving qualification pulls the
+pinned NGINX image.
+
 The digest-pinned minimal Ubuntu image initially lacks CA certificates. To authenticate the HTTPS
 snapshot endpoint without installing mutable packages, the build jobs mount the GitHub-hosted
 runner's CA bundle read-only for APT transport only. Ubuntu archive signatures are still verified,

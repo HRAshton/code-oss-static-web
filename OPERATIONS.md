@@ -245,9 +245,11 @@ their retained artifacts. It never runs `build.sh`, `package.sh`, or `actions/at
 ### Identify the immutable inputs
 
 Record both the immutable release tag and the workflow-run ID of the failed or partially failed
-`Release` run. The recovery workflow must be dispatched on that exact tag, and the source run must
-have the same `head_sha`. Do not create a new `web.N` revision for a transient publication
-failure.
+`Release` run. Normally dispatch recovery on that tag; the source run must have the same
+`head_sha`. If a tag contains an outdated recovery script, dispatch the reviewed current workflow
+from protected `master` with explicit `release_tag`. Both modes verify the unchanged tag SHA,
+source Release job results, retained artifacts and active immutable-tag ruleset before publishing.
+Do not create a new `web.N` revision for a transient publication failure.
 
 Example:
 
@@ -279,9 +281,20 @@ gh workflow run recover-release-publication.yml \
   -f channel=ghcr
 ```
 
+To repair an older tag with broken recovery code, use the current protected branch after its fix
+has merged:
+
+```bash
+gh workflow run recover-release-publication.yml \
+  --ref master \
+  -f release_tag="$TAG" \
+  -f release_run_id="$RELEASE_RUN_ID" \
+  -f channel=github-release
+```
+
 Use `channel=all` when both channels need verification or recovery. The workflow uses the same
-`release-${ref}` concurrency group as normal immutable publication, so recovery cannot race another
-publication attempt for the same immutable tag.
+`release-refs/tags/<tag>` concurrency group as normal immutable publication, so recovery cannot
+race another publication attempt for the same immutable tag.
 
 ### Immutable publication failure states
 

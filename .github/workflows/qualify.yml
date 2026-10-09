@@ -347,7 +347,8 @@ jobs:
 
           gh workflow run recover-release-publication.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref "$RELEASE_TAG" \
+            --ref "$GITHUB_REF_NAME" \
+            -f release_tag="$RELEASE_TAG" \
             -f release_run_id="$release_run_id" \
             -f channel=all
           echo "Existing immutable tag detected; dispatched publication verification/recovery from Release run $release_run_id"
@@ -360,7 +361,7 @@ jobs:
       needs.browser-plan.outputs.retry_tag == ''
     runs-on: ubuntu-latest
     container:
-      image: docker.io/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+      image: public.ecr.aws/docker/library/ubuntu@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
       volumes:
         - /etc/ssl/certs/ca-certificates.crt:/tmp/runner-ca-bundle.pem:ro
     permissions:

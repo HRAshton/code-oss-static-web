@@ -414,13 +414,16 @@ class ToolingTests(unittest.TestCase):
         self.assertIn('qualification-provenance.sigstore.json', workflow)
         self.assertIn('qualified-tree-sha256', workflow)
         self.assertIn('scripts/verify_dist_identity.py', workflow)
-        self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
+        self.assertIn('scripts/compare_dist.py reference-dist rebuild-dist', workflow)
 
         identity_gate = workflow.index('Verify qualified distribution identity')
         archive = workflow.index('Archive canonical static distribution')
-        reproducibility = workflow.index('Independent clean rebuild')
         self.assertLess(identity_gate, archive)
-        self.assertLess(archive, reproducibility)
+        self.assertIn('  rebuild:\n    needs: authorize\n', workflow)
+        self.assertIn('  reproducibility:\n    needs: [build, rebuild]\n', workflow)
+        self.assertIn('  browser:\n    needs: build\n', workflow)
+        self.assertIn('  package:\n    needs: [browser, reproducibility]\n', workflow)
+        self.assertIn('name: release-rebuild-static-dist', workflow)
 
     def test_independent_sbom_cross_check_is_release_gating(self):
         action = (ROOT / '.github/actions/independent-sbom/action.yml').read_text()
@@ -1647,9 +1650,9 @@ python-version: ${{ steps.versions.outputs.python }}
         release_script = (ROOT / 'scripts/publish_github_release.py').read_text()
         check_policy.check_release_publication_boundaries(workflow_path, workflow)
         self.assertIn('./build.sh --clean-upstream', workflow)
-        self.assertIn('needs: [build, reproducibility]', workflow)
+        self.assertIn('needs: [browser, reproducibility]', workflow)
         self.assertIn('uses: ./.github/actions/browser-qualification', workflow)
-        self.assertIn('scripts/compare_dist.py reference-dist dist', workflow)
+        self.assertIn('scripts/compare_dist.py reference-dist rebuild-dist', workflow)
         self.assertNotIn('actions/cache@', workflow)
         self.assertEqual(workflow.count('environment: release'), 2)
         self.assertRegex(
@@ -1739,7 +1742,7 @@ python-version: ${{ steps.versions.outputs.python }}
         dockerfile = (ROOT / 'deploy/Dockerfile').read_text()
         self.assertRegex(
             dockerfile,
-            r'(?m)^FROM nginxinc/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
+            r'(?m)^FROM public\.ecr\.aws/nginx/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$',
         )
         self.assertNotRegex(dockerfile, r'(?im)^\s*RUN(?:\s|$)')
 
@@ -1766,9 +1769,22 @@ python-version: ${{ steps.versions.outputs.python }}
         check_policy.check_recovery_publication_boundaries()
         self.assertIn('release_run_id:', workflow)
         self.assertIn('channel:', workflow)
+        self.assertIn('release_tag:', workflow)
+        self.assertIn('release_sha: ${{ steps.source.outputs.release_sha }}', workflow)
+        self.assertIn('[[ "$GITHUB_REF_NAME" == "$default_branch" ]]', workflow)
+        self.assertIn('PYTHONPATH=scripts python3 -c', workflow)
+        self.assertIn('[[ "$GITHUB_SHA" == "$current_sha" ]]', workflow)
+        self.assertIn(
+            'source-ref: refs/tags/${{ needs.authorize-recovery.outputs.release_tag }}',
+            workflow,
+        )
+        self.assertIn('commit: ${{ needs.authorize-recovery.outputs.release_sha }}', workflow)
         self.assertIn('.head_branch == $tag', workflow)
         self.assertIn('run-id: ${{ inputs.release_run_id }}', workflow)
-        self.assertIn('group: release-${{ github.ref }}', workflow)
+        self.assertIn(
+            "group: release-${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}",
+            workflow,
+        )
         self.assertIn('uses: ./.github/actions/publish-github-release', workflow)
         self.assertNotIn('uses: ./.github/actions/publish-pages', workflow)
         self.assertIn('uses: ./.github/actions/publish-oci', workflow)
@@ -1778,6 +1794,45 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertEqual(workflow.count('name: Verify immutable release ref'), 2)
         self.assertIn('publication-status:', workflow)
         self.assertIn('required preparation job did not succeed exactly once', workflow)
+
+    def test_github_release_lookup_handles_drafts_hidden_by_tag(self):
+        tag = 'v1.141.0-web.0'
+        draft = {'id': 408325819, 'tag_name': tag, 'draft': True, 'assets': []}
+        not_found = subprocess.CompletedProcess(
+            args=['gh', 'api'], returncode=1, stdout='', stderr='gh: Not Found (HTTP 404)'
+        )
+        paginated = subprocess.CompletedProcess(
+            args=['gh', 'api'],
+            returncode=0,
+            stdout=json.dumps([[{'tag_name': 'older'}], [draft]]),
+            stderr='',
+        )
+        with mock.patch.object(
+            publish_github_release.subprocess, 'run', side_effect=[not_found, paginated]
+        ) as command:
+            self.assertEqual(
+                publish_github_release.release_json('HRAshton/code-oss-static-web', tag),
+                draft,
+            )
+        self.assertEqual(command.call_count, 2)
+        self.assertIn('--paginate', command.call_args_list[1].args[0])
+        self.assertIn('--slurp', command.call_args_list[1].args[0])
+
+    def test_github_release_lookup_rejects_non_404_failures(self):
+        forbidden = subprocess.CompletedProcess(
+            args=['gh', 'api'],
+            returncode=1,
+            stdout='',
+            stderr='gh: Forbidden (HTTP 403)',
+        )
+        with mock.patch.object(
+            publish_github_release.subprocess, 'run', return_value=forbidden
+        ) as command:
+            with self.assertRaisesRegex(
+                publish_github_release.BuildError, 'GitHub Release lookup failed'
+            ):
+                publish_github_release.release_json('HRAshton/code-oss-static-web', 'test')
+        command.assert_called_once()
 
     def test_github_release_asset_reconciliation_is_monotonic(self):
         local = {'a.tar.gz': 'a' * 64, 'SHA256SUMS': 'b' * 64}

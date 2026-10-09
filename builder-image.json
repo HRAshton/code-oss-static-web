@@ -1,6 +1,6 @@
 {
   "schemaVersion": 3,
-  "image": "docker.io/library/ubuntu",
+  "image": "public.ecr.aws/docker/library/ubuntu",
   "digest": "sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517",
   "platform": "linux/amd64"
 }
