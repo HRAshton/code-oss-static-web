@@ -15,14 +15,23 @@ JOB_HEADER_RE = re.compile(r'^  ([A-Za-z0-9_-]+):\s*$', re.MULTILINE)
 def load_builder(path: Path) -> dict[str, str]:
     data = load_json(path)
     require(
-        set(data) == {'schemaVersion', 'image', 'digest', 'platform', 'aptSnapshot'},
+        set(data) == {'schemaVersion', 'image', 'digest', 'platform'},
         'builder image manifest keys invalid',
     )
-    require(data.get('schemaVersion') == 2, 'builder image schemaVersion must be 2')
+    require(data.get('schemaVersion') == 3, 'builder image schemaVersion must be 3')
+    snapshot_data = load_json(path.with_name('builder-apt-snapshot.json'))
+    require(
+        set(snapshot_data) == {'schemaVersion', 'aptSnapshot'},
+        'builder snapshot manifest keys invalid',
+    )
+    require(
+        snapshot_data.get('schemaVersion') == 1,
+        'builder snapshot schemaVersion must be 1',
+    )
     image = data.get('image')
     digest = data.get('digest')
     platform = data.get('platform')
-    snapshot = data.get('aptSnapshot')
+    snapshot = snapshot_data.get('aptSnapshot')
     require(
         isinstance(image, str) and bool(image) and '@' not in image,
         'builder image name invalid',
@@ -77,7 +86,7 @@ def validate_build_job(label: str, block: str, reference: str, snapshot: str) ->
         '--snapshot "$APT_SNAPSHOT" -y --no-install-recommends',
         'build-essential pkg-config libx11-dev libxkbfile-dev libkrb5-dev',
         'name: Verify builder APT snapshot lock',
-        'test "$(jq -er \'.aptSnapshot\' builder-image.json)" = "$APT_SNAPSHOT"',
+        'test "$(jq -er \'.aptSnapshot\' builder-apt-snapshot.json)" = "$APT_SNAPSHOT"',
     ):
         require(required in block, f'{label} missing snapshot-locked prerequisite: {required}')
     require(
@@ -118,24 +127,29 @@ def validate_repository(root: Path = ROOT) -> None:
         validate_build_job(label, block, reference, builder['aptSnapshot'])
 
     require(
-        "hashFiles('builder-image.json', '.github/workflows/qualify.yml'," in qualify,
+        "hashFiles('builder-image.json', 'builder-apt-snapshot.json',"
+        " '.github/workflows/qualify.yml'," in qualify,
         'qualification build cache must include the builder lock and prerequisite definition',
     )
     require(
-        "- 'builder-image.json'" in qualify,
+        "- 'builder-image.json'" in qualify and "- 'builder-apt-snapshot.json'" in qualify,
         'qualification workflow must trigger on builder lock changes',
     )
     for required in (
         '.builder == $builder',
         '.inputs.builderImage.path == "builder-image.json"',
         '.inputs.builderImage.sha256 == $builderInputSha256',
+        '.inputs.builderAptSnapshot.path == "builder-apt-snapshot.json"',
+        '.inputs.builderAptSnapshot.sha256 == $snapshotInputSha256',
     ):
         require(required in release, f'release authorization missing builder binding: {required}')
 
     package_source = (root / 'scripts/package_release.py').read_text(encoding='utf-8')
     require("'builder': builder_identity" in package_source, 'artifact manifest missing builder')
     require(
-        "'builderImage': input_digest(ROOT / 'builder-image.json')" in package_source,
+        "'builderImage': input_digest(ROOT / 'builder-image.json')" in package_source
+        and "'builderAptSnapshot': input_digest(ROOT / 'builder-apt-snapshot.json')"
+        in package_source,
         'artifact manifest missing builder lock digest',
     )
 
@@ -145,7 +159,8 @@ def validate_repository(root: Path = ROOT) -> None:
     import classify_pr
 
     require(
-        classify_pr.classify_paths(['builder-image.json']) == 'full',
+        classify_pr.classify_paths(['builder-image.json']) == 'full'
+        and classify_pr.classify_paths(['builder-apt-snapshot.json']) == 'full',
         'builder lock changes must require full qualification',
     )
 

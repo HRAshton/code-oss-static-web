@@ -67,15 +67,18 @@ Full changes continue to run Chromium, Firefox, and WebKit qualification.
 Qualification builds that can authorize a release, the independent release rebuild, and the second
 reproducibility rebuild run inside the immutable OCI image recorded in
 [`builder-image.json`](../builder-image.json). Workflows reference the image by
-digest rather than by a mutable tag. The qualification cache key includes both the builder lock and
-the qualification workflow itself, which binds its bootstrap and native-package prerequisite
+digest rather than by a mutable tag. The immutable image/digest/platform fields are CODEOWNED;
+[`builder-apt-snapshot.json`](../builder-apt-snapshot.json) holds only Renovate's mutable APT
+snapshot timestamp. The qualification cache key includes both locks and the qualification
+workflow itself, which binds its bootstrap and native-package prerequisite
 definition. A builder or prerequisite change therefore cannot reuse an upstream web bundle built
 under an older environment.
 
-Release `artifact-manifest.json` records the builder image, digest, platform, and SHA-256 of the
-builder lock alongside the canonical Node/Python toolchain. Qualification evidence records the same
-builder identity, and `release.yml` re-fetches the lock from the immutable release commit and
-requires both evidence and manifest to match it before a clean rebuild starts.
+Release `artifact-manifest.json` records the combined builder identity (including `aptSnapshot`)
+and the SHA-256 of each lock alongside the canonical Node/Python toolchain. Qualification
+evidence records the same builder identity; `release.yml` re-fetches both locks from the
+immutable release commit and requires evidence, identity, and both manifest input digests
+to match before a clean rebuild starts.
 
 The hosted runner still provides the outer GitHub Actions executor, and Ubuntu package repositories
 used by the prerequisite bootstrap remain external mutable infrastructure. Those are explicit
@@ -86,10 +89,12 @@ inputs.
 ## Historical rebuild exercise
 
 For an older immutable release, check out its release tag, inspect the tag's
-`builder-image.json`, and run the build in that exact image digest with the tag's canonical
-toolchain, upstream lock, patch set, deployment profiles, and extension lock. Compare the normalized
+`builder-image.json` and `builder-apt-snapshot.json`. Run the build inside the recorded image
+digest using the tag's canonical toolchain, upstream lock, patch set, deployment profiles,
+and extension lock. Compare the normalized
 distribution tree with the release's `artifact-manifest.json`. The manifest's `builder` (including `aptSnapshot`) and
-`inputs.builderImage` fields record the builder identity and lock digest for that exercise.
+`inputs.builderImage` and `inputs.builderAptSnapshot` fields record the identity and both
+input digests for that exercise.
 Use the recorded snapshot timestamp for both `apt-get update` and `apt-get install` rather
 than the current Ubuntu repositories. Historical snapshots have finite retention; the exercise
 may eventually fail closed for an older release without an archived builder image.
@@ -100,7 +105,7 @@ The same Renovate PR that updates the pinned VS Code release also updates the Ub
 APT snapshot timestamp. Renovate's custom datasource derives the candidate from VS
 Code's published GitHub release time, minus 48 hours and rounded down to midnight
 UTC. The `minimumGroupSize: 3` requirement groups the upstream tag/commit, source date
-epoch, and builder snapshot lock updates. The qualification planner and release authorizer
+epoch, and snapshot-only lock updates. The qualification planner and release authorizer
 resolve the pinned timestamp from this lock at the exact source commit; container jobs
 consume those immutable job outputs rather than duplicating the timestamp in YAML.
 
@@ -111,11 +116,11 @@ timestamp; when changing the pin manually, derive it with
 `git show -s --format=%ct <commit>` in the fetched upstream checkout.
 
 The trusted auto-approval job accepts only the exact two-file diff: an advancing
-VS Code tag, commit, and source date epoch plus a timestamp-only builder lock change.
+VS Code tag, commit, and source date epoch plus a timestamp-only snapshot lock change.
 It independently obtains the commit timestamp from GitHub's Git commit API and rejects
 stale, regressed, or mismatching epochs.
 It downloads both revisions from GitHub and executes the guard from trusted
 master, never the PR branch. Full qualification must succeed before automated
-approval and merge. All other changes fail closed. The builder lock is a narrowly
-scoped, non-CODEOWNED data input like the upstream lock; all workflow files remain
-CODEOWNED. If the release has no publication timestamp, the group is not generated.
+approval and merge. All other changes fail closed. The snapshot lock is a narrowly
+scoped, non-CODEOWNED data input like the upstream lock; the image identity and workflows
+are CODEOWNED. If the release has no publication timestamp, the group is not generated.

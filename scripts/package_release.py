@@ -223,6 +223,7 @@ def build_artifact_manifest(
         'inputs': {
             'toolchainVersions': input_digest(ROOT / '.github/toolchain-versions.json'),
             'builderImage': input_digest(ROOT / 'builder-image.json'),
+            'builderAptSnapshot': input_digest(ROOT / 'builder-apt-snapshot.json'),
             'upstreamLock': input_digest(ROOT / 'upstream.lock.json'),
             'patchManifest': input_digest(ROOT / 'patches/manifest.json'),
             'deploymentProfileMetadata': input_digest(deployment_profile_path),

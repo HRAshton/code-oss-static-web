@@ -16,7 +16,7 @@ from pathlib import Path
 EXPECTED_PATHS = frozenset(
     {
         'upstream.lock.json',
-        'builder-image.json',
+        'builder-apt-snapshot.json',
     }
 )
 STAMP = re.compile(r'\d{8}T\d{6}Z\Z')
@@ -96,10 +96,15 @@ def verify(
     )
     require(after_upstream == expected_upstream, 'unapproved upstream lock changes')
 
-    before_builder, after_builder = checked('builder-image.json')
+    before_builder, after_builder = checked('builder-apt-snapshot.json')
     previous_builder = json.loads(before_builder)
     updated_builder = json.loads(after_builder)
-    require(set(previous_builder) == set(updated_builder), 'builder lock keys changed')
+    require(previous_builder.get('schemaVersion') == 1, 'invalid prior snapshot schema')
+    require(
+        set(previous_builder) == {'schemaVersion', 'aptSnapshot'},
+        'invalid prior snapshot keys',
+    )
+    require(set(previous_builder) == set(updated_builder), 'snapshot lock keys changed')
     old_stamp = previous_builder['aptSnapshot']
     new_stamp = updated_builder['aptSnapshot']
     require(STAMP.fullmatch(old_stamp) is not None, 'invalid prior APT snapshot')
@@ -115,7 +120,7 @@ def verify(
     require(new_date <= now - timedelta(days=2), 'APT snapshot less than 48 hours old')
     require(
         updated_builder == {**previous_builder, 'aptSnapshot': new_stamp},
-        'builder identity changed beyond snapshot',
+        'unexpected snapshot lock fields',
     )
     expected_builder = replace_once(
         before_builder,
@@ -123,7 +128,7 @@ def verify(
         f'"aptSnapshot": "{new_stamp}"',
         'APT snapshot lock',
     )
-    require(after_builder == expected_builder, 'unapproved builder lock changes')
+    require(after_builder == expected_builder, 'unapproved snapshot lock changes')
 
 
 def main(argv: list[str]) -> int:

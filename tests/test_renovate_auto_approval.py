@@ -22,13 +22,15 @@ endpoint = next((arg for arg in args if arg.startswith('repos/')), '')
 mode = os.environ['FILE_LIST_MODE']
 paths = (
     'upstream.lock.json',
-    'builder-image.json',
+    'builder-apt-snapshot.json',
 )
 if '--method' in args:
     Path(os.environ['APPROVAL_MARKER']).write_text('approved', encoding='utf-8')
 elif endpoint.endswith('/files'):
     if mode != 'empty':
         print('\\n'.join(paths if mode != 'denied' else ('deploy/Dockerfile',)))
+    if mode == 'identity_path':
+        print('builder-image.json')
     if mode == 'unexpected':
         print('.github/workflows/ci.yml')
     if mode in ('api_error', 'partial_error'):
@@ -100,15 +102,12 @@ class RenovateAutoApprovalTests(unittest.TestCase):
             if new:
                 lock.update(tag='1.142.0', commit='b' * 40, sourceDateEpoch=1791274552)
             (folder / 'upstream.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
-            builder = {
-                'schemaVersion': 2,
-                'image': 'docker.io/library/ubuntu',
-                'digest': 'sha256:' + 'f' * 64,
-                'platform': 'linux/amd64',
+            snapshot = {
+                'schemaVersion': 1,
                 'aptSnapshot': '20260105T000000Z' if new else '20260101T000000Z',
             }
-            (folder / 'builder-image.json').write_text(json.dumps(builder, indent=2) + '\n')
-            stamp = builder['aptSnapshot']
+            (folder / 'builder-apt-snapshot.json').write_text(json.dumps(snapshot, indent=2) + '\n')
+            stamp = snapshot['aptSnapshot']
             (folder / '.github/workflows/qualify.yml').write_text(
                 f"env:\n  APT_SNAPSHOT: '{stamp}'\n"
             )
@@ -137,7 +136,8 @@ class RenovateAutoApprovalTests(unittest.TestCase):
             'wrong_epoch': False,
             'non_integer_epoch': False,
             'malicious_upstream': False,
-            'malicious_builder': False,
+            'malicious_snapshot': False,
+            'identity_path': False,
         }
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -152,10 +152,10 @@ class RenovateAutoApprovalTests(unittest.TestCase):
                         upstream.write_text(
                             upstream.read_text().replace('"schemaVersion": 1', '"schemaVersion": 2')
                         )
-                    if mode == 'malicious_builder':
-                        builder = head / 'builder-image.json'
-                        builder.write_text(
-                            builder.read_text().replace('linux/amd64', 'linux/arm64')
+                    if mode == 'malicious_snapshot':
+                        snapshot = head / 'builder-apt-snapshot.json'
+                        snapshot.write_text(
+                            snapshot.read_text().replace('"schemaVersion": 1', '"schemaVersion": 2')
                         )
                     if mode in (
                         'stale_epoch',

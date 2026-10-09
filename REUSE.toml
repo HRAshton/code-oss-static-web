@@ -19,6 +19,7 @@ path = [
   "THIRD_PARTY_NOTICES.md",
   "build.sh",
   "builder-image.json",
+  "builder-apt-snapshot.json",
   "package.sh",
   "pyproject.toml",
   "renovate.json",

@@ -188,10 +188,20 @@ class ToolingTests(unittest.TestCase):
             auto_approvable,
             {
                 'upstream.lock.json',
-                'builder-image.json',
+                'builder-apt-snapshot.json',
             },
         )
         self.assertIn('upstream.lock.json', auto_approvable)
+        self.assertNotIn('builder-image.json', auto_approvable)
+        snapshot_manager = next(
+            item
+            for item in config['customManagers']
+            if item.get('depNameTemplate') == 'ubuntu-snapshot'
+        )
+        self.assertEqual(
+            snapshot_manager['managerFilePatterns'],
+            ['/^builder-apt-snapshot\\.json$/'],
+        )
         self.assertIn('verify_renovate_update.py', workflow)
         self.assertIn('ref: master', workflow)
         self.assertEqual(config['packageRules'][0]['minimumGroupSize'], 3)
@@ -255,7 +265,9 @@ class ToolingTests(unittest.TestCase):
         self.assertEqual(lines['/renovate.json'], {'@HRAshton', '@vodyanica'})
         self.assertNotIn('/upstream.lock.json', lines)
         self.assertNotIn('upstream.lock.json', lines)
-        self.assertNotIn('builder-image.json', lines)
+        self.assertEqual(lines['/builder-image.json'], {'@HRAshton', '@vodyanica'})
+        self.assertNotIn('/builder-apt-snapshot.json', lines)
+        self.assertNotIn('builder-apt-snapshot.json', lines)
 
     def test_break_glass_privileged_workflow_call_is_narrowly_allowed(self):
         workflow = ROOT / '.github/workflows/upstream-soak-break-glass.yml'

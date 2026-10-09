@@ -1178,8 +1178,11 @@ def check_codeowners_policy() -> None:
         entries[pattern] = tuple(owners)
 
     require(
-        '/upstream.lock.json' not in entries and 'upstream.lock.json' not in entries,
-        'upstream.lock.json must remain outside CODEOWNERS for zero-touch upstream releases',
+        '/upstream.lock.json' not in entries
+        and 'upstream.lock.json' not in entries
+        and '/builder-apt-snapshot.json' not in entries
+        and 'builder-apt-snapshot.json' not in entries,
+        'Renovate data locks must remain outside CODEOWNERS for zero-touch updates',
     )
 
     team_mapping_path = ROOT / '.github/governance-teams.json'
@@ -1191,6 +1194,7 @@ def check_codeowners_policy() -> None:
             '/SECURITY.md',
             '/OPERATIONS.md',
             '/renovate.json',
+            '/builder-image.json',
             '/security/',
             '/extensions/',
             '/deploy/',

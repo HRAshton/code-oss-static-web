@@ -70,7 +70,7 @@
     {
       "customType": "regex",
       "managerFilePatterns": [
-        "/^builder-image\\.json$/"
+        "/^builder-apt-snapshot\\.json$/"
       ],
       "matchStrings": [
         "\"aptSnapshot\":\\s*\"(?<currentValue>\\d{8}T\\d{6}Z)\""
