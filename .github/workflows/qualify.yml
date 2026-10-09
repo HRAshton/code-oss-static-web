@@ -538,7 +538,7 @@ jobs:
         uses: ./.github/actions/setup-toolchain
 
       - name: Download canonical static distribution
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: static-dist
           path: .work/static-dist
@@ -678,7 +678,7 @@ jobs:
           node: 'false'
 
       - name: Download qualified static distribution
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: static-dist
           path: .work/static-dist
@@ -690,7 +690,7 @@ jobs:
           tar -C dist -xf .work/static-dist/static-dist.tar
 
       - name: Download build metadata
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: build-metadata
           path: .work
@@ -786,7 +786,7 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Download verified candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: candidate
           path: artifacts
@@ -832,19 +832,19 @@ jobs:
           persist-credentials: false
 
       - name: Download qualified candidate
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: candidate
           path: .work/qualified-candidate
 
       - name: Download qualification provenance bundle
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: qualification-provenance
           path: .work/qualification-provenance
 
       - name: Download vulnerability qualification evidence
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: vulnerability-qualification
           path: .work/vulnerability-qualification
