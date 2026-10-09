@@ -54,10 +54,20 @@ inventory, upstream metadata, licenses, notices, and GitHub/Sigstore attestation
 ## Deployment profiles
 
 Build policy is selected by the tracked `config/deployment.json` file and resolved through
-schema-validated profiles in `config/profiles/`. The selected `company-standard` profile
-preserves current product behavior, including the scoped Remotish proposed-API grant.
-`baseline-static` is the exception-free secure baseline: telemetry and the gallery are disabled,
-network access defaults to self-only, webviews fail closed, and no proposed APIs are granted.
+schema-validated profiles in `config/profiles/`. The default selection is `company-standard`.
+
+| Profile | Proposed API grants | Purpose |
+| --- | --- | --- |
+| `company-standard` | None | Default secure company deployment starting point. |
+| `baseline-static` | None | Exception-free secure baseline. |
+| `remotish-compat` | `hrashton.remotish`: `scmHistoryProvider`, `timeline` | Explicit opt-in host compatibility for separately distributed Remotish. |
+
+All three profiles use the same zero-backend static runtime: telemetry and the gallery are disabled,
+network connections default to self-only, and webviews fail closed. The current
+`company-standard` policy matches `baseline-static`; company-specific branding, support
+settings, extension mirrors, and locked extensions have not yet been provisioned. No extensions
+are bundled by default. The Remotish profile grants only the listed proposed APIs; it does not
+install or distribute Remotish. See [Remotish compatibility](docs/remotish-compatibility.md).
 
 Each profile binds runtime, network, product, proposed-API, webview, branding, support, extension
 lock, extension license, and extension source policy documents. Builds write
