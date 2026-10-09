@@ -38,6 +38,11 @@ elif '/contents/' in endpoint:
     path, ref = endpoint.split('/contents/', 1)[1].split('?ref=', 1)
     root = os.environ['BASE_FIXTURE'] if ref == 'b' * 40 else os.environ['HEAD_FIXTURE']
     print(base64.b64encode((Path(root) / path).read_bytes()).decode('ascii'))
+elif endpoint.startswith('repos/microsoft/vscode/git/commits/'):
+    if mode == 'upstream_api_error':
+        print('Simulated upstream API failure', file=sys.stderr)
+        sys.exit(1)
+    print('2026-10-06T08:15:52Z')
 elif endpoint.endswith('/pulls/42'):
     print(os.environ['SOURCE_SHA'])
 elif endpoint.endswith('/reviews'):
@@ -60,6 +65,25 @@ else:
 
 
 class RenovateAutoApprovalTests(unittest.TestCase):
+    def test_renovate_epoch_manager_is_grouped_with_upstream_and_builder(self) -> None:
+        config = json.loads((ROOT / 'renovate.json').read_text())
+        group = next(
+            rule for rule in config['packageRules'] if rule.get('groupSlug') == 'code-oss-platform'
+        )
+        self.assertEqual(group['minimumGroupSize'], 3)
+        self.assertEqual(
+            set(group['matchPackageNames']),
+            {'microsoft/vscode', 'vscode-source-date-epoch', 'ubuntu-snapshot'},
+        )
+        epoch_manager = config['customManagers'][1]
+        self.assertEqual(epoch_manager['depNameTemplate'], 'vscode-source-date-epoch')
+        self.assertEqual(epoch_manager['datasourceTemplate'], 'custom.vscode-source-date-epoch')
+        self.assertIn('sourceDateEpoch', epoch_manager['matchStrings'][0])
+        self.assertIn(
+            '$toMillis(created_at)',
+            config['customDatasources']['vscode-source-date-epoch']['transformTemplates'][0],
+        )
+
     def make_fixtures(self, tmp: Path) -> tuple[Path, Path]:
         base, head = tmp / 'base', tmp / 'head'
         for folder in (base, head):
@@ -74,7 +98,7 @@ class RenovateAutoApprovalTests(unittest.TestCase):
         for folder, new in ((base, False), (head, True)):
             lock = {**upstream}
             if new:
-                lock.update(tag='1.142.0', commit='b' * 40)
+                lock.update(tag='1.142.0', commit='b' * 40, sourceDateEpoch=1791274552)
             (folder / 'upstream.lock.json').write_text(json.dumps(lock, indent=2) + '\n')
             builder = {
                 'schemaVersion': 2,
@@ -107,6 +131,11 @@ class RenovateAutoApprovalTests(unittest.TestCase):
             'unexpected': False,
             'api_error': False,
             'partial_error': False,
+            'upstream_api_error': False,
+            'stale_epoch': False,
+            'regressed_epoch': False,
+            'wrong_epoch': False,
+            'non_integer_epoch': False,
             'malicious_upstream': False,
             'malicious_builder': False,
         }
@@ -128,6 +157,21 @@ class RenovateAutoApprovalTests(unittest.TestCase):
                         builder.write_text(
                             builder.read_text().replace('linux/amd64', 'linux/arm64')
                         )
+                    if mode in (
+                        'stale_epoch',
+                        'regressed_epoch',
+                        'wrong_epoch',
+                        'non_integer_epoch',
+                    ):
+                        upstream = head / 'upstream.lock.json'
+                        lock = json.loads(upstream.read_text())
+                        lock['sourceDateEpoch'] = {
+                            'stale_epoch': 1790307657,
+                            'regressed_epoch': 1790300000,
+                            'wrong_epoch': 1791274553,
+                            'non_integer_epoch': '1791274552',
+                        }[mode]
+                        upstream.write_text(json.dumps(lock, indent=2) + '\n')
                     marker = root / f'{mode}-approved'
                     env = os.environ.copy()
                     env.update(

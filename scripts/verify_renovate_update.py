@@ -39,6 +39,7 @@ def verify(
     head: Path,
     changed: set[str],
     *,
+    expected_upstream_epoch: int,
     now: datetime | None = None,
 ) -> None:
     require(changed == set(EXPECTED_PATHS), f'unexpected Renovate paths: {sorted(changed)}')
@@ -58,12 +59,21 @@ def verify(
     require(COMMIT.fullmatch(updated['commit']) is not None, 'invalid upstream commit')
     old_tag, new_tag = previous['tag'], updated['tag']
     old_commit, new_commit = previous['commit'], updated['commit']
+    old_epoch, new_epoch = previous['sourceDateEpoch'], updated['sourceDateEpoch']
+    require(type(old_epoch) is int and old_epoch > 0, 'invalid prior sourceDateEpoch')
+    require(type(new_epoch) is int and new_epoch > 0, 'invalid updated sourceDateEpoch')
+    require(
+        type(expected_upstream_epoch) is int and expected_upstream_epoch > 0,
+        'invalid upstream commit timestamp',
+    )
     old_parts = tuple(int(part) for part in old_tag.split('.'))
     new_parts = tuple(int(part) for part in new_tag.split('.'))
     require(new_parts > old_parts, 'upstream version did not advance')
-    require(updated['commit'] != previous['commit'], 'upstream commit did not change')
+    require(new_commit != old_commit, 'upstream commit did not change')
+    require(new_epoch > old_epoch, 'sourceDateEpoch did not advance')
+    require(new_epoch == expected_upstream_epoch, 'sourceDateEpoch does not match upstream commit')
     require(
-        updated == {**previous, 'tag': updated['tag'], 'commit': updated['commit']},
+        updated == {**previous, 'tag': new_tag, 'commit': new_commit, 'sourceDateEpoch': new_epoch},
         'unexpected upstream lock fields',
     )
     expected_upstream = replace_once(
@@ -77,6 +87,12 @@ def verify(
         f'"commit": "{old_commit}"',
         f'"commit": "{new_commit}"',
         'upstream commit',
+    )
+    expected_upstream = replace_once(
+        expected_upstream,
+        f'"sourceDateEpoch": {old_epoch}',
+        f'"sourceDateEpoch": {new_epoch}',
+        'upstream sourceDateEpoch',
     )
     require(after_upstream == expected_upstream, 'unapproved upstream lock changes')
 
@@ -111,14 +127,20 @@ def verify(
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) < 4:
+    if len(argv) < 5:
         print(
-            'usage: verify_renovate_update.py BASE_DIR HEAD_DIR FILE ...',
+            'usage: verify_renovate_update.py BASE_DIR HEAD_DIR EXPECTED_UPSTREAM_EPOCH FILE ...',
             file=sys.stderr,
         )
         return 2
     try:
-        verify(Path(argv[1]), Path(argv[2]), set(argv[3:]))
+        require(argv[3].isdigit(), 'invalid upstream commit timestamp')
+        verify(
+            Path(argv[1]),
+            Path(argv[2]),
+            set(argv[4:]),
+            expected_upstream_epoch=int(argv[3]),
+        )
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         print(f'Renovate approval denied: {exc}', file=sys.stderr)
         return 1

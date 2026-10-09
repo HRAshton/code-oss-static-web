@@ -99,13 +99,21 @@ may eventually fail closed for an older release without an archived builder imag
 The same Renovate PR that updates the pinned VS Code release also updates the Ubuntu
 APT snapshot timestamp. Renovate's custom datasource derives the candidate from VS
 Code's published GitHub release time, minus 48 hours and rounded down to midnight
-UTC. The `minimumGroupSize: 2` requirement groups the upstream tag/commit update with
-the builder snapshot lock. The qualification planner and release authorizer resolve
-the pinned timestamp from this lock at the exact source commit; container jobs
+UTC. The `minimumGroupSize: 3` requirement groups the upstream tag/commit, source date
+epoch, and builder snapshot lock updates. The qualification planner and release authorizer
+resolve the pinned timestamp from this lock at the exact source commit; container jobs
 consume those immutable job outputs rather than duplicating the timestamp in YAML.
 
+Renovate derives `sourceDateEpoch` from the upstream GitHub release's `created_at`
+(commit date) as Unix seconds, and groups that change with the VS Code tag/commit
+and builder snapshot. The pinned epoch must equal the pinned commit's UTC committer
+timestamp; when changing the pin manually, derive it with
+`git show -s --format=%ct <commit>` in the fetched upstream checkout.
+
 The trusted auto-approval job accepts only the exact two-file diff: an advancing
-VS Code tag and commit plus a timestamp-only builder lock change.
+VS Code tag, commit, and source date epoch plus a timestamp-only builder lock change.
+It independently obtains the commit timestamp from GitHub's Git commit API and rejects
+stale, regressed, or mismatching epochs.
 It downloads both revisions from GitHub and executes the guard from trusted
 master, never the PR branch. Full qualification must succeed before automated
 approval and merge. All other changes fail closed. The builder lock is a narrowly

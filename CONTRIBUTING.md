@@ -22,7 +22,8 @@ URI handlers, provenance, release publication, or other trust boundaries require
 review. Automated approvals cannot satisfy that requirement.
 
 The trusted Renovate auto-approval workflow is a narrow exception for dependency pull requests that
-change only `upstream.lock.json`. Approval waits for successful pull-request `Full build qualification`,
+change only `upstream.lock.json` and `builder-image.json`. Approval waits for successful
+pull-request `Full build qualification`,
 not the push-only `CI` workflow. Changes under `.github/**`, `deploy/**`, or any other
 release/security trust boundary are outside that allowlist and require human approval.
 
@@ -35,8 +36,9 @@ Repository ownership and sensitive-path review expectations are defined in
 requires one of the designated current maintainers to approve sensitive-path changes. Distinct
 organization roles remain a documented procedural control until team-backed rules are available.
 
-`upstream.lock.json` is intentionally outside CODEOWNERS. It is the sole Renovate auto-approval
-exception, allowing routine Microsoft updates to remain humanless while changes to workflows,
+`upstream.lock.json` is intentionally outside CODEOWNERS. Together with the data-only
+`builder-image.json` APT snapshot, it is a narrowly scoped Renovate auto-approval exception,
+allowing routine Microsoft updates to remain humanless while changes to workflows,
 automation, release policy, deployment, security, and other trust boundaries require human owners.
 
 The protected default-branch ruleset must require the `Artifact qualification gate` job from the

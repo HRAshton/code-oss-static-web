@@ -91,8 +91,15 @@ jobs:
             gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=$SOURCE_SHA" --jq .content |
               base64 --decode > "$snapshot_files/head/$path"
           done
+          upstream_commit="$(jq -er '.commit | select(type == "string" and test("^[0-9a-f]{40}$"))' "$snapshot_files/head/upstream.lock.json")"
+          committed_at="$(gh api "repos/microsoft/vscode/git/commits/$upstream_commit" --jq .committer.date)"
+          upstream_epoch="$(date -u -d "$committed_at" +%s)"
+          [[ "$upstream_epoch" =~ ^[1-9][0-9]*$ ]] || {
+            echo "Invalid upstream commit timestamp" >&2
+            exit 1
+          }
           python3 scripts/verify_renovate_update.py \
-            "$snapshot_files/base" "$snapshot_files/head" "${filenames[@]}"
+            "$snapshot_files/base" "$snapshot_files/head" "$upstream_epoch" "${filenames[@]}"
 
           current_sha="$(gh api "repos/$GITHUB_REPOSITORY/pulls/$pr_number" --jq .head.sha)"
           [[ "$current_sha" == "$SOURCE_SHA" ]] || {
