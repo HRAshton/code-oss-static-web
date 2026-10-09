@@ -6,7 +6,7 @@ RUBY ?= ruby
 REUSE ?= reuse
 
 PYTHON_PATHS := scripts tests
-SHELL_SCRIPTS := build.sh package.sh
+SHELL_SCRIPTS := build.sh package.sh scripts/verify_oci_image.sh
 
 .PHONY: check format format-check lint typecheck shellcheck syntax schema config workflow-yaml reuse test policy release-recovery-readiness
 
