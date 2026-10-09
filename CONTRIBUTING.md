@@ -21,11 +21,17 @@ Changes involving webviews, CSP, sandboxing, workspace trust, extension loading,
 URI handlers, provenance, release publication, or other trust boundaries require explicit manual
 review. Automated approvals cannot satisfy that requirement.
 
-The trusted Renovate auto-approval workflow is a narrow exception for dependency pull requests that
-change only `upstream.lock.json` and `builder-apt-snapshot.json`. Approval waits for successful
-pull-request `Full build qualification`,
-not the push-only `CI` workflow. Changes under `.github/**`, `deploy/**`, or any other
-release/security trust boundary are outside that allowlist and require human approval.
+The trusted Renovate auto-approval workflow is a narrow exception for grouped platform-update
+dependency pull requests. The exact trusted Renovate auto-approval allowlist is:
+
+- `upstream.lock.json`
+- `builder-apt-snapshot.json`
+
+Both files must change together, with no additional paths. Approval waits for successful
+pull-request `Full build qualification` (not the push-only `CI` workflow) and validation
+of the upstream version/commit/source-date epoch and APT snapshot transformations.
+Changes under `.github/**`, `deploy/**`, `builder-image.json`, or any other release/security
+trust boundary are outside that allowlist and require human approval.
 
 Pull requests otherwise require human review and the repository's required checks before merge.
 Stale approvals are dismissed when the pull request changes, and the last push must be approved by
@@ -37,9 +43,10 @@ requires one of the designated current maintainers to approve sensitive-path cha
 organization roles remain a documented procedural control until team-backed rules are available.
 
 `upstream.lock.json` and `builder-apt-snapshot.json` are intentionally outside CODEOWNERS,
-allowing only the validated upstream version/commit/epoch and APT snapshot updates to merge
-without human review. The immutable image/digest/platform fields in `builder-image.json` are
-CODEOWNED, alongside workflows, release policy, deployment, security, and other trust boundaries.
+allowing only the validated two-file platform update to merge without human review. A change to
+either file alone is not auto-approved. The immutable image/digest/platform fields in
+`builder-image.json` are CODEOWNED, alongside workflows, release policy, deployment, security,
+and other trust boundaries.
 
 The protected default-branch ruleset must require the `Artifact qualification gate` job from the
 `Full build qualification` workflow. The gate is reported for every pull request: documentation-only
