@@ -1098,7 +1098,13 @@ def check_release_integrity_policy() -> None:
 
     dockerfile = (ROOT / 'deploy/Dockerfile').read_text(encoding='utf-8')
     nginx_base_image = re.compile(
-        r'^FROM public\.ecr\.aws/nginx/nginx-unprivileged:[^\s@]+@sha256:[0-9a-f]{64}
+        r"^FROM public\\.ecr\\.aws/nginx/nginx-unprivileged:[^\\s@]+@sha256:[0-9a-f]{64}$",
+        re.MULTILINE,
+    )
+    require(
+        nginx_base_image.search(dockerfile) is not None,
+        'OCI base image must use digest-pinned upstream NGINX on AWS ECR Public',
+    )
     require(
         'COPY dist/ /srv/code-oss-static-web/' in dockerfile,
         'OCI image must copy the static distribution into a dedicated served root',
