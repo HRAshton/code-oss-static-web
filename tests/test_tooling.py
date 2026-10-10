@@ -1795,6 +1795,72 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('publication-status:', workflow)
         self.assertIn('required preparation job did not succeed exactly once', workflow)
 
+    def test_github_release_creation_retries_visibility_without_creating_twice(self):
+        tag = 'v1.141.0-web.1'
+        repository = 'Codellei/code-oss-static-web'
+        draft = {'id': 409020824, 'tag_name': tag, 'draft': True, 'prerelease': False, 'assets': []}
+        with (
+            mock.patch.object(
+                publish_github_release,
+                'release_json',
+                side_effect=[None, None, None, draft],
+            ) as lookup,
+            mock.patch.object(publish_github_release, 'run') as command,
+            mock.patch.object(publish_github_release.time, 'sleep') as sleep,
+        ):
+            self.assertEqual(publish_github_release.ensure_release(repository, tag), draft)
+        self.assertEqual(lookup.call_count, 4)
+        command.assert_called_once()
+        self.assertEqual(sleep.call_args_list, [mock.call(2), mock.call(2)])
+
+    def test_github_release_creation_stops_after_bounded_visibility_retries(self):
+        tag = 'v1.141.0-web.1'
+        repository = 'Codellei/code-oss-static-web'
+        with (
+            mock.patch.object(publish_github_release, 'release_json', return_value=None) as lookup,
+            mock.patch.object(publish_github_release, 'run') as command,
+            mock.patch.object(publish_github_release.time, 'sleep') as sleep,
+        ):
+            with self.assertRaisesRegex(
+                publish_github_release.BuildError, 'still not visible after creation'
+            ):
+                publish_github_release.ensure_release(repository, tag)
+        self.assertEqual(lookup.call_count, 7)
+        command.assert_called_once()
+        self.assertEqual(sleep.call_count, 5)
+
+    def test_github_release_creation_does_not_retry_unexpected_lookup_error(self):
+        tag = 'v1.141.0-web.1'
+        with (
+            mock.patch.object(
+                publish_github_release,
+                'release_json',
+                side_effect=[None, publish_github_release.BuildError('lookup forbidden')],
+            ) as lookup,
+            mock.patch.object(publish_github_release, 'run') as command,
+            mock.patch.object(publish_github_release.time, 'sleep') as sleep,
+        ):
+            with self.assertRaisesRegex(publish_github_release.BuildError, 'lookup forbidden'):
+                publish_github_release.ensure_release('Codellei/code-oss-static-web', tag)
+        self.assertEqual(lookup.call_count, 2)
+        command.assert_called_once()
+        sleep.assert_not_called()
+
+    def test_github_release_creation_reuses_existing_draft(self):
+        tag = 'v1.141.0-web.1'
+        draft = {'id': 409020824, 'tag_name': tag, 'draft': True, 'prerelease': False, 'assets': []}
+        with (
+            mock.patch.object(publish_github_release, 'release_json', return_value=draft),
+            mock.patch.object(publish_github_release, 'run') as command,
+            mock.patch.object(publish_github_release.time, 'sleep') as sleep,
+        ):
+            self.assertEqual(
+                publish_github_release.ensure_release('Codellei/code-oss-static-web', tag),
+                draft,
+            )
+        command.assert_not_called()
+        sleep.assert_not_called()
+
     def test_github_release_lookup_handles_drafts_hidden_by_tag(self):
         tag = 'v1.141.0-web.0'
         draft = {'id': 408325819, 'tag_name': tag, 'draft': True, 'assets': []}
