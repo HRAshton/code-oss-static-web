@@ -5,6 +5,7 @@ import argparse
 import hashlib
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import quote
@@ -165,8 +166,18 @@ def ensure_release(repository: str, tag: str) -> dict[str, Any]:
                 '--draft',
             ]
         )
-        release = release_json(repository, tag)
-        require(release is not None, 'GitHub Release was not created')
+        # GitHub may accept draft creation before it appears in release listings.
+        # Retry only the lookup; never issue a second create request.
+        for attempt in range(6):
+            release = release_json(repository, tag)
+            if release is not None:
+                break
+            if attempt < 5:
+                time.sleep(2)
+        require(
+            release is not None,
+            'GitHub Release draft is still not visible after creation (6 attempts)',
+        )
     assert release is not None
     validate_release(release, tag)
     return release
