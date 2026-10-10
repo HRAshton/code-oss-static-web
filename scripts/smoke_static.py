@@ -38,7 +38,12 @@ if additional.get('schemaVersion') != 1 or not isinstance(additional.get('extens
 
 runtime = json.loads((root / 'runtime.json').read_text(encoding='utf-8'))
 if runtime.get('telemetry') is not False:
-    raise SystemExit('telemetry must be false in base runtime')
+    raise SystemExit('telemetry must be disabled')
+if runtime.get('gallery', {}).get('mode') not in ('disabled', 'open-vsx'):
+    raise SystemExit('unsupported runtime gallery')
+if runtime['gallery']['mode'] == 'open-vsx':
+    if 'https://open-vsx.org' not in index or 'https://openvsx.eclipsecontent.org' not in index:
+        raise SystemExit('Open VSX CSP origins missing')
 
 profile = json.loads((root / 'deployment-profile.json').read_text(encoding='utf-8'))
 if profile.get('schemaVersion') != 1 or not isinstance(profile.get('id'), str):
@@ -50,6 +55,10 @@ if not isinstance(profile.get('bindings'), dict):
     raise SystemExit('deployment profile bindings missing')
 
 bootstrap = (root / 'static-bootstrap.mjs').read_text(encoding='utf-8')
+if runtime['gallery']['mode'] == 'open-vsx' and 'https://open-vsx.org/vscode/gallery' not in bootstrap:
+    raise SystemExit('Open VSX gallery bootstrap config missing')
+if 'enableTelemetry: false' not in bootstrap:
+    raise SystemExit('host telemetry must remain disabled')
 if 'invalid.invalid' not in bootstrap:
     raise SystemExit('fail-closed webview guard missing')
 if 'workbench.web.main.internal.js' not in bootstrap:
