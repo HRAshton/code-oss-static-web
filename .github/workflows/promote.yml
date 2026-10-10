@@ -589,6 +589,7 @@ jobs:
           dist-path: .work/pages-dist
           identity-path: .work/promotion/pages-deployment-identity.json
           identity-url-path: __canary/${{ inputs.release_tag }}/deployment-identity.json
+          artifact-name: github-pages-canary
 
       - name: Resolve live canary URL
         id: canary-url
@@ -887,6 +888,7 @@ jobs:
           commit: ${{ needs.authorize.outputs.release-commit }}
           dist-path: dist
           identity-path: .work/promotion/pages-deployment-identity.json
+          artifact-name: github-pages-stable
 
 
       - name: Assert live Pages hosting contract

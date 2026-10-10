@@ -20,6 +20,10 @@ inputs:
     description: Relative deployed URL path containing the identity document
     required: false
     default: deployment-identity.json
+  artifact-name:
+    description: Unique Pages artifact name within this workflow run
+    required: false
+    default: github-pages
 outputs:
   page-url:
     description: Published Pages URL
@@ -34,10 +38,13 @@ runs:
       uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
       with:
         path: ${{ inputs.dist-path }}
+        name: ${{ inputs.artifact-name }}
 
     - name: Deploy GitHub Pages
       id: deployment
       uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
+      with:
+        artifact_name: ${{ inputs.artifact-name }}
 
     - name: Verify Pages deployment status
       env:
@@ -78,7 +85,9 @@ runs:
         set -euo pipefail
         live_identity="$RUNNER_TEMP/pages-deployment-identity.json"
         verified=false
-        for verify_attempt in 1 2 3 4 5; do
+        # Pages may report deployment success before its CDN serves the new identity.
+        # Never accept an old or mismatched identity; allow bounded propagation time.
+        for verify_attempt in $(seq 1 24); do
           identity_path="${{ inputs.identity-url-path }}"
           identity_url="${PAGE_URL%/}/${identity_path#/}?promotion_run=$GITHUB_RUN_ID&run_attempt=$GITHUB_RUN_ATTEMPT&verify=$verify_attempt"
           if curl --fail --silent --show-error --location \
@@ -91,7 +100,9 @@ runs:
             verified=true
             break
           fi
-          sleep 2
+          if [[ "$verify_attempt" -lt 24 ]]; then
+            sleep 5
+          fi
         done
         if [[ "$verified" != true ]]; then
           echo "live Pages deployment identity did not converge to the expected release" >&2

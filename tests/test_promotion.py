@@ -367,6 +367,18 @@ class PromotionWorkflowTests(unittest.TestCase):
         self.assertIn('identity-url-path:', pages_action)
         self.assertIn('${identity_path#/}?promotion_run=$GITHUB_RUN_ID', pages_action)
         self.assertIn('Cache-Control: no-cache', pages_action)
+        # The auto canary and stable jobs share a workflow run, so their Pages
+        # artifact names must be distinct and selected explicitly by deploy-pages.
+        self.assertEqual(workflow.count('artifact-name: github-pages-canary'), 1)
+        self.assertEqual(workflow.count('artifact-name: github-pages-stable'), 1)
+        self.assertIn('default: github-pages', pages_action)
+        self.assertIn('name: ${{ inputs.artifact-name }}', pages_action)
+        self.assertIn('artifact_name: ${{ inputs.artifact-name }}', pages_action)
+        # A reported Pages deployment can precede CDN identity convergence.
+        self.assertIn('for verify_attempt in $(seq 1 24); do', pages_action)
+        self.assertIn('if [[ "$verify_attempt" -lt 24 ]]; then', pages_action)
+        self.assertIn('sleep 5', pages_action)
+        self.assertIn('live Pages deployment identity did not converge', pages_action)
         self.assertIn('scripts/pages_identity.py verify', pages_action)
         self.assertNotIn('deployments?environment=github-pages', pages_action)
         self.assertNotIn('steps.state.outputs.complete', pages_action)
