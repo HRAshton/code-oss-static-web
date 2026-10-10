@@ -331,7 +331,7 @@ def main() -> None:
             upstream=lock,
             release_files=[
                 tar_path,
-                        sbom_path,
+                sbom_path,
                 independent_inventory_path,
                 sbom_comparison_path,
                 license_inventory_path,
