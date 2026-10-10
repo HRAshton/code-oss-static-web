@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "default": "deny",
+  "allowedOrigins": [
+    "self",
+    "https://open-vsx.org",
+    "https://openvsx.eclipsecontent.org"
+  ]
+}
