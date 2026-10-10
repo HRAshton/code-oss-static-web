@@ -371,6 +371,108 @@ class PromotionWorkflowTests(unittest.TestCase):
 
         check_policy.check_promotion_boundaries()
 
+    def test_canary_bootstraps_from_successful_legacy_pages_without_identity(self) -> None:
+        import io
+        import os
+        import subprocess
+        import tarfile
+        import textwrap
+
+        workflow = (ROOT / '.github/workflows/promote.yml').read_text(encoding='utf-8')
+        step = workflow.split('      - name: Build real canary Pages bundle\n', 1)[1]
+        script = textwrap.dedent(
+            step.split('        run: |\n', 1)[1].split('\n      - name:', 1)[0]
+        )
+
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            bin_dir = root / 'bin'
+            bin_dir.mkdir()
+            stubs = {
+                'gh': """#!/usr/bin/env bash
+case "$2" in
+  'repos/test/repo/deployments?environment=stable&per_page=100') exit 0 ;;
+  'repos/test/repo/deployments?environment=github-pages&per_page=100') echo 101 ;;
+  'repos/test/repo/deployments/101/statuses?per_page=100') echo 1 ;;
+  'repos/test/repo/deployments/101') echo '{"id":101,"ref":"legacy"}' ;;
+  'repos/test/repo/pages') echo 'https://example.invalid/repo/' ;;
+  *) echo "unexpected gh request: $*" >&2; exit 1 ;;
+esac
+""",
+                'curl': """#!/usr/bin/env bash
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'not a deployment identity\n' > "$output"
+printf '%s' "$MOCK_HTTP_CODE"
+""",
+                'python3': """#!/usr/bin/env bash
+if [[ "$1" == "scripts/smoke_static.py" ]]; then
+  exit 0
+fi
+echo "unexpected Python invocation: $*" >&2
+exit 1
+""",
+            }
+            for name, source in stubs.items():
+                path = bin_dir / name
+                path.write_text(source, encoding='utf-8')
+                path.chmod(0o755)
+
+            promotion_input = root / '.work/promotion'
+            promotion_input.mkdir(parents=True)
+            (promotion_input / 'pages-deployment-identity.json').write_text(
+                '{"release":"candidate"}\n', encoding='utf-8'
+            )
+            with tarfile.open(promotion_input / 'candidate.tar.gz', 'w:gz') as archive:
+                content = b'candidate homepage'
+                entry = tarfile.TarInfo('index.html')
+                entry.size = len(content)
+                archive.addfile(entry, io.BytesIO(content))
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    'PATH': f'{bin_dir}:{env["PATH"]}',
+                    'GITHUB_REPOSITORY': 'test/repo',
+                    'GITHUB_RUN_ID': '42',
+                    'ARCHIVE_NAME': 'candidate.tar.gz',
+                    'RELEASE_TAG': 'v1.141.0-web.0',
+                }
+            )
+
+            # A historical successful deployment has no identity file (HTTP 404).
+            # Canary still publishes its verified candidate under __canary.
+            env['MOCK_HTTP_CODE'] = '404'
+            result = subprocess.run(
+                ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            pages = root / '.work/pages-dist'
+            self.assertIn('No stable release', (pages / 'index.html').read_text())
+            self.assertFalse((pages / 'deployment-identity.json').exists())
+            candidate = pages / '__canary/v1.141.0-web.0'
+            self.assertEqual((candidate / 'index.html').read_bytes(), b'candidate homepage')
+            self.assertTrue((candidate / 'deployment-identity.json').is_file())
+
+            # A server error must not be mistaken for a missing pre-identity file.
+            env['MOCK_HTTP_CODE'] = '500'
+            result = subprocess.run(
+                ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('HTTP 500', result.stderr)
+
+            # A 200 response containing malformed identity must still fail closed.
+            env['MOCK_HTTP_CODE'] = '200'
+            result = subprocess.run(
+                ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
+            )
+            self.assertNotEqual(result.returncode, 0)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -151,11 +151,15 @@ A successful `canary` deployment means the immutable candidate was actually serv
 under `__canary/<release-tag>/`, its release-bound identity converged at that URL, and the live
 Chromium synthetic booted. When a previous stable release exists, publishing canary reconstructs
 its root from the immutable release asset, verifies its digest and attestation, and restores its
-deployment identity before adding the candidate subpath. During migration, if no `stable` deployment record exists yet,
-the workflow recovers the exact legacy production identity from the live root
-`deployment-identity.json`, binds it to the successful legacy `github-pages` deployment, and
-reconstructs that immutable release. If neither stable nor legacy deployment exists, the initial
-Pages root instead serves a placeholder until stable promotion.
+deployment identity before adding the candidate subpath. During migration, if no `stable`
+deployment record exists yet, the workflow tries to recover the legacy production identity from
+the live root `deployment-identity.json`, verifies it against an attested immutable release, and
+reconstructs that release. A successful historical `github-pages` deployment without an identity
+file (HTTP 404) cannot establish the identity of the old bytes. Canary therefore serves the
+bootstrap placeholder at the root until stable promotion publishes the verified candidate; this
+temporarily replaces the unidentified legacy root during preflight. Without either stable or
+recoverable legacy history, the same placeholder is used. Other HTTP errors and malformed or
+mismatched live identities fail closed instead of silently treating them as a missing file.
 
 If canary publication, identity verification, or browser boot fails, the canary deployment is marked
 failed and automatic stable promotion does not run. Re-run promotion for the same immutable release
