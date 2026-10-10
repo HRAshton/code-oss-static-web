@@ -2,7 +2,7 @@ const { test, expect } = require('@playwright/test');
 const { openWorkbench } = require('./helpers.cjs');
 
 test('@gallery Open VSX search API is usable from the browser', async ({ page, request, baseURL }) => {
-  const runtime = await (await request.get(new URL('runtime.json', baseURL))).json();
+  const runtime = await (await request.get(new URL('runtime.json', baseURL).href)).json();
   test.skip(runtime.gallery.mode !== 'open-vsx', 'offline baseline has no gallery');
 
   await openWorkbench(page);
