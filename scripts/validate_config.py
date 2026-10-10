@@ -76,7 +76,7 @@ def validate_runtime(path: Path) -> None:
     require(data['telemetry'] is False, 'base runtime telemetry must be false')
     gallery = require_object(data['gallery'], 'runtime gallery')
     require_exact_keys(gallery, {'mode'}, 'runtime gallery')
-    require(gallery['mode'] in {'disabled'}, 'unsupported base gallery mode')
+    require(gallery['mode'] in {'disabled', 'open-vsx'}, 'unsupported base gallery mode')
     webviews = require_object(data['webviews'], 'runtime webviews')
     require_exact_keys(webviews, {'mode'}, 'runtime webviews')
     require(webviews['mode'] == 'disabled', 'base webviews must fail closed')
@@ -87,7 +87,8 @@ def validate_network_policy(path: Path) -> None:
     require_exact_keys(data, {'schemaVersion', 'default', 'allowedOrigins'}, 'network policy')
     require(data['schemaVersion'] == 1, 'network policy schemaVersion must be 1')
     require(data['default'] == 'deny', 'network policy must default deny')
-    require(data['allowedOrigins'] == ['self'], 'base network policy must allow self only')
+    ready = ['self', 'https://open-vsx.org', 'https://openvsx.eclipsecontent.org']
+    require(data['allowedOrigins'] in (['self'], ready), 'unexpected network policy origins')
 
 
 def validate_product_transform(path: Path) -> None:
@@ -258,17 +259,21 @@ def validate_profile_documents(profile: dict[str, Any], *, baseline: bool = Fals
         enforce_source_policy(entry, source_policy)
 
     require(documents['runtime']['telemetry'] is False, 'profile runtime telemetry must be false')
+    mode = documents['runtime']['gallery']['mode']
+    expected_origins = (
+        ['self', 'https://open-vsx.org', 'https://openvsx.eclipsecontent.org']
+        if mode == 'open-vsx' else ['self']
+    )
     require(
-        documents['runtime']['gallery']['mode'] == 'disabled', 'profile gallery must be disabled'
+        documents['network']['allowedOrigins'] == expected_origins,
+        'gallery and network policy origins must agree',
     )
     require(
         documents['runtime']['webviews']['mode'] == 'disabled',
         'profile runtime webviews must be disabled',
     )
     require(documents['network']['default'] == 'deny', 'profile network must default deny')
-    require(
-        documents['network']['allowedOrigins'] == ['self'], 'profile network must allow self only'
-    )
+
     require(documents['webview']['mode'] == 'disabled', 'profile webviews must fail closed')
 
     if baseline:
@@ -293,6 +298,10 @@ def validate_all() -> None:
         profiles[profile_id] = profile
 
     require('company-standard' in profiles, 'company-standard deployment profile missing')
+    require(
+        profiles['company-standard']['documents']['runtime']['gallery']['mode'] == 'open-vsx',
+        'company-standard must enable reviewed Open VSX gallery',
+    )
     require(
         profiles['company-standard']['documents']['proposedApi']['grants'] == {},
         'company-standard must not grant proposed APIs',
