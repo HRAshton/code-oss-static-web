@@ -65,6 +65,12 @@ jobs:
             echo "invalid immutable release tag: $RELEASE_TAG" >&2
             exit 2
           fi
+          case "$RELEASE_TAG" in
+            v1.139.1-web.0|v1.139.1-web.1|v1.140.0-web.0|v1.141.0-web.0)
+              echo 'pre-transfer releases cannot be promoted under the Codellei identity' >&2
+              exit 1
+              ;;
+          esac
 
           release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG")"
           jq -e --arg tag "$RELEASE_TAG" '
@@ -203,7 +209,8 @@ jobs:
             assets+=(playwright-runtime.tar.gz)
           fi
           for asset in "${assets[@]}"; do
-            gh attestation verify ".work/promotion/$asset"               --repo "$GITHUB_REPOSITORY"               --source-ref "refs/tags/$RELEASE_TAG" >/dev/null
+            bash scripts/verify_release_attestation.sh \
+              ".work/promotion/$asset" "$RELEASE_TAG" "$GITHUB_REPOSITORY"
           done
 
       - name: Bind promotion identity
@@ -486,9 +493,8 @@ jobs:
                 --dir .work/stable-release \
                 --pattern "$stable_archive"
               for asset in artifact-manifest.json "$stable_archive"; do
-                gh attestation verify ".work/stable-release/$asset" \
-                  --repo "$GITHUB_REPOSITORY" \
-                  --source-ref "refs/tags/$legacy_tag" >/dev/null
+                bash scripts/verify_release_attestation.sh \
+                  ".work/stable-release/$asset" "$legacy_tag" "$GITHUB_REPOSITORY"
               done
 
               python3 scripts/promotion.py \
@@ -548,9 +554,8 @@ jobs:
               echo "stable archive digest mismatch for $stable_tag" >&2
               exit 1
             fi
-            gh attestation verify ".work/stable-release/$stable_archive" \
-              --repo "$GITHUB_REPOSITORY" \
-              --source-ref "refs/tags/$stable_tag" >/dev/null
+            bash scripts/verify_release_attestation.sh \
+              ".work/stable-release/$stable_archive" "$stable_tag" "$GITHUB_REPOSITORY"
             tar -C .work/pages-dist -xzf ".work/stable-release/$stable_archive"
 
             jq '.payload | {schemaVersion, release, artifact, policy}' \

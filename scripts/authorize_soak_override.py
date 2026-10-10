@@ -6,9 +6,9 @@ import os
 
 from common import BuildError, require
 
-# Interim Release/Security owners from .github/CODEOWNERS. Changes require sensitive-path review.
+# Interim Release/Security operators from .github/CODEOWNERS. Changes require independent review.
 APPROVED_OPERATORS = frozenset({'hrashton', 'vodyanica'})
-TRUSTED_REPOSITORY = 'HRAshton/code-oss-static-web'
+TRUSTED_REPOSITORY = 'Codellei/code-oss-static-web'
 TRUSTED_WORKFLOW = '.github/workflows/upstream-soak-break-glass.yml'
 TRUSTED_CALLER = f'{TRUSTED_REPOSITORY}/{TRUSTED_WORKFLOW}@refs/heads/master'
 

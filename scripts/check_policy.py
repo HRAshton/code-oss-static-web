@@ -812,7 +812,7 @@ def check_promotion_boundaries() -> None:
         'source_release_run_id:',
         'target:',
         'gh release download',
-        'gh attestation verify',
+        'scripts/verify_release_attestation.sh',
         'scripts/promotion.py',
         'promotion-identity.json',
         'scripts/pages_identity.py write',
@@ -834,6 +834,29 @@ def check_promotion_boundaries() -> None:
         'promotion-status:',
     ):
         require(required in text, f'promotion workflow missing invariant: {required}')
+
+    require(
+        text.count('scripts/verify_release_attestation.sh') == 3,
+        'all promotion attestation paths must use the shared verifier',
+    )
+    require(
+        'case "$RELEASE_TAG" in\n'
+        '            v1.139.1-web.0|v1.139.1-web.1|v1.140.0-web.0|v1.141.0-web.0)' in text,
+        'pre-transfer releases must not become new promotion targets',
+    )
+    verifier = (ROOT / 'scripts/verify_release_attestation.sh').read_text(encoding='utf-8')
+    for required in (
+        'gh attestation verify',
+        '--bundle "$bundle"',
+        '--cert-identity',
+        'HRAshton/code-oss-static-web',
+        'Codellei/code-oss-static-web',
+        'v1.140.0-web.0',
+        '402435131',
+        'f9a2f279e7ec81ecacb7d9705d534c86b3129674',
+        '69ca20c182823e9cbf8241a9d5f019daf7b42a93f68542bc9d63d15a2c5041c4',
+    ):
+        require(required in verifier, f'promotion verifier missing invariant: {required}')
 
     pages_action = (ROOT / '.github/actions/publish-pages/action.yml').read_text(encoding='utf-8')
     require(

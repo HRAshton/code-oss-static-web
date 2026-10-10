@@ -1,6 +1,6 @@
-# Interim sensitive-path ownership for the personal-account phase.
+# Interim sensitive-path ownership for Codellei's two-developer phase.
 #
-# These are real current maintainers, not placeholders for future organization teams.
+# These are real current maintainers, including a collaborator whose organization invite is pending.
 # Routine Renovate updates to /upstream.lock.json and /builder-apt-snapshot.json
 # remain unowned data-only changes under strict bot approval and full qualification.
 # Immutable builder image/digest/platform changes require code-owner review.

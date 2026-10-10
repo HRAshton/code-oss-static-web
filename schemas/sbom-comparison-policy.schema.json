@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/HRAshton/code-oss-static-web/schemas/sbom-comparison-policy.schema.json",
+  "$id": "https://github.com/Codellei/code-oss-static-web/schemas/sbom-comparison-policy.schema.json",
   "title": "Independent SBOM comparison policy",
   "type": "object",
   "additionalProperties": false,

@@ -3,13 +3,16 @@
 This document defines the repository ownership model, sensitive-path review expectations, target
 GitHub settings, and continuity procedure for Code OSS Static Web.
 
-The repository is currently operated from the personal `HRAshton` GitHub account. Organization
-migration is intentionally deferred. Sensitive paths use interim CODEOWNERS backed by the two
-current maintainers; organization teams and team-backed role enforcement do not exist yet.
+The repository belongs to `Codellei`. During a temporary two-developer phase, `HRAshton` and
+`vodyanica` remain the CODEOWNERS for sensitive paths. An author cannot approve their own change;
+the other developer supplies the one independent approval required by the branch ruleset.
+Organization teams and separate Platform/Security approvals await additional qualified people.
+`vodyanica` has repository write access as a collaborator while the organization invitation is
+pending. `HRAshton` is currently the sole organization owner, so administration continuity remains
+open.
 
-No organization/account setting change is authorized by this document alone. The repository owner
-must approve the target organization, real team identities, membership, and final settings before
-they are applied.
+No future organization/account setting change is authorized by this document alone. The repository
+owner must approve real team identities, membership, and final settings before they are applied.
 
 ## Current operating state
 
@@ -42,14 +45,13 @@ Release tags are separately protected by the immutable-release-tag ruleset. Rele
 workflows use the protected `release` environment as their shared authorization boundary, while
 Pages deployment additionally uses the separate `github-pages` environment.
 
-These settings live in GitHub as repository state, not only in source control. Before an ownership
-migration, export or otherwise record the live ruleset/environment configuration and compare it with
-this plan so no protection is silently lost during transfer.
+These settings live in GitHub as repository state, not only in source control. The transfer audit
+must compare the live rulesets and environments before and after the ownership change.
 
 ## Intended organization ownership
 
-The target organization should create durable teams for these responsibilities. The names below are
-role labels, not approved GitHub team slugs.
+The organization should create durable teams for these responsibilities when qualified people are
+available. The names below are role labels, not approved GitHub team slugs.
 
 | Ownership role | Responsibility |
 | --- | --- |
@@ -63,8 +65,8 @@ Each critical capability should have at least two active humans before the origi
 is treated as non-essential to operation. A team that contains only one person does not solve the
 continuity requirement.
 
-Exact organization name, team slugs, members, and repository roles must be approved during the
-migration review. Do not create placeholder identities in repository policy.
+Exact team slugs, members, and repository roles require approval before team-backed policy is
+activated. Do not create placeholder identities in repository policy.
 
 ## Sensitive paths and human review
 
@@ -88,24 +90,25 @@ affects the stated trust boundary; a generic approval is not a substitute for th
 The existing [Contributing](CONTRIBUTING.md) trust-boundary review requirements still apply even
 when a path is not explicitly listed above.
 
-### Before organization migration
+### Temporary two-developer review
 
 The branch ruleset requires CODEOWNERS review and review-thread resolution. Sensitive paths in
 `.github/CODEOWNERS` are currently assigned to `@HRAshton` and `@vodyanica`, so a matching
 change requires approval from one of those designated owners in addition to satisfying the branch
 ruleset.
 
-Those two identities are an interim routing/enforcement mechanism, not a claim that one person can
-represent multiple future organization roles. Where this document calls for two distinct
-responsibilities, the pull request should still record that coverage explicitly until organization
-teams and role-specific rules can enforce it.
+Those two identities are an interim routing and enforcement mechanism. With only two developers,
+one author leaves one eligible independent reviewer. The owner approved this temporary exception to
+the separate Platform/Security approval goal for sensitive changes; it does not lower the branch
+ruleset, CODEOWNERS, CodeQL, or required checks. Record the exception in migration evidence and
+remove it when qualified team coverage is available.
 
 `upstream.lock.json` and `builder-apt-snapshot.json` are deliberately not CODEOWNED. The
 Renovate auto-approval workflow accepts only that exact pair after pull-request
 `Full build qualification` and content validation; either file alone is insufficient.
 Changes to the approval automation and immutable `builder-image.json` identity are CODEOWNED.
 
-### After organization migration
+### Future team-backed review
 
 Use GitHub teams and repository settings to enforce the approved ownership model. CODEOWNERS should
 route review to real team identities, while branch/ruleset controls should provide the actual merge
@@ -115,7 +118,7 @@ explicit documented dual-review procedure.
 
 ## CODEOWNERS policy
 
-`.github/CODEOWNERS` is active during the personal-account phase and uses only the two real current
+`.github/CODEOWNERS` is active during the two-developer phase and uses only the two real current
 maintainers. It is intentionally limited to sensitive paths. There is no repository-wide catch-all,
 because ordinary pull requests are already subject to the branch review rule and the narrowly
 validated Renovate platform-update pair must remain humanless.
@@ -124,7 +127,7 @@ The CODEOWNERS file itself is protected by its `.github/` rule. Repository polic
 interim owner set and sensitive-path coverage so a pull request cannot silently expand automation,
 remove ownership, or put either platform-update lock behind a human CODEOWNER gate.
 
-After organization migration:
+When the team-backed model is staffed and approved:
 
 1. replace the individual owners with approved real team slugs/users;
 2. keep at least two people capable of covering each critical operational responsibility;
@@ -138,9 +141,8 @@ CODEOWNERS entries.
 
 ## Target repository settings
 
-Organization migration must preserve or strengthen the current protected-branch controls. The
-migration settings change should be reviewed as a separate administrative change and recorded in a
-migration issue or change record.
+The native transfer preserved the protected-branch controls. Any later settings change must be
+reviewed as a separate administrative change and recorded in a migration issue or change record.
 
 For the default-branch ruleset, verify all of the following:
 
@@ -152,7 +154,8 @@ For the default-branch ruleset, verify all of the following:
 - `tooling` and `Artifact qualification gate` remain required status checks;
 - existing CodeQL/code-scanning requirements remain enabled;
 - required CODEOWNERS review remains enabled;
-- any path/team-specific reviewer rules needed for dual-role sensitive changes are configured;
+- any path/team-specific reviewer rules needed for future dual-role sensitive changes are configured
+  when that model is staffed;
 - bypass access is absent or limited to an explicitly reviewed emergency mechanism with audit
   expectations.
 
@@ -160,7 +163,7 @@ For the immutable release-tag ruleset, preserve active update/deletion protectio
 no-routine-bypass model. A repository transfer must not create a window in which release tags can be
 moved or deleted without the intended protection.
 
-After migration, capture the resulting ruleset IDs and exported/API-visible configuration in the
+For this migration, capture the resulting ruleset IDs and exported/API-visible configuration in the
 migration record so the settings are auditable against this document.
 
 ## Environment protection and release authority
@@ -170,7 +173,7 @@ update path is intentionally non-interactive. A normal
 Renovate → qualification → immutable release → canary → stable/Pages run must not require a human
 environment approval.
 
-In the target organization:
+In Codellei:
 
 - do **not** add required human reviewers to the `release` environment while the automatic upstream
   release workflows use it;
@@ -194,35 +197,19 @@ Release authority includes the ability to dispatch approved manual/recovery work
 failed publication state, and follow [Operations](OPERATIONS.md). It does not include permission to
 move immutable release tags or overwrite conflicting published artifacts.
 
-## Migration checklist
+## Organization transition follow-up
 
-Perform organization migration as a deliberate owner-reviewed change, not as an incidental transfer.
+The native transfer retained the repository ID, refs, releases, collaborators, and active branch and
+tag rulesets. Keep publication frozen until the remaining cutover checks are complete:
 
-1. Select and approve the target organization and the real Platform, Security, Release, and
-   Extension Policy team identities.
-2. Populate each critical team with at least two active people where practical, and confirm each
-   person's repository role uses least privilege.
-3. Record the current repository settings before transfer: default-branch ruleset, release-tag
-   ruleset, Actions permissions, environments/reviewers, Pages configuration, security features,
-   and package access.
-4. Transfer/adopt the repository into the organization without rewriting history or release tags.
-5. Verify Actions, Pages, Releases, GHCR package ownership/access, Private Vulnerability Reporting,
-   and repository links still point to the intended project.
-6. Replace the interim individual CODEOWNERS entries with the final approved organization/team
-   identities and review any path-mapping changes.
-7. Verify the target default-branch settings preserve review-thread resolution, CODEOWNERS review,
-   required checks, stale-review dismissal, and last-push approval.
-8. Reapply/verify immutable release-tag protection.
-9. Configure `release` environment deployment restrictions and Release Owner access without adding
-   a routine human-review gate, then verify the `github-pages` environment remains separate from
-   release authorization.
-10. Re-run repository policy/CI checks and inspect the effective rulesets through the GitHub API or
-    settings UI.
-11. At the next ordinary release opportunity, have a backup Release Owner perform or approve the
-    release flow so continuity is demonstrated without creating a test release solely for the
-    migration.
-12. Only after the checks above pass should the original personal owner be considered removable
-    from day-to-day administration.
+1. Merge reviewed Codellei identity and release-path changes after required CI and independent review.
+2. Confirm Renovate installation and the narrow automated approval path in Codellei.
+3. Verify new GHCR package access and public visibility on the first approved new release.
+4. Verify Pages canary and stable identities after separately approved deployment.
+5. Have `vodyanica` accept the organization invitation and demonstrate backup release operation at a
+   normal release opportunity. Add a second organization administration path.
+6. Staff and approve distinct Platform, Security, Release, Extension Policy, and Legal coverage, then
+   render team-backed CODEOWNERS and remove the temporary review exception.
 
 Any migration step that cannot be verified should remain open in the migration record rather than
 being treated as implicitly complete.

@@ -682,7 +682,7 @@ jobs:
         uses: ./.github/actions/publish-oci
         with:
           github-token: ${{ github.token }}
-          image: ghcr.io/hrashton/code-oss-static-web:${{ github.ref_name }}
+          image: ghcr.io/codellei/code-oss-static-web:${{ github.ref_name }}
           commit: ${{ github.sha }}
           tag: ${{ github.ref_name }}
           dist-path: dist

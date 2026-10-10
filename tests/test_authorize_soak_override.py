@@ -14,7 +14,7 @@ SOURCE_SHA = 'a' * 40
 
 def valid_request() -> dict[str, str]:
     return {
-        'repository': 'HRAshton/code-oss-static-web',
+        'repository': 'Codellei/code-oss-static-web',
         'ref': 'refs/heads/master',
         'event_name': 'workflow_dispatch',
         'caller_workflow_ref': TRUSTED_CALLER,
@@ -40,11 +40,16 @@ class SoakOverrideAuthorizationTests(unittest.TestCase):
     def test_untrusted_caller_or_branch_fails(self) -> None:
         for field, value in (
             ('repository', 'someone-else/project'),
+            ('repository', 'HRAshton/code-oss-static-web'),
             ('ref', 'refs/heads/unprotected'),
             ('event_name', 'push'),
             (
                 'caller_workflow_ref',
-                'HRAshton/code-oss-static-web/.github/workflows/qualify.yml@refs/heads/master',
+                'Codellei/code-oss-static-web/.github/workflows/qualify.yml@refs/heads/master',
+            ),
+            (
+                'caller_workflow_ref',
+                'HRAshton/code-oss-static-web/.github/workflows/upstream-soak-break-glass.yml@refs/heads/master',
             ),
             ('expected_source_sha', 'b' * 40),
             ('source_sha', 'invalid'),

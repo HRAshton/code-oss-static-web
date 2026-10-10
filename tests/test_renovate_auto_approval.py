@@ -208,7 +208,7 @@ class RenovateAutoApprovalTests(unittest.TestCase):
                     env.update(
                         {
                             'PATH': os.pathsep.join((str(root), env['PATH'])),
-                            'GITHUB_REPOSITORY': 'HRAshton/code-oss-static-web',
+                            'GITHUB_REPOSITORY': 'Codellei/code-oss-static-web',
                             'SOURCE_SHA': 'a' * 40,
                             'GH_TOKEN': 'test-token',
                             'FILE_LIST_MODE': mode,
