@@ -1798,7 +1798,7 @@ python-version: ${{ steps.versions.outputs.python }}
     def test_github_release_creation_retries_visibility_without_creating_twice(self):
         tag = 'v1.141.0-web.1'
         repository = 'Codellei/code-oss-static-web'
-        draft = {'id': 409020824, 'tag_name': tag, 'draft': True, 'assets': []}
+        draft = {'id': 409020824, 'tag_name': tag, 'draft': True, 'prerelease': False, 'assets': []}
         with (
             mock.patch.object(
                 publish_github_release,
@@ -1848,7 +1848,7 @@ python-version: ${{ steps.versions.outputs.python }}
 
     def test_github_release_creation_reuses_existing_draft(self):
         tag = 'v1.141.0-web.1'
-        draft = {'id': 409020824, 'tag_name': tag, 'draft': True, 'assets': []}
+        draft = {'id': 409020824, 'tag_name': tag, 'draft': True, 'prerelease': False, 'assets': []}
         with (
             mock.patch.object(publish_github_release, 'release_json', return_value=draft),
             mock.patch.object(publish_github_release, 'run') as command,
