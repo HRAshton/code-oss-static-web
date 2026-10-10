@@ -62,14 +62,16 @@ schema-validated profiles in `config/profiles/`. The default selection is `compa
 
 | Profile | Proposed API grants | Purpose |
 | --- | --- | --- |
-| `company-standard` | None | Default secure company deployment starting point. |
+| `company-standard` | None | Open VSX gallery with reviewed CSP/network origins; telemetry disabled. |
 | `baseline-static` | None | Exception-free secure baseline. |
 
-Both profiles use the same zero-backend static runtime: telemetry and the gallery are disabled,
-network connections default to self-only, and webviews fail closed. The current
-`company-standard` policy matches `baseline-static`; company-specific branding, support
-settings, extension mirrors, and locked extensions have not yet been provisioned. No extensions
-are bundled by default.
+Both profiles disable host telemetry and webviews. `baseline-static` remains
+strictly self-only and gallery-free, while `company-standard` configures the
+Open VSX gallery and admits only its documented registry/CDN origins.
+No third-party extensions are bundled by default; required additions must be
+approved, version-locked and distributed by an immutable extension mirror.
+See [ready-to-use deployments](docs/ready-to-use.md) for Docker, Pages and
+extension installation.
 
 Each profile binds runtime, network, product, proposed-API, webview, branding, support, extension
 lock, extension license, and extension source policy documents. Builds write
