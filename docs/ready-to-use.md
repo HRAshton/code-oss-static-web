@@ -106,5 +106,6 @@ Telemetry for the COSW host is off, but **third-party extensions may implement
 their own telemetry/network requests**. Require explicit company review before
 broad deployment. Verify live search, compatible web-VSIX install/activation,
 reload persistence, CORS/COEP responses, mixed-content rules, and the exact
-proxy/browser combination. The base browser test suite checks CSP and allowed
-network origins but does not certify arbitrary marketplace extensions.
+proxy/browser combination. The browser qualification suite also probes the live Open VSX query endpoint
+from the page, enforcing CSP/CORS access; it does not yet qualify VSIX
+installation across the complete candidate list or certify arbitrary extensions.
