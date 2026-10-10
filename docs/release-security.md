@@ -4,7 +4,7 @@ The pipeline separates upstream build execution from attestation and publication
 Build/test jobs are read-only and hold no release credentials. The attestation job receives only
 the completed, verified candidate and has no source checkout or shell/build steps.
 
-Packaging emits deterministic tar/zip archives, `SHA256SUMS`, `artifact-manifest.json`, a
+Packaging emits deterministic tar.gz distribution, `SHA256SUMS`, `artifact-manifest.json`, a
 CycloneDX 1.7 `sbom.cdx.json`, and `license-inventory.json`. The artifact manifest binds the
 release to the project commit, pinned upstream commit, canonical Node/Python toolchain versions and toolchain-manifest digest,
 distribution tree digest, patch/configuration/extension-lock inputs, runtime component metadata, and exact release-file
@@ -52,7 +52,7 @@ After browser qualification and packaging, an isolated OIDC job uses the SHA-pin
 `actions/attest` action to create:
 
 - SLSA build provenance for every file in `SHA256SUMS`;
-- an SBOM attestation for the canonical tar.gz and zip archives.
+- an SBOM attestation for the canonical tar.gz archive.
 
 The repository policy rejects attestation jobs that checkout source, execute shell commands, or run
 the upstream build. Build jobs are separately prohibited from receiving write/OIDC permissions.

@@ -26,28 +26,12 @@ class ProposedApiGrantTests(unittest.TestCase):
         self.assertEqual(company['documents']['proposedApi']['grants'], {})
         self.assertEqual(baseline['documents']['proposedApi']['grants'], {})
 
-    def test_remotish_compatibility_is_explicit_opt_in(self):
-        profile = deployment_profile.load_profile('remotish-compat')
-        policy = profile['documents']['proposedApi']
-        self.assertEqual(
-            policy['grants'],
-            {'hrashton.remotish': ['scmHistoryProvider', 'timeline']},
-        )
-        self.assertEqual(policy['approval']['extensionId'], 'hrashton.remotish')
-        self.assertTrue(policy['approval']['reviewer'])
-        self.assertTrue(policy['approval']['reason'])
-        self.assertTrue(policy['approval']['expires'])
-
-        extension_lock = json.loads((ROOT / 'extensions/extensions.lock.json').read_text())
-        bundled_ids = {entry.get('id') for entry in extension_lock['extensions']}
-        self.assertNotIn('hrashton.remotish', bundled_ids)
-
     def test_expired_approval_fails_even_for_an_opt_in_profile(self):
         policy = {
             'schemaVersion': 1,
-            'grants': {'hrashton.remotish': ['scmHistoryProvider']},
+            'grants': {'example.web': ['scmHistoryProvider']},
             'approval': {
-                'extensionId': 'hrashton.remotish',
+                'extensionId': 'example.web',
                 'reviewer': 'extension-policy',
                 'reason': 'compatibility',
                 'expires': '2020-01-01',
@@ -60,13 +44,13 @@ class ProposedApiGrantTests(unittest.TestCase):
         policy = {
             'schemaVersion': 1,
             'grants': {
-                'hrashton.remotish': [
+                'example.web': [
                     'scmHistoryProvider',
                     'scmHistoryProvider',
                 ]
             },
             'approval': {
-                'extensionId': 'hrashton.remotish',
+                'extensionId': 'example.web',
                 'reviewer': 'extension-policy',
                 'reason': 'compatibility',
                 'expires': '2027-04-01',
@@ -85,7 +69,7 @@ class ProposedApiGrantTests(unittest.TestCase):
 
             prepare_upstream.validate_enabled_api_proposals(
                 src,
-                {'hrashton.remotish': ['scmHistoryProvider', 'timeline']},
+                {'example.web': ['scmHistoryProvider', 'timeline']},
             )
 
     def test_proposal_validation_rejects_removed_definition(self):
@@ -96,7 +80,7 @@ class ProposedApiGrantTests(unittest.TestCase):
             with self.assertRaisesRegex(BuildError, 'scmHistoryProvider'):
                 prepare_upstream.validate_enabled_api_proposals(
                     src,
-                    {'hrashton.remotish': ['scmHistoryProvider']},
+                    {'example.web': ['scmHistoryProvider']},
                 )
 
 

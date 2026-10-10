@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "productName": "Code OSS Static Web",
+  "telemetry": false,
+  "gallery": {
+    "mode": "open-vsx"
+  },
+  "webviews": {
+    "mode": "disabled"
+  }
+}

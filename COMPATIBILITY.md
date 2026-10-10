@@ -31,23 +31,21 @@ it currently selects `company-standard`.
 
 | Profile | Proposed API grants | Purpose |
 | --- | --- | --- |
-| `company-standard` | None | Default secure deployment starting point, not a preconfigured company environment. |
+| `company-standard` | None | Reviewed Open VSX gallery; no additional extensions bundled by default. |
 | `baseline-static` | None | Exception-free secure baseline. |
-| `remotish-compat` | `hrashton.remotish`: `scmHistoryProvider`, `timeline` | Explicit opt-in compatibility for separately distributed Remotish. |
 
-At present `company-standard` and `baseline-static` bind the same policy documents. The
-extension lock is empty, and no internal extension mirror or company-specific branding or support
-configuration is provisioned. The `remotish-compat` profile grants two proposed APIs only to
-`hrashton.remotish`; it does not bundle, install, download, or qualify that extension. See
-[Remotish host compatibility](docs/remotish-compatibility.md).
+The `company-standard` gallery connects to approved Open VSX registry/CDN origins.
+`baseline-static` stays self-only, with the gallery disabled. The extension
+lock is empty, and no internal extension mirror or company-specific branding
+or support configuration is provisioned.
 
 The shared static deployment has these fixed boundaries:
 
 - all application assets are static files served from one origin, optionally below a path prefix;
 - telemetry is disabled;
-- the extension gallery is disabled;
+- the `company-standard` Open VSX gallery is enabled; `baseline-static` disables it;
 - secure webviews are disabled and fail closed;
-- runtime network policy is default-deny with only `self` allowed;
+- runtime network policy is default-deny; only `company-standard` allows Open VSX origins;
 - no service-worker offline cache is part of the product;
 - additional extensions are admitted at build time from the immutable extension lock.
 
@@ -141,8 +139,10 @@ and must be present during qualification.
 A corporate forward proxy, reverse proxy, authentication gateway, or TLS-inspection path is
 supported only when the exact production path passes deployment qualification.
 
-The baseline product does not require an application backend, WebSocket service, or cross-origin API.
-Clean startup is automatically qualified for zero cross-origin HTTP requests and zero WebSockets.
+Neither profile requires an application backend or WebSocket service. The
+`baseline-static` profile is self-only. The default `company-standard`
+profile permits only reviewed Open VSX registry/CDN requests; tests reject
+other cross-origin HTTP requests and all WebSockets.
 Proxy or gateway behavior that rewrites the application bytes, changes the application origin,
 substitutes asset responses, blocks required same-origin requests, or prevents the built-in CSP from
 executing the application is unsupported.
@@ -181,9 +181,10 @@ The deployment must:
 - avoid rewriting missing asset requests to `index.html`;
 - keep application assets on the application origin.
 
-The generated page includes a restrictive CSP. In particular, runtime connections are restricted to
-`self`; scripts and workers require the repository's self/blob allowances; styles require the
-repository's inline-style allowance. A hosting platform or gateway may add a CSP header only when
+The generated page includes a restrictive CSP. In `baseline-static`,
+runtime connections are restricted to `self`; in `company-standard` only the
+reviewed Open VSX gallery origins are additionally allowed. Scripts and workers
+use self/blob allowances; styles use the inline-style allowance. A hosting platform or gateway may add a CSP header only when
 the combined policy still permits the baseline application to run. A deployment cannot rely on a
 proxy or response header to broaden the generated meta policy.
 
@@ -254,13 +255,12 @@ The shared static runtime does not support extensions that require:
 - a Node.js-only extension host or a `main` entry point without a browser entry point;
 - native modules, local process execution, or direct host-OS filesystem access;
 - secure Code OSS webviews;
-- runtime installation from a public extension gallery;
+- runtime installation of extensions without a browser entry point, or using unreviewed registries;
 - arbitrary cross-origin network access blocked by the baseline CSP/network policy.
 
 Proposed APIs are not a general compatibility promise. `company-standard` and `baseline-static`
-grant none. `remotish-compat` permits only the listed Remotish proposals, and that permission
-still requires separate extension distribution and extension-specific qualification before support
-can be claimed.
+grant none. Any future scoped proposal grant requires independent review and extension-specific
+qualification before support can be claimed.
 
 The repository's automated extension fixture proves browser extension-host activation, global-state
 persistence, browser-filesystem persistence, and JavaScript language-service initialization. It does

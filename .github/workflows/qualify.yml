@@ -802,7 +802,6 @@ jobs:
         with:
           subject-path: |
             artifacts/code-oss-static-web-*.tar.gz
-            artifacts/code-oss-static-web-*.zip
           sbom-path: artifacts/sbom.cdx.json
 
       - name: Upload qualification provenance bundle

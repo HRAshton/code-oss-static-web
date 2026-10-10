@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "company-standard",
   "bindings": {
-    "runtime": "config/policies/runtime/static.json",
-    "network": "config/policies/network/static.json",
+    "runtime": "config/policies/runtime/ready.json",
+    "network": "config/policies/network/ready.json",
     "productTransform": "config/policies/product/static.json",
     "proposedApi": "config/policies/proposed-api/none.json",
     "webview": "config/policies/webview/disabled.json",

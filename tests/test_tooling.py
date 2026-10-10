@@ -519,7 +519,7 @@ class ToolingTests(unittest.TestCase):
         with self.assertRaises(check_release_tag.BuildError):
             check_release_tag.release_revision(lock, 'v1.140.0-web.0')
 
-    def test_archives_are_deterministic(self):
+    def test_tar_distribution_is_deterministic(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
             src = base / 'src'
@@ -528,16 +528,11 @@ class ToolingTests(unittest.TestCase):
             (src / 'b').mkdir()
             (src / 'b/x.txt').write_text('x\n')
             a, b = base / 'a.tar.gz', base / 'b.tar.gz'
-            za, zb = base / 'a.zip', base / 'b.zip'
             package_release.build_tar(src, a, 1790307657)
             package_release.build_tar(src, b, 1790307657)
-            package_release.build_zip(src, za, 1790307657)
-            package_release.build_zip(src, zb, 1790307657)
             self.assertEqual(
-                hashlib.sha256(a.read_bytes()).digest(), hashlib.sha256(b.read_bytes()).digest()
-            )
-            self.assertEqual(
-                hashlib.sha256(za.read_bytes()).digest(), hashlib.sha256(zb.read_bytes()).digest()
+                hashlib.sha256(a.read_bytes()).digest(),
+                hashlib.sha256(b.read_bytes()).digest(),
             )
 
     def test_distribution_comparison_detects_drift(self):
@@ -1963,6 +1958,33 @@ python-version: ${{ steps.versions.outputs.python }}
     def test_static_bootstrap_registers_only_additional_extensions(self):
         self.assertIn('additional-extensions.json', make_static.BOOTSTRAP)
         self.assertNotIn("fetch(new URL('extensions.json'", make_static.BOOTSTRAP)
+
+    def test_gallery_modes_are_explicit_and_telemetry_stays_off(self):
+        ready = json.loads((ROOT / 'config/policies/runtime/ready.json').read_text())
+        offline = json.loads((ROOT / 'config/policies/runtime/static.json').read_text())
+        webview = json.loads((ROOT / 'config/policies/webview/disabled.json').read_text())
+        network_ready = json.loads((ROOT / 'config/policies/network/ready.json').read_text())
+        network_offline = json.loads((ROOT / 'config/policies/network/static.json').read_text())
+        self.assertIs(ready['telemetry'], False)
+        self.assertIs(offline['telemetry'], False)
+        self.assertEqual(ready['gallery']['mode'], 'open-vsx')
+        self.assertEqual(offline['gallery']['mode'], 'disabled')
+
+        online_html = make_static.build_index(
+            'Code OSS Static Web', network_ready, 'open-vsx'
+        )
+        offline_html = make_static.build_index(
+            'Code OSS Static Web', network_offline, 'disabled'
+        )
+        self.assertIn('https://open-vsx.org', online_html)
+        self.assertNotIn('https://open-vsx.org', offline_html)
+
+        online_bootstrap = make_static.build_bootstrap(webview, 'open-vsx')
+        offline_bootstrap = make_static.build_bootstrap(webview, 'disabled')
+        self.assertIn('extensionsGallery:', online_bootstrap)
+        self.assertNotIn('extensionsGallery:', offline_bootstrap)
+        self.assertIn('enableTelemetry: false', online_bootstrap)
+        self.assertIn('enableTelemetry: false', offline_bootstrap)
 
     def test_default_static_policy_is_fail_closed(self):
         self.assertIn("connect-src 'self'", make_static.INDEX)

@@ -20,7 +20,7 @@ MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repos
 - browser-compatible built-in extension indexing;
 - telemetry disabled in the project runtime;
 - fail-closed webview mode on generic static hosting;
-- self-only default `connect-src` CSP;
+- profile-scoped `connect-src` CSP (self-only baseline; reviewed Open VSX origins in company profile);
 - deterministic tar/zip packaging and SHA-256 verification;
 - Playwright qualification for static boot, editing, commands, settings, workspace trust, network policy and extension host;
 - browser-extension activation plus global-state/filesystem persistence and language-service qualification;
@@ -40,7 +40,7 @@ Microsoft version.
 
 New immutable `v*-web.*` releases publish the same qualified static distribution as:
 
-- deterministic `.tar.gz` and `.zip` archives on the GitHub Release;
+- deterministic `.tar.gz` distribution on the GitHub Release;
 - a GitHub Pages deployment;
 - an OCI image at `ghcr.io/codellei/code-oss-static-web:<tag>` for
   `linux/amd64` and `linux/arm64`.
@@ -62,16 +62,16 @@ schema-validated profiles in `config/profiles/`. The default selection is `compa
 
 | Profile | Proposed API grants | Purpose |
 | --- | --- | --- |
-| `company-standard` | None | Default secure company deployment starting point. |
+| `company-standard` | None | Open VSX gallery with reviewed CSP/network origins; telemetry disabled. |
 | `baseline-static` | None | Exception-free secure baseline. |
-| `remotish-compat` | `hrashton.remotish`: `scmHistoryProvider`, `timeline` | Explicit opt-in host compatibility for separately distributed Remotish. |
 
-All three profiles use the same zero-backend static runtime: telemetry and the gallery are disabled,
-network connections default to self-only, and webviews fail closed. The current
-`company-standard` policy matches `baseline-static`; company-specific branding, support
-settings, extension mirrors, and locked extensions have not yet been provisioned. No extensions
-are bundled by default. The Remotish profile grants only the listed proposed APIs; it does not
-install or distribute Remotish. See [Remotish compatibility](docs/remotish-compatibility.md).
+Both profiles disable host telemetry and webviews. `baseline-static` remains
+strictly self-only and gallery-free, while `company-standard` configures the
+Open VSX gallery and admits only its documented registry/CDN origins.
+No third-party extensions are bundled by default; required additions must be
+approved, version-locked and distributed by an immutable extension mirror.
+See [ready-to-use deployments](docs/ready-to-use.md) for Docker, Pages and
+extension installation.
 
 Each profile binds runtime, network, product, proposed-API, webview, branding, support, extension
 lock, extension license, and extension source policy documents. Builds write

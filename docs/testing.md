@@ -100,10 +100,10 @@ permanent budget behind.
 - static assets under a non-root base path;
 - editor text input;
 - command palette operation;
-- zero cross-origin HTTP requests during clean startup;
+- no cross-origin requests except the two reviewed Open VSX origins in `company-standard`; zero cross-origin requests in `baseline-static`;
 - zero WebSocket connections during clean startup;
 - CSP rejection of arbitrary cross-origin fetches;
-- telemetry/gallery/webview fail-closed runtime policy;
+- telemetry and webviews fail-closed; gallery restricted to documented profile and CSP origins;
 - browser extension-host activation using the repository qualification extension;
 - extension global-state and browser-filesystem persistence across workbench reload;
 - JavaScript language-service completion initialization;

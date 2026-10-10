@@ -11,7 +11,6 @@ import re
 import shutil
 import subprocess
 import tarfile
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -74,39 +73,6 @@ def build_tar(src: Path, out: Path, epoch: int) -> None:
                     info.uname = ''
                     info.gname = ''
                     archive.addfile(info, io.BytesIO(data))
-
-
-def build_zip(src: Path, out: Path, epoch: int) -> None:
-    timestamp = datetime.datetime.fromtimestamp(
-        max(epoch, 315532800),
-        datetime.UTC,
-    )
-    stamp = (
-        timestamp.year,
-        timestamp.month,
-        timestamp.day,
-        timestamp.hour,
-        timestamp.minute,
-        timestamp.second,
-    )
-    with zipfile.ZipFile(
-        out,
-        'w',
-        compression=zipfile.ZIP_DEFLATED,
-        compresslevel=9,
-    ) as archive:
-        for path in iter_files(src):
-            relative = path.relative_to(src).as_posix()
-            info = zipfile.ZipInfo(relative, stamp)
-            info.create_system = 3
-            mode = 0o755 if os.access(path, os.X_OK) else 0o644
-            info.external_attr = (mode & 0xFFFF) << 16
-            archive.writestr(
-                info,
-                path.read_bytes(),
-                compress_type=zipfile.ZIP_DEFLATED,
-                compresslevel=9,
-            )
 
 
 def resolve_project_commit() -> str:
@@ -282,9 +248,7 @@ def main() -> None:
     runtime_metadata = load_json(runtime_metadata_path)
 
     tar_path = ARTIFACTS / f'code-oss-static-web-{version}.tar.gz'
-    zip_path = ARTIFACTS / f'code-oss-static-web-{version}.zip'
     build_tar(DIST, tar_path, epoch)
-    build_zip(DIST, zip_path, epoch)
 
     playwright_runtime_path: Path | None = None
     if args.playwright_runtime is not None:
@@ -367,7 +331,6 @@ def main() -> None:
             upstream=lock,
             release_files=[
                 tar_path,
-                zip_path,
                 sbom_path,
                 independent_inventory_path,
                 sbom_comparison_path,
