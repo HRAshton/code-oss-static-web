@@ -374,6 +374,7 @@ class PromotionWorkflowTests(unittest.TestCase):
     def test_canary_bootstraps_from_successful_legacy_pages_without_identity(self) -> None:
         import io
         import os
+        import shutil
         import subprocess
         import tarfile
         import textwrap
@@ -386,91 +387,196 @@ class PromotionWorkflowTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            (root / 'scripts').symlink_to(ROOT / 'scripts', target_is_directory=True)
+            (root / 'config').mkdir()
+            release_dir = root / 'release-source'
+            release_dir.mkdir()
+            policy, manifest, checksums, archive = PromotionIdentityTests().write_fixture(
+                release_dir
+            )
+            shutil.copy2(policy, root / 'config/promotion-policy.json')
+
+            # An actual immutable release archive, representing the previous live root.
+            with tarfile.open(archive, 'w:gz') as tar:
+                content = b'legacy homepage'
+                entry = tarfile.TarInfo('index.html')
+                entry.size = len(content)
+                tar.addfile(entry, io.BytesIO(content))
+            manifest_data = json.loads(manifest.read_text(encoding='utf-8'))
+            archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+            manifest_data['artifacts'][0]['sha256'] = archive_sha256
+            manifest_data['artifacts'][0]['size'] = archive.stat().st_size
+            manifest.write_text(json.dumps(manifest_data) + '\n', encoding='utf-8')
+            checksums.write_text(
+                f'{hashlib.sha256(manifest.read_bytes()).hexdigest()}  artifact-manifest.json\n'
+                f'{archive_sha256}  {archive.name}\n',
+                encoding='utf-8',
+            )
+            legacy = promotion.build_identity(
+                release_tag='v1.140.0-web.0',
+                release_commit='a' * 40,
+                release_id=42,
+                manifest_path=manifest,
+                checksums_path=checksums,
+                archive_path=archive,
+                policy_path=policy,
+            )
+            identity_file = root / 'live-identity.json'
+            identity_file.write_text(
+                json.dumps(promotion.build_pages_deployment_identity(legacy)),
+                encoding='utf-8',
+            )
+            live_index = root / 'live-index.html'
+            live_index.write_bytes(b'legacy homepage')
+
             bin_dir = root / 'bin'
             bin_dir.mkdir()
             stubs = {
                 'gh': """#!/usr/bin/env bash
-case "$2" in
-  'repos/test/repo/deployments?environment=stable&per_page=100') exit 0 ;;
-  'repos/test/repo/deployments?environment=github-pages&per_page=100') echo 101 ;;
-  'repos/test/repo/deployments/101/statuses?per_page=100') echo 1 ;;
-  'repos/test/repo/deployments/101') echo '{"id":101,"ref":"legacy"}' ;;
-  'repos/test/repo/pages') echo 'https://example.invalid/repo/' ;;
-  *) echo "unexpected gh request: $*" >&2; exit 1 ;;
-esac
+set -euo pipefail
+if [[ "$1" == api ]]; then
+  case "$2" in
+    'repos/test/repo/deployments?environment=stable&per_page=100') exit 0 ;;
+    'repos/test/repo/deployments?environment=github-pages&per_page=100') echo 101 ;;
+    'repos/test/repo/deployments/101/statuses?per_page=100') echo 1 ;;
+    'repos/test/repo/deployments/101')
+      printf '{"id":101,"sha":"%s"}\n' "$MOCK_LEGACY_SHA" ;;
+    'repos/test/repo/pages') echo 'https://example.invalid/repo/' ;;
+    --paginate) printf '%s' "$MOCK_TAGS" ;;
+    repos/test/repo/commits/v*-web.*) echo "$MOCK_LEGACY_SHA" ;;
+    repos/test/repo/releases/tags/v*-web.*)
+      echo '{"id":42,"tag_name":"v1.140.0-web.0","draft":false,"prerelease":false}' ;;
+    *) echo "unexpected gh api: $*" >&2; exit 1 ;;
+  esac
+elif [[ "$1" == release && "$2" == download ]]; then
+  shift 3
+  dir=''
+  while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+      --dir) dir="$2"; mkdir -p "$dir"; shift 2 ;;
+      --pattern) cp "$MOCK_RELEASE_DIR/$2" "$dir/$2"; shift 2 ;;
+      *) shift ;;
+    esac
+  done
+elif [[ "$1" == attestation && "$2" == verify ]]; then
+  exit 0
+else
+  echo "unexpected gh invocation: $*" >&2
+  exit 1
+fi
 """,
                 'curl': """#!/usr/bin/env bash
+output=''
+url=''
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
     --output) output="$2"; shift 2 ;;
+    http*) url="$1"; shift ;;
     *) shift ;;
   esac
 done
-printf 'not a deployment identity\n' > "$output"
-printf '%s' "$MOCK_HTTP_CODE"
+if [[ "$url" == *'/index.html?'* ]]; then
+  cp "$MOCK_LIVE_INDEX" "$output"
+else
+  if [[ "$MOCK_HTTP_CODE" == 200 ]]; then
+    cp "$MOCK_IDENTITY_FILE" "$output"
+  else
+    printf 'not a deployment identity\n' > "$output"
+  fi
+  printf '%s' "$MOCK_HTTP_CODE"
+fi
 """,
                 'python3': """#!/usr/bin/env bash
 if [[ "$1" == "scripts/smoke_static.py" ]]; then
   exit 0
 fi
-echo "unexpected Python invocation: $*" >&2
-exit 1
+exec "$SYSTEM_PYTHON" "$@"
 """,
             }
             for name, source in stubs.items():
-                path = bin_dir / name
-                path.write_text(source, encoding='utf-8')
-                path.chmod(0o755)
+                stub = bin_dir / name
+                stub.write_text(source, encoding='utf-8')
+                stub.chmod(0o755)
 
             promotion_input = root / '.work/promotion'
             promotion_input.mkdir(parents=True)
             (promotion_input / 'pages-deployment-identity.json').write_text(
                 '{"release":"candidate"}\n', encoding='utf-8'
             )
-            with tarfile.open(promotion_input / 'candidate.tar.gz', 'w:gz') as archive:
-                content = b'candidate homepage'
+            with tarfile.open(promotion_input / 'candidate.tar.gz', 'w:gz') as tar:
+                candidate = b'candidate homepage'
                 entry = tarfile.TarInfo('index.html')
-                entry.size = len(content)
-                archive.addfile(entry, io.BytesIO(content))
+                entry.size = len(candidate)
+                tar.addfile(entry, io.BytesIO(candidate))
 
             env = os.environ.copy()
             env.update(
                 {
                     'PATH': f'{bin_dir}:{env["PATH"]}',
+                    'SYSTEM_PYTHON': sys.executable,
                     'GITHUB_REPOSITORY': 'test/repo',
                     'GITHUB_RUN_ID': '42',
                     'ARCHIVE_NAME': 'candidate.tar.gz',
                     'RELEASE_TAG': 'v1.141.0-web.0',
+                    'MOCK_HTTP_CODE': '404',
+                    'MOCK_TAGS': 'v1.140.0-web.0\n',
+                    'MOCK_LEGACY_SHA': 'a' * 40,
+                    'MOCK_RELEASE_DIR': str(release_dir),
+                    'MOCK_LIVE_INDEX': str(live_index),
+                    'MOCK_IDENTITY_FILE': str(identity_file),
                 }
             )
 
-            # A historical successful deployment has no identity file (HTTP 404).
-            # Canary still publishes its verified candidate under __canary.
-            env['MOCK_HTTP_CODE'] = '404'
-            result = subprocess.run(
-                ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
-            )
+            def run() -> subprocess.CompletedProcess[str]:
+                return subprocess.run(
+                    ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
+                )
+
+            # The same production root is retained if checks after publication fail.
+            result = run()
             self.assertEqual(result.returncode, 0, result.stderr)
             pages = root / '.work/pages-dist'
-            self.assertIn('No stable release', (pages / 'index.html').read_text())
-            self.assertFalse((pages / 'deployment-identity.json').exists())
-            candidate = pages / '__canary/v1.141.0-web.0'
-            self.assertEqual((candidate / 'index.html').read_bytes(), b'candidate homepage')
-            self.assertTrue((candidate / 'deployment-identity.json').is_file())
-
-            # A server error must not be mistaken for a missing pre-identity file.
-            env['MOCK_HTTP_CODE'] = '500'
-            result = subprocess.run(
-                ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
+            self.assertEqual((pages / 'index.html').read_bytes(), live_index.read_bytes())
+            self.assertEqual(
+                json.loads((pages / 'deployment-identity.json').read_text(encoding='utf-8')),
+                json.loads(identity_file.read_text(encoding='utf-8')),
             )
+            canary = pages / '__canary/v1.141.0-web.0'
+            self.assertEqual((canary / 'index.html').read_bytes(), b'candidate homepage')
+            self.assertTrue((canary / 'deployment-identity.json').is_file())
+            self.assertNotIn('No stable release', (pages / 'index.html').read_text())
+
+            # Unknown release, ambiguous release or divergent root: refuse to publish.
+            for tags, live_bytes, error in (
+                ('', b'legacy homepage', 'no immutable release matches'),
+                (
+                    'v1.140.0-web.0\nv1.139.1-web.1\n',
+                    b'legacy homepage',
+                    'multiple immutable releases match',
+                ),
+                ('v1.140.0-web.0\n', b'different production root', 'root does not match'),
+            ):
+                with self.subTest(error=error):
+                    env['MOCK_TAGS'] = tags
+                    live_index.write_bytes(live_bytes)
+                    result = run()
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(error, result.stderr)
+                    self.assertFalse((pages / '__canary').exists())
+
+            env['MOCK_TAGS'] = 'v1.140.0-web.0\n'
+            live_index.write_bytes(b'legacy homepage')
+            env['MOCK_HTTP_CODE'] = '500'
+            result = run()
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('HTTP 500', result.stderr)
 
-            # A 200 response containing malformed identity must still fail closed.
+            # Valid identities use the existing exact verification; malformed 200 fails.
             env['MOCK_HTTP_CODE'] = '200'
-            result = subprocess.run(
-                ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
-            )
+            result = run()
+            self.assertEqual(result.returncode, 0, result.stderr)
+            identity_file.write_text('not json', encoding='utf-8')
+            result = run()
             self.assertNotEqual(result.returncode, 0)
 
 

@@ -154,12 +154,19 @@ its root from the immutable release asset, verifies its digest and attestation, 
 deployment identity before adding the candidate subpath. During migration, if no `stable`
 deployment record exists yet, the workflow tries to recover the legacy production identity from
 the live root `deployment-identity.json`, verifies it against an attested immutable release, and
-reconstructs that release. A successful historical `github-pages` deployment without an identity
-file (HTTP 404) cannot establish the identity of the old bytes. Canary therefore serves the
-bootstrap placeholder at the root until stable promotion publishes the verified candidate; this
-temporarily replaces the unidentified legacy root during preflight. Without either stable or
-recoverable legacy history, the same placeholder is used. Other HTTP errors and malformed or
-mismatched live identities fail closed instead of silently treating them as a missing file.
+reconstructs that release. A successful historical `github-pages` deployment without this file
+(HTTP 404) is not sufficient evidence for a root replacement: the workflow first requires exactly
+one published immutable release resolving to the recorded successful Pages deployment commit,
+verifies its archive, manifest, checksums, and attestations, and checks that its `index.html`
+matches the currently served live root. Only then may canary publication carry that verified
+previous release at the root while adding the candidate under `__canary/`. If qualification
+subsequently fails, the deployed root still serves the previous release rather than a placeholder.
+If the historical commit cannot be uniquely matched, assets cannot be verified, or the live root
+entry point differs, promotion fails **before** Pages publication, preserving the original site.
+A matching index alone is not proof of every historic asset byte, so recovery is limited to the
+signed immutable release corresponding to the successful historical deployment. Other HTTP errors
+and malformed or mismatched live identities fail closed. When there is no successful stable or
+legacy Pages deployment at all, the initial Pages root serves a placeholder until stable promotion.
 
 If canary publication, identity verification, or browser boot fails, the canary deployment is marked
 failed and automatic stable promotion does not run. Re-run promotion for the same immutable release
