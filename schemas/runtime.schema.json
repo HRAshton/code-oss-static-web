@@ -11,7 +11,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["mode"],
-      "properties": {"mode": {"const": "disabled"}}
+      "properties": {"mode": {"enum": ["disabled", "open-vsx"]}}
     },
     "webviews": {
       "type": "object",
