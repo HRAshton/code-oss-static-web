@@ -20,7 +20,7 @@ MIT-licensed Code - OSS revision without maintaining a fork of Microsoft's repos
 - browser-compatible built-in extension indexing;
 - telemetry disabled in the project runtime;
 - fail-closed webview mode on generic static hosting;
-- self-only default `connect-src` CSP;
+- profile-scoped `connect-src` CSP (self-only baseline; reviewed Open VSX origins in company profile);
 - deterministic tar/zip packaging and SHA-256 verification;
 - Playwright qualification for static boot, editing, commands, settings, workspace trust, network policy and extension host;
 - browser-extension activation plus global-state/filesystem persistence and language-service qualification;
