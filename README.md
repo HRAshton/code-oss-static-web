@@ -40,7 +40,7 @@ Microsoft version.
 
 New immutable `v*-web.*` releases publish the same qualified static distribution as:
 
-- deterministic `.tar.gz` and `.zip` archives on the GitHub Release;
+- deterministic `.tar.gz` distribution on the GitHub Release;
 - a GitHub Pages deployment;
 - an OCI image at `ghcr.io/codellei/code-oss-static-web:<tag>` for
   `linux/amd64` and `linux/arm64`.
@@ -64,14 +64,12 @@ schema-validated profiles in `config/profiles/`. The default selection is `compa
 | --- | --- | --- |
 | `company-standard` | None | Default secure company deployment starting point. |
 | `baseline-static` | None | Exception-free secure baseline. |
-| `remotish-compat` | `hrashton.remotish`: `scmHistoryProvider`, `timeline` | Explicit opt-in host compatibility for separately distributed Remotish. |
 
-All three profiles use the same zero-backend static runtime: telemetry and the gallery are disabled,
+Both profiles use the same zero-backend static runtime: telemetry and the gallery are disabled,
 network connections default to self-only, and webviews fail closed. The current
 `company-standard` policy matches `baseline-static`; company-specific branding, support
 settings, extension mirrors, and locked extensions have not yet been provisioned. No extensions
-are bundled by default. The Remotish profile grants only the listed proposed APIs; it does not
-install or distribute Remotish. See [Remotish compatibility](docs/remotish-compatibility.md).
+are bundled by default.
 
 Each profile binds runtime, network, product, proposed-API, webview, branding, support, extension
 lock, extension license, and extension source policy documents. Builds write
