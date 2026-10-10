@@ -20,7 +20,7 @@ design choices are recorded in the [ADR index](adr/README.md).
 - Untrusted build execution is separated from attestation and publication authority.
 - Browser capabilities that cannot be made deployment-independent and fail-safe, notably secure
   webviews, remain disabled.
-- Default runtime network policy is deny-by-default and same-origin only.
+- Runtime network is default-deny; the strict baseline is self-only and the company profile grants only documented Open VSX origins.
 - Release tags are immutable; publication retries reconcile the existing immutable release rather
   than creating different bytes for the same tag.
 
@@ -384,7 +384,8 @@ present in the jobs that execute upstream build code.
 - [ADR-0003: Treat bundled extensions as explicit trusted release inputs](adr/0003-extension-trust.md)
 - [ADR-0004: Scope proposed API grants to documented extension IDs](adr/0004-proposed-api-policy.md)
 - [ADR-0005: Separate qualification, release rebuild, attestation, and promotion](adr/0005-release-promotion.md)
-- [ADR-0006: Keep gallery and runtime network access disabled by default](adr/0006-gallery-network-policy.md)
+- [ADR-0006: Keep gallery disabled in the strict baseline](adr/0006-gallery-network-policy.md)
+- [ADR-0007: Reviewed Open VSX gallery in the company profile](adr/0007-open-vsx-ready-profile.md)
 
 ## Immutable builder boundary
 
