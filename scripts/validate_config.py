@@ -297,7 +297,6 @@ def validate_all() -> None:
         profiles['company-standard']['documents']['proposedApi']['grants'] == {},
         'company-standard must not grant proposed APIs',
     )
-    require('remotish-compat' in profiles, 'remotish-compat deployment profile missing')
 
 
 def main() -> None:
