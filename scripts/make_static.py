@@ -120,8 +120,8 @@ def build_bootstrap(webview: dict[str, object], gallery_mode: str) -> str:
     if gallery_mode == 'open-vsx':
         bootstrap = bootstrap.replace(
             '    enableTelemetry: false,',
-            '    extensionsGallery: ' + json.dumps(OPEN_VSX_GALLERY, sort_keys=True) + ',\\n'
-            '    enableTelemetry: false,',
+            '    extensionsGallery: ' + json.dumps(OPEN_VSX_GALLERY, sort_keys=True) + ','
+            + chr(10) + '    enableTelemetry: false,',
         )
     return bootstrap
 
