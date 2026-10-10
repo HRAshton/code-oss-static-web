@@ -405,13 +405,49 @@ jobs:
             if [[ -n "$legacy_deployment" ]]; then
               pages_url="$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.html_url')"
               legacy_identity=.work/legacy-pages-identity.json
-              curl --fail --silent --show-error --location \
-                --header 'Cache-Control: no-cache' \
-                "${pages_url%/}/deployment-identity.json?promotion_run=$GITHUB_RUN_ID&legacy=1" \
-                --output "$legacy_identity"
+              legacy_http_status="$(
+                curl --silent --show-error --location \
+                  --header 'Cache-Control: no-cache' \
+                  --write-out '%{http_code}' \
+                  "${pages_url%/}/deployment-identity.json?promotion_run=$GITHUB_RUN_ID&legacy=1" \
+                  --output "$legacy_identity"
+              )"
+              legacy_identity_present=true
+              if [[ "$legacy_http_status" == 404 ]]; then
+                legacy_identity_present=false
+                rm -f "$legacy_identity"
+                legacy_commit="$(jq -r '.sha // ""' <<<"$legacy_deployment")"
+                if [[ ! "$legacy_commit" =~ ^[0-9a-f]{40}$ ]]; then
+                  echo "legacy Pages deployment has no trustworthy commit for root recovery" >&2
+                  exit 1
+                fi
+                # History supplies a commit, not a distribution identity. Never guess.
+                legacy_tag=''
+                while IFS= read -r candidate_tag; do
+                  [[ "$candidate_tag" =~ ^v.+-web\.(0|[1-9][0-9]*)$ ]] || continue
+                  candidate_commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$candidate_tag" --jq '.sha')"
+                  [[ "$candidate_commit" == "$legacy_commit" ]] || continue
+                  if [[ -n "$legacy_tag" ]]; then
+                    echo "multiple immutable releases match the legacy Pages commit" >&2
+                    exit 1
+                  fi
+                  legacy_tag="$candidate_tag"
+                done < <(
+                  gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                    --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name'
+                )
+                if [[ -z "$legacy_tag" ]]; then
+                  echo "no immutable release matches legacy Pages; refusing to replace the live root" >&2
+                  exit 1
+                fi
+              elif [[ "$legacy_http_status" != 200 ]]; then
+                echo "failed to read legacy Pages deployment identity (HTTP $legacy_http_status)" >&2
+                exit 1
+              else
+                legacy_tag="$(jq -r '.release.tag // ""' "$legacy_identity")"
+                legacy_commit="$(jq -r '.release.commit // ""' "$legacy_identity")"
+              fi
 
-              legacy_tag="$(jq -r '.release.tag // ""' "$legacy_identity")"
-              legacy_commit="$(jq -r '.release.commit // ""' "$legacy_identity")"
               if [[ ! "$legacy_tag" =~ ^v.+-web\.(0|[1-9][0-9]*)$ ||
                     ! "$legacy_commit" =~ ^[0-9a-f]{40}$ ]]; then
                 echo "live legacy Pages identity is invalid" >&2
@@ -467,12 +503,26 @@ jobs:
               python3 scripts/pages_identity.py write \
                 --promotion-identity .work/stable-promotion-identity.json \
                 --output .work/reconstructed-pages-identity.json
-              python3 scripts/pages_identity.py verify \
-                --expected "$legacy_identity" \
-                --actual .work/reconstructed-pages-identity.json
+              if [[ "$legacy_identity_present" == true ]]; then
+                python3 scripts/pages_identity.py verify \
+                  --expected "$legacy_identity" \
+                  --actual .work/reconstructed-pages-identity.json
+              fi
 
               tar -C .work/pages-dist -xzf ".work/stable-release/$stable_archive"
-              cp "$legacy_identity" .work/pages-dist/deployment-identity.json
+              if [[ "$legacy_identity_present" == false ]]; then
+                # Confirm the historical release entry point matches the live root.
+                curl --fail --silent --show-error --location \
+                  --header 'Cache-Control: no-cache' \
+                  "${pages_url%/}/index.html?promotion_run=$GITHUB_RUN_ID&legacy_root=1" \
+                  --output .work/legacy-pages-index.html
+                if ! cmp -s .work/legacy-pages-index.html .work/pages-dist/index.html; then
+                  echo "legacy Pages root does not match immutable release; refusing to publish" >&2
+                  exit 1
+                fi
+              fi
+              # Failed canary qualification must leave a working previous root.
+              cp .work/reconstructed-pages-identity.json .work/pages-dist/deployment-identity.json
             fi
           fi
 
