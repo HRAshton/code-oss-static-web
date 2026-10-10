@@ -100,6 +100,14 @@ def verify_artifact_manifest(directory: Path) -> None:
         _string(artifact.get('name'), 'artifact manifest artifact name missing')
         for artifact in artifact_objects
     }
+    distribution_archives = [
+        name for name in artifact_names if name.startswith('code-oss-static-web-')
+        and (name.endswith('.tar.gz') or name.endswith('.zip'))
+    ]
+    require(
+        len(distribution_archives) == 1 and distribution_archives[0].endswith('.tar.gz'),
+        'release must include exactly one distribution .tar.gz and no distribution .zip',
+    )
     require('sbom.cdx.json' in artifact_names, 'artifact manifest must include sbom.cdx.json')
     require(
         'independent-component-inventory.json' in artifact_names,
