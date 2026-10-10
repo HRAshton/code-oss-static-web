@@ -33,13 +33,10 @@ it currently selects `company-standard`.
 | --- | --- | --- |
 | `company-standard` | None | Default secure deployment starting point, not a preconfigured company environment. |
 | `baseline-static` | None | Exception-free secure baseline. |
-| `remotish-compat` | `hrashton.remotish`: `scmHistoryProvider`, `timeline` | Explicit opt-in compatibility for separately distributed Remotish. |
 
 At present `company-standard` and `baseline-static` bind the same policy documents. The
 extension lock is empty, and no internal extension mirror or company-specific branding or support
-configuration is provisioned. The `remotish-compat` profile grants two proposed APIs only to
-`hrashton.remotish`; it does not bundle, install, download, or qualify that extension. See
-[Remotish host compatibility](docs/remotish-compatibility.md).
+configuration is provisioned.
 
 The shared static deployment has these fixed boundaries:
 
@@ -258,9 +255,8 @@ The shared static runtime does not support extensions that require:
 - arbitrary cross-origin network access blocked by the baseline CSP/network policy.
 
 Proposed APIs are not a general compatibility promise. `company-standard` and `baseline-static`
-grant none. `remotish-compat` permits only the listed Remotish proposals, and that permission
-still requires separate extension distribution and extension-specific qualification before support
-can be claimed.
+grant none. Any future scoped proposal grant requires independent review and extension-specific
+qualification before support can be claimed.
 
 The repository's automated extension fixture proves browser extension-host activation, global-state
 persistence, browser-filesystem persistence, and JavaScript language-service initialization. It does
