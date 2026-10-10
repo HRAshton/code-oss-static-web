@@ -1959,6 +1959,33 @@ python-version: ${{ steps.versions.outputs.python }}
         self.assertIn('additional-extensions.json', make_static.BOOTSTRAP)
         self.assertNotIn("fetch(new URL('extensions.json'", make_static.BOOTSTRAP)
 
+    def test_gallery_modes_are_explicit_and_telemetry_stays_off(self):
+        ready = json.loads((ROOT / 'config/policies/runtime/ready.json').read_text())
+        offline = json.loads((ROOT / 'config/policies/runtime/static.json').read_text())
+        webview = json.loads((ROOT / 'config/policies/webview/disabled.json').read_text())
+        network_ready = json.loads((ROOT / 'config/policies/network/ready.json').read_text())
+        network_offline = json.loads((ROOT / 'config/policies/network/static.json').read_text())
+        self.assertIs(ready['telemetry'], False)
+        self.assertIs(offline['telemetry'], False)
+        self.assertEqual(ready['gallery']['mode'], 'open-vsx')
+        self.assertEqual(offline['gallery']['mode'], 'disabled')
+
+        online_html = make_static.build_index(
+            'Code OSS Static Web', network_ready, 'open-vsx'
+        )
+        offline_html = make_static.build_index(
+            'Code OSS Static Web', network_offline, 'disabled'
+        )
+        self.assertIn('https://open-vsx.org', online_html)
+        self.assertNotIn('https://open-vsx.org', offline_html)
+
+        online_bootstrap = make_static.build_bootstrap(webview, 'open-vsx')
+        offline_bootstrap = make_static.build_bootstrap(webview, 'disabled')
+        self.assertIn('extensionsGallery:', online_bootstrap)
+        self.assertNotIn('extensionsGallery:', offline_bootstrap)
+        self.assertIn('enableTelemetry: false', online_bootstrap)
+        self.assertIn('enableTelemetry: false', offline_bootstrap)
+
     def test_default_static_policy_is_fail_closed(self):
         self.assertIn("connect-src 'self'", make_static.INDEX)
         self.assertNotIn('unsafe-eval', make_static.INDEX)
