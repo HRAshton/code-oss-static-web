@@ -1,6 +1,6 @@
 # ADR-0006: Keep gallery and runtime network access disabled by default
 
-- Status: Accepted
+- Status: Superseded for `company-standard` by [ADR-0007](0007-open-vsx-ready-profile.md); remains valid for `baseline-static`
 - Date: 2026-10-03
 
 ## Context
