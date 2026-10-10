@@ -6,7 +6,7 @@ test('runtime security defaults remain fail-closed', async ({ page, request, bas
   expect(runtimeResponse.ok()).toBeTruthy();
   const runtime = await runtimeResponse.json();
   expect(runtime.telemetry).toBe(false);
-  expect(runtime.gallery.mode).toBe('disabled');
+  expect(runtime.gallery.mode).toBe('open-vsx');
   expect(runtime.webviews.mode).toBe('disabled');
 
   await openWorkbench(page);
@@ -16,5 +16,10 @@ test('runtime security defaults remain fail-closed', async ({ page, request, bas
 
   const csp = await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(csp).toContain("connect-src 'self'");
+  expect(csp).toContain('https://open-vsx.org');
+  expect(csp).toContain('https://openvsx.eclipsecontent.org');
+  const configuration = JSON.parse(await page.locator('#vscode-workbench-web-configuration').getAttribute('data-settings'));
+  expect(configuration.productConfiguration.enableTelemetry).toBe(false);
+  expect(configuration.productConfiguration.extensionsGallery.serviceUrl).toBe('https://open-vsx.org/vscode/gallery');
   expect(csp).toContain("object-src 'none'");
 });
