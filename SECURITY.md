@@ -14,7 +14,7 @@ appropriate.
 
 Report suspected vulnerabilities privately through GitHub Private Vulnerability Reporting:
 
-https://github.com/HRAshton/code-oss-static-web/security/advisories/new
+https://github.com/Codellei/code-oss-static-web/security/advisories/new
 
 Do not open a public issue for a vulnerability before coordinated disclosure. Include the affected
 release or commit, reproduction steps, expected impact, and any known workarounds. Reports may cover

@@ -1,21 +1,26 @@
-# Organization team migration
+# Organization team activation
 
-This is the activation procedure for the governance model in [GOVERNANCE.md](../GOVERNANCE.md).
-It does not authorize a repository transfer or invent team identities.
+The repository was transferred to `Codellei` without rewriting Git history or release tags. This
+procedure activates the future team-backed model in [GOVERNANCE.md](../GOVERNANCE.md). It does not
+authorize settings changes or invent team identities.
 
-## Before transfer
+## Current two-developer phase
 
-1. Approve the target organization and create real teams for Platform, Security, Release,
-   Extension Policy, and Legal/licensing responsibilities.
-2. Put at least two qualified humans in each critical operational team where applicable.
-3. Export or record the current branch/tag rulesets, Actions policy, environments, Pages settings,
-   GHCR package access, security features, and repository visibility.
-4. Confirm the destination organization permits the Actions used by this repository and does not
-   weaken immutable-tag, CODEOWNERS, code-scanning, or environment controls.
+`HRAshton` and `vodyanica` are the real CODEOWNERS. One independent review is required for an
+author's sensitive-path change. The owner approved a temporary exception to separate
+Platform/Security approvals because a two-person project cannot supply both when one person is the
+author. Keep the required checks, CodeQL, CODEOWNERS review, and immutable-tag ruleset active.
+Record the exception and organization settings in restricted migration evidence, not the public
+repository. `vodyanica` retains repository write access as a collaborator while the Codellei
+membership invitation is pending.
+
+Before team activation, approve actual people and slugs for Platform, Security, Release, Extension
+Policy, and Legal/licensing responsibilities. Establish backup release and organization administration
+capability. Do not create fictional teams to satisfy policy tests.
 
 ## Render team-backed CODEOWNERS
 
-After the repository belongs to the organization and the final team slugs exist, run:
+After the approved final team slugs exist, run:
 
     python3 scripts/render_codeowners.py \
       --organization <org-slug> \
@@ -26,10 +31,10 @@ After the repository belongs to the organization and the final team slugs exist,
       --legal-team <legal-team>
 
 This writes both `.github/CODEOWNERS` and `.github/governance-teams.json`. Repository policy then
-switches from the interim personal-owner contract to an exact generated team contract. Do not edit
+switches from the interim two-developer contract to an exact generated team contract. Do not edit
 team-mode CODEOWNERS manually.
 
-## After transfer
+## Verify team activation
 
 Verify the effective default-branch and immutable-tag rulesets, required checks, CODEOWNERS review,
 Actions permissions, release and github-pages environments, Pages source/deployment state, GHCR

@@ -58,7 +58,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Current protected-branch code can repair a legacy tag's publication.
+          # Current protected-branch code can repair a post-transfer tag's publication.
           if [[ "$GITHUB_REF_TYPE" == tag && -z "$REQUESTED_TAG" ]]; then
             release_tag="$GITHUB_REF_NAME"
           elif [[ "$GITHUB_REF_TYPE" == branch && -n "$REQUESTED_TAG" ]]; then
@@ -71,6 +71,12 @@ jobs:
             echo 'recovery requires immutable tag or current default branch plus release_tag' >&2
             exit 1
           fi
+          case "$release_tag" in
+            v1.139.1-web.0|v1.139.1-web.1|v1.140.0-web.0|v1.141.0-web.0)
+              echo 'pre-transfer release publication belongs to the original GHCR namespace' >&2
+              exit 1
+              ;;
+          esac
           release_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$release_tag" --jq '.sha')"
           # Validate the tag against the *source release's* version, not the
           # potentially newer upstream lock on the current default branch.
@@ -285,7 +291,7 @@ jobs:
         uses: ./.github/actions/publish-oci
         with:
           github-token: ${{ github.token }}
-          image: ghcr.io/hrashton/code-oss-static-web:${{ needs.authorize-recovery.outputs.release_tag }}
+          image: ghcr.io/codellei/code-oss-static-web:${{ needs.authorize-recovery.outputs.release_tag }}
           commit: ${{ needs.authorize-recovery.outputs.release_sha }}
           tag: ${{ needs.authorize-recovery.outputs.release_tag }}
           dist-path: dist

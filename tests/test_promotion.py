@@ -319,7 +319,11 @@ class PromotionWorkflowTests(unittest.TestCase):
         self.assertNotIn('package.sh', workflow)
         self.assertNotIn('actions/attest@', workflow)
         self.assertIn('gh release download', workflow)
-        self.assertIn('gh attestation verify', workflow)
+        self.assertEqual(workflow.count('scripts/verify_release_attestation.sh'), 3)
+        verifier = (ROOT / 'scripts/verify_release_attestation.sh').read_text(encoding='utf-8')
+        self.assertIn('gh attestation verify', verifier)
+        self.assertIn('--bundle "$bundle"', verifier)
+        self.assertIn('--cert-identity', verifier)
         self.assertIn('scripts/promotion.py', workflow)
         self.assertIn('--argjson identity "$target_identity"', workflow)
         self.assertIn('--argjson releaseArtifact "$target_release_artifact"', workflow)
@@ -387,7 +391,11 @@ class PromotionWorkflowTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / 'scripts').symlink_to(ROOT / 'scripts', target_is_directory=True)
+            shutil.copytree(ROOT / 'scripts', root / 'scripts')
+            # This test exercises Pages root reconstruction; signer verification is separate.
+            (root / 'scripts/verify_release_attestation.sh').write_text(
+                '#!/usr/bin/env bash\nexit 0\n', encoding='utf-8'
+            )
             (root / 'config').mkdir()
             release_dir = root / 'release-source'
             release_dir.mkdir()
@@ -436,15 +444,15 @@ class PromotionWorkflowTests(unittest.TestCase):
 set -euo pipefail
 if [[ "$1" == api ]]; then
   case "$2" in
-    'repos/test/repo/deployments?environment=stable&per_page=100') exit 0 ;;
-    'repos/test/repo/deployments?environment=github-pages&per_page=100') echo 101 ;;
-    'repos/test/repo/deployments/101/statuses?per_page=100') echo 1 ;;
-    'repos/test/repo/deployments/101')
+    'repos/Codellei/code-oss-static-web/deployments?environment=stable&per_page=100') exit 0 ;;
+    'repos/Codellei/code-oss-static-web/deployments?environment=github-pages&per_page=100') echo 101 ;;
+    'repos/Codellei/code-oss-static-web/deployments/101/statuses?per_page=100') echo 1 ;;
+    'repos/Codellei/code-oss-static-web/deployments/101')
       printf '{"id":101,"sha":"%s"}\n' "$MOCK_LEGACY_SHA" ;;
-    'repos/test/repo/pages') echo 'https://example.invalid/repo/' ;;
+    'repos/Codellei/code-oss-static-web/pages') echo 'https://example.invalid/repo/' ;;
     --paginate) printf '%s' "$MOCK_TAGS" ;;
-    repos/test/repo/commits/v*-web.*) echo "$MOCK_LEGACY_SHA" ;;
-    repos/test/repo/releases/tags/v*-web.*)
+    repos/Codellei/code-oss-static-web/commits/v*-web.*) echo "$MOCK_LEGACY_SHA" ;;
+    repos/Codellei/code-oss-static-web/releases/tags/v*-web.*)
       echo '{"id":42,"tag_name":"v1.140.0-web.0","draft":false,"prerelease":false}' ;;
     *) echo "unexpected gh api: $*" >&2; exit 1 ;;
   esac
@@ -514,7 +522,7 @@ exec "$SYSTEM_PYTHON" "$@"
                 {
                     'PATH': f'{bin_dir}:{env["PATH"]}',
                     'SYSTEM_PYTHON': sys.executable,
-                    'GITHUB_REPOSITORY': 'test/repo',
+                    'GITHUB_REPOSITORY': 'Codellei/code-oss-static-web',
                     'GITHUB_RUN_ID': '42',
                     'ARCHIVE_NAME': 'candidate.tar.gz',
                     'RELEASE_TAG': 'v1.141.0-web.0',
@@ -529,7 +537,11 @@ exec "$SYSTEM_PYTHON" "$@"
 
             def run() -> subprocess.CompletedProcess[str]:
                 return subprocess.run(
-                    ['bash', '-c', script], cwd=root, env=env, capture_output=True, text=True
+                    ['bash', '-c', script],
+                    cwd=root,
+                    env=env,
+                    capture_output=True,
+                    text=True,
                 )
 
             # The same production root is retained if checks after publication fail.

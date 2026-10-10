@@ -12,7 +12,7 @@ from common import require, sha256_file, write_json
 
 CYCLONEDX_SCHEMA = 'http://cyclonedx.org/schema/bom-1.7.schema.json'
 CYCLONEDX_VERSION = '1.7'
-PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
+PROJECT_REPOSITORY = 'https://github.com/Codellei/code-oss-static-web'
 
 
 def tree_digest(root: Path) -> str:

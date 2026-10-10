@@ -57,12 +57,18 @@ After browser qualification and packaging, an isolated OIDC job uses the SHA-pin
 The repository policy rejects attestation jobs that checkout source, execute shell commands, or run
 the upstream build. Build jobs are separately prohibited from receiving write/OIDC permissions.
 
-Artifact attestations can be verified with GitHub CLI, for example:
+Attestations for new Codellei releases can be verified with GitHub CLI:
 
 ```bash
-gh attestation verify code-oss-static-web-1.139.1-web.0.tar.gz \
-  --repo HRAshton/code-oss-static-web
+gh attestation verify "code-oss-static-web-${TAG#v}.tar.gz" \
+  --repo Codellei/code-oss-static-web \
+  --cert-identity "https://github.com/Codellei/code-oss-static-web/.github/workflows/release.yml@refs/tags/$TAG"
 ```
+
+The pre-transfer `v1.140.0-web.0` archive remains the existing Pages root. Promotion verifies its
+original Release signer with the immutable `release-provenance.sigstore.json` asset and pins the
+release ID, commit, archive, manifest, and bundle digests. Other pre-transfer tags are not accepted
+for new publication recovery or promotion under the Codellei identity.
 
 Development qualification may reuse the content-addressed upstream web-build cache. Cold builds may
 also reuse an npm package-download cache; `npm ci` still selects dependencies from the lockfile in

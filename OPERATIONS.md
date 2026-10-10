@@ -52,16 +52,16 @@ for compatibility.
 List recent promotion records:
 
 ```bash
-gh api "repos/HRAshton/code-oss-static-web/deployments?environment=canary&per_page=20"
-gh api "repos/HRAshton/code-oss-static-web/deployments?environment=stable&per_page=20"
+gh api "repos/Codellei/code-oss-static-web/deployments?environment=canary&per_page=20"
+gh api "repos/Codellei/code-oss-static-web/deployments?environment=stable&per_page=20"
 ```
 
 For a deployment ID, inspect both the recorded immutable identity and its latest status:
 
 ```bash
 DEPLOYMENT_ID=123456
-gh api "repos/HRAshton/code-oss-static-web/deployments/$DEPLOYMENT_ID"
-gh api "repos/HRAshton/code-oss-static-web/deployments/$DEPLOYMENT_ID/statuses?per_page=1"
+gh api "repos/Codellei/code-oss-static-web/deployments/$DEPLOYMENT_ID"
+gh api "repos/Codellei/code-oss-static-web/deployments/$DEPLOYMENT_ID/statuses?per_page=1"
 ```
 
 The deployment payload is authoritative for the promoted release/artifact/policy identity. A channel
@@ -74,7 +74,7 @@ Manual canary promotion is useful for replaying a failed automatic promotion or 
 re-evaluating an immutable release:
 
 ```bash
-TAG=v1.140.0-web.0
+TAG='<new-codellei-release-tag>'
 
 gh workflow run promote.yml \
   --ref master \
@@ -93,7 +93,7 @@ record. The normal `target=auto` path satisfies that requirement in one promotio
 To finish a release whose canary succeeded but stable failed:
 
 ```bash
-TAG=v1.140.0-web.0
+TAG='<new-codellei-release-tag>'
 
 gh workflow run promote.yml \
   --ref master \
@@ -118,16 +118,15 @@ the current policy before promoting forward to stable.
 
 ### Roll back stable
 
-Rollback is another stable promotion to an older immutable release that previously succeeded in the
-stable environment. During migration to this model, a successful historical `github-pages`
-deployment also counts as prior stable evidence, so the first post-migration rollback can return to
-the production release that existed before `stable` deployment records were introduced. Rollback
-creates a new deployment record; it does not move or recreate a release tag.
+Rollback is another stable promotion to an older immutable Codellei release that previously
+succeeded in the stable environment. The pre-transfer `v1.140.0-web.0` release is used only to
+preserve the live root during the first canary; it is not a target for new promotion or publication
+recovery. Rollback creates a new deployment record; it does not move or recreate a release tag.
 
 First identify a previous successful stable deployment and its `payload.release.tag`, then run:
 
 ```bash
-PREVIOUS_TAG=v1.139.1-web.2
+PREVIOUS_TAG='<previous-successful-codellei-release-tag>'
 
 gh workflow run promote.yml \
   --ref master \
@@ -136,11 +135,11 @@ gh workflow run promote.yml \
 ```
 
 The workflow permits a backward stable transition only when that exact immutable release/artifact
-identity has successful stable history or the target commit has a successful legacy
-`github-pages` deployment. Historical rollback eligibility intentionally does not require the old
-promotion-policy digest to match: the new rollback attempt is evaluated under, and records, the
-current promotion policy/profile. GitHub Pages is redeployed when its currently served successful
-deployment does not match the rollback commit, even if that older commit was deployed in the past.
+identity has successful stable history. Historical rollback eligibility intentionally does not
+require the old promotion-policy digest to match: the new rollback attempt is evaluated under, and
+records, the current promotion policy/profile. GitHub Pages is redeployed when its currently served
+successful deployment does not match the rollback commit, even if that older commit was deployed in
+the past.
 
 Canary is not implicitly rolled back when stable is rolled back. Move canary separately if the
 operational intent is for both channel pointers to reference the same previous release.
@@ -167,6 +166,10 @@ A matching index alone is not proof of every historic asset byte, so recovery is
 signed immutable release corresponding to the successful historical deployment. Other HTTP errors
 and malformed or mismatched live identities fail closed. When there is no successful stable or
 legacy Pages deployment at all, the initial Pages root serves a placeholder until stable promotion.
+
+After the Codellei transfer, that one recoverable legacy root is `v1.140.0-web.0`. Its archive and
+manifest are verified against pinned digests and the original `HRAshton` Release signer using the
+signed bundle published with that release. The first new canary must still pass live root comparison.
 
 If canary publication, identity verification, or browser boot fails, the canary deployment is marked
 failed and automatic stable promotion does not run. Re-run promotion for the same immutable release
@@ -265,7 +268,7 @@ Do not create a new `web.N` revision for a transient publication failure.
 Example:
 
 ```bash
-TAG=v1.140.0-web.0
+TAG='<new-codellei-release-tag>'
 RELEASE_RUN_ID=123456789
 ```
 
@@ -292,8 +295,8 @@ gh workflow run recover-release-publication.yml \
   -f channel=ghcr
 ```
 
-To repair an older tag with broken recovery code, use the current protected branch after its fix
-has merged:
+To repair a post-transfer tag with broken recovery code, use the current protected branch after its
+fix has merged:
 
 ```bash
 gh workflow run recover-release-publication.yml \

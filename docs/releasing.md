@@ -111,10 +111,11 @@ moved.
 
 The canary stage publishes a reachable candidate under the repository Pages site at
 `__canary/<release-tag>/` while retaining the previous stable release at the root. It reconstructs
-that stable root only from its verified immutable release archive; during migration it can recover
-the exact prior production release from a successful legacy `github-pages` deployment plus the
-live root deployment identity. It then verifies the candidate's release-bound identity at the
-canary path and runs a Chromium boot synthetic against the served URL.
+that stable root only from its verified immutable release archive. For the first Codellei canary,
+the transferred `v1.140.0-web.0` root is recovered from its successful legacy `github-pages`
+deployment, pinned archive and manifest, original signed bundle, and matching live `index.html`.
+It then verifies the candidate's release-bound identity at the canary path and runs a Chromium boot
+synthetic against the served URL.
 Only that successful canary deployment record is accepted by automatic stable promotion. A
 canary-only dispatch leaves the candidate reachable for operator inspection without advancing the
 stable channel.

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/HRAshton/code-oss-static-web/blob/master/schemas/source-policy.schema.json",
+  "$id": "https://github.com/Codellei/code-oss-static-web/blob/master/schemas/source-policy.schema.json",
   "title": "Code OSS Static Web extension source policy",
   "type": "object",
   "additionalProperties": false,

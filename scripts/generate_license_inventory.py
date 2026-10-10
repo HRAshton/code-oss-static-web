@@ -146,7 +146,7 @@ def build_license_inventory(
     return {
         'schemaVersion': 1,
         'project': {
-            'repository': 'https://github.com/HRAshton/code-oss-static-web',
+            'repository': 'https://github.com/Codellei/code-oss-static-web',
             'commit': project_commit,
         },
         'upstream': {

@@ -38,9 +38,9 @@ Stale approvals are dismissed when the pull request changes, and the last push m
 someone other than its author.
 
 Repository ownership and sensitive-path review expectations are defined in
-[Governance](GOVERNANCE.md). During the current personal-account phase, `.github/CODEOWNERS`
-requires one of the designated current maintainers to approve sensitive-path changes. Distinct
-organization roles remain a documented procedural control until team-backed rules are available.
+[Governance](GOVERNANCE.md). During the temporary two-developer phase, `.github/CODEOWNERS`
+requires the other maintainer to approve sensitive-path changes. Distinct organization roles remain
+a documented future control until qualified team members and team-backed rules are available.
 
 `upstream.lock.json` and `builder-apt-snapshot.json` are intentionally outside CODEOWNERS,
 allowing only the validated two-file platform update to merge without human review. A change to
@@ -112,6 +112,6 @@ Use GitHub Issues for public bugs and enhancement requests. Security vulnerabili
 the private process in [SECURITY.md](SECURITY.md).
 
 
-After organization migration, sensitive-path ownership is generated from the approved team mapping;
-contributors should not replace team owners with personal accounts. See
+When the approved organization teams are staffed, sensitive-path ownership will be generated from
+their team mapping. Until then, keep the two real maintainers in CODEOWNERS. See
 [organization migration](docs/organization-migration.md).

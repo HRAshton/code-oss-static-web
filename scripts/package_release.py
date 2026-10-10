@@ -34,7 +34,7 @@ from common import (
     write_json,
 )
 
-PROJECT_REPOSITORY = 'https://github.com/HRAshton/code-oss-static-web'
+PROJECT_REPOSITORY = 'https://github.com/Codellei/code-oss-static-web'
 PROJECT_COMMIT_RE = re.compile(r'^[0-9a-f]{40}$')
 
 

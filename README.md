@@ -1,9 +1,9 @@
 # Code OSS Static Web
 
-[![CI](https://github.com/HRAshton/code-oss-static-web/actions/workflows/ci.yml/badge.svg)](https://github.com/HRAshton/code-oss-static-web/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/HRAshton/code-oss-static-web/badge)](https://scorecard.dev/viewer/?uri=github.com/HRAshton/code-oss-static-web)
+[![CI](https://github.com/Codellei/code-oss-static-web/actions/workflows/ci.yml/badge.svg)](https://github.com/Codellei/code-oss-static-web/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/Codellei/code-oss-static-web/badge)](https://scorecard.dev/viewer/?uri=github.com/Codellei/code-oss-static-web)
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/15349/badge)](https://www.bestpractices.dev/projects/15349)
-[![REUSE status](https://api.reuse.software/badge/github.com/HRAshton/code-oss-static-web)](https://api.reuse.software/info/github.com/HRAshton/code-oss-static-web)
+[![REUSE status](https://api.reuse.software/badge/github.com/Codellei/code-oss-static-web)](https://api.reuse.software/info/github.com/Codellei/code-oss-static-web)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Independent tooling for producing a **zero-backend static browser build** from an immutable
@@ -38,12 +38,15 @@ Microsoft Code - OSS updates publish automatically as `web.0`. Project-side fixe
 published deliberately as monotonic `web.1`, `web.2`, and later patch revisions for the same
 Microsoft version.
 
-Each immutable `v*-web.*` release publishes the same qualified static distribution as:
+New immutable `v*-web.*` releases publish the same qualified static distribution as:
 
 - deterministic `.tar.gz` and `.zip` archives on the GitHub Release;
 - a GitHub Pages deployment;
-- an OCI image at `ghcr.io/hrashton/code-oss-static-web:<tag>` for
+- an OCI image at `ghcr.io/codellei/code-oss-static-web:<tag>` for
   `linux/amd64` and `linux/arm64`.
+
+Releases published before the organization transfer retain their original
+`ghcr.io/hrashton/code-oss-static-web:<tag>` images and signed provenance.
 
 Iframe embedding is a hosting decision: the shipped application and OCI image are neutral by
 default. Operators can restrict embedding with an HTTP `frame-ancestors` header on the Code
@@ -111,8 +114,8 @@ configured to fail closed.
 
 ## Project links
 
-- [Releases](https://github.com/HRAshton/code-oss-static-web/releases) - immutable qualified release artifacts.
-- [Issues](https://github.com/HRAshton/code-oss-static-web/issues) - bugs and enhancement requests.
+- [Releases](https://github.com/Codellei/code-oss-static-web/releases) - immutable qualified release artifacts.
+- [Issues](https://github.com/Codellei/code-oss-static-web/issues) - bugs and enhancement requests.
 - [Contributing](CONTRIBUTING.md) - contribution process, review requirements, and local checks.
 - [Governance](GOVERNANCE.md) - ownership, sensitive-path review, migration, and continuity plan.
 - [Security](SECURITY.md) - private vulnerability reporting and supported-version policy.

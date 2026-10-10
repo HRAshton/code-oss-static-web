@@ -73,7 +73,7 @@ runs:
         push: true
         tags: ${{ inputs.image }}
         labels: |
-          org.opencontainers.image.source=https://github.com/HRAshton/code-oss-static-web
+          org.opencontainers.image.source=https://github.com/Codellei/code-oss-static-web
           org.opencontainers.image.revision=${{ inputs.commit }}
           org.opencontainers.image.version=${{ inputs.tag }}
         provenance: mode=max
