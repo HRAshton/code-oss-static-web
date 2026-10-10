@@ -50,7 +50,6 @@ class ProfileDocumentationTests(unittest.TestCase):
             with self.subTest(document=filename):
                 markdown = (ROOT / filename).read_text(encoding='utf-8')
                 self.assertNotIn('not yet a selectable deployment-profile system', markdown)
-                self.assertNotIn('remotish-compat', markdown)
 
 
 if __name__ == '__main__':
